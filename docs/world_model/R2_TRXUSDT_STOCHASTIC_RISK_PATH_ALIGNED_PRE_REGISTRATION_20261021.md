@@ -38,3 +38,13 @@ No source, scoring, candidate recipe, or decision-rule changes are permitted aft
 - Fold hash `1ebb025020559aaae3c6b3301fcaf14fcd45255919917a3d7cc95d38ba8d4d79`; Fold config `configs/routeb/fresh_trxusdt_20250426_stochastic_risk_path_aligned_60_15_15_fold.json`; SHA-256 `b685ec887dc59d37514f1b3f9b186e13888259b0904583eeaf2aa0341e75f910`.
 - Final prepared source identity SHA-256 `dc1a66cfa6b2a28f64117aa1cdb076328138aa8a0d07465997ec57d94cccbb28` (495 files).
 - Final read-only RouteB ledger preflight on 2026-10-21 again returned `access_overlap=0` and `query_intent_overlap=0` for exact Train+Validation nanoseconds `[1745625660000000000,1752364860000000000)`.
+
+## Append-only RouteB worker dependency repair before registration
+
+The first Linux worker preflight stopped before output creation or ledger access because the isolated WSL environment lacked `pyarrow`, required to inspect the prepared Parquet footer. The dependency had been present in the Windows host environment but was absent from the JAX worker's lock. RouteB now pins `pyarrow==25.0.1` in its dedicated world-model environment. A second check found that the WSL CUDA plugin had previously been installed outside the lock and would be removed by a normal locked sync; the environment now declares a `cuda` dependency group with `jax[cuda13]==0.11.2`.
+
+- Environment declaration SHA-256 `04951e1986b75ece21e64f67774b8f820d20a5e0ab710a99a4bf2725e653161c`; lock SHA-256 `69584c518ce6fb3ce01ae7c4900b9f5d5c5bc522796399f72686042784ed0256`.
+- Rebuilt WSL environment reports Python 3.12.10, pyarrow 25.0.1, JAX 0.11.2, and `[CudaDevice(id=0)]`.
+- Updated RouteB source identity SHA-256 `f3f837690381630b8278f15bdca6387ba8d469151042220c442a0de825f5eccd`.
+
+No market rows were read and no access reservation was made by either failed preflight. Resume once with the frozen configs and an unused output directory under the registered output root.

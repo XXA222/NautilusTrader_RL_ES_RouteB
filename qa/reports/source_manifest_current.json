@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v1",
-  "generated_at_utc": "2026-10-20T16:47:03.155791+00:00",
-  "source_identity_sha256": "dc1a66cfa6b2a28f64117aa1cdb076328138aa8a0d07465997ec57d94cccbb28",
+  "generated_at_utc": "2026-10-20T23:55:10.896325+00:00",
+  "source_identity_sha256": "f3f837690381630b8278f15bdca6387ba8d469151042220c442a0de825f5eccd",
   "scope": {
     "included": [
       ".gitattributes",
@@ -1620,13 +1620,13 @@
     },
     {
       "path": "packages/world_model/environment/pyproject.toml",
-      "size_bytes": 387,
-      "sha256": "d20d14f3e5baa058762421422c3869b9682d7ad0091014eff5279e90610b398f"
+      "size_bytes": 465,
+      "sha256": "04951e1986b75ece21e64f67774b8f820d20a5e0ab710a99a4bf2725e653161c"
     },
     {
       "path": "packages/world_model/environment/uv.lock",
-      "size_bytes": 126019,
-      "sha256": "ab99ac8f831bc06dc6e408cf91090b69aca413df8f38cfcd2f28b77a6ea18c1b"
+      "size_bytes": 144706,
+      "sha256": "69584c518ce6fb3ce01ae7c4900b9f5d5c5bc522796399f72686042784ed0256"
     },
     {
       "path": "packages/world_model/pyproject.toml",
