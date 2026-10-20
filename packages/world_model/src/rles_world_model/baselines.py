@@ -71,6 +71,8 @@ def score_baselines(replay: MarketReplay, fold: FoldManifest, *, seed: int = 0,
         raise DataError("invalid baseline sampling configuration")
     if not replay.is_contiguous:
         raise DataError("S0/S1/S2 scoring requires a gap-free replay")
+    if replay.dataset_hash != fold.dataset_hash:
+        raise DataError("baseline replay dataset hash differs from the frozen Fold")
     instrument = replay.frames[0].instrument
     if any(frame.instrument != instrument for frame in replay.frames):
         raise DataError("baseline replay instrument mismatch")

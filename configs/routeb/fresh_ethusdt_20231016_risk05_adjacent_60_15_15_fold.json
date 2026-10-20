@@ -1,0 +1,36 @@
+{
+  "allow_legacy_isolated_snapshot": false,
+  "config": {
+    "environment": {
+      "instrument": "ETHUSDT-PERP.BINANCE",
+      "market_path": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB/.artifacts/world_model/fresh-ethusdt-20231016-risk05-adjacent-60-15-15-20261019/source/market.parquet"
+    }
+  },
+  "fold": {
+    "dataset_hash": "68e29f58f1fe3c81af4c0e741b8838e057d531eabb693ffd32fc6754ae987d37",
+    "embargo_ns": 82800000000000,
+    "feature_hash": "fc7c4373d2a4e5d802f9c0663d37ecf89d900e73afc7742d2d6ea76258540890",
+    "purge_ns": 3600000000000,
+    "scaler_hash": null,
+    "schema_version": "0.4.0",
+    "test": {
+      "score_end_ns": 1705449660000000000,
+      "score_start_ns": 1704153660000000000,
+      "warmup_start_ns": 1703203260000000000
+    },
+    "train": {
+      "score_end_ns": 1702684860000000000,
+      "score_start_ns": 1697500860000000000,
+      "warmup_start_ns": 1697414460000000000
+    },
+    "validation": {
+      "score_end_ns": 1704067260000000000,
+      "score_start_ns": 1702771260000000000,
+      "warmup_start_ns": 1701820860000000000
+    }
+  },
+  "instrument": "ETHUSDT-PERP.BINANCE",
+  "label": "routeb-fold-ethusdt-binance-601515-20231016-risk05-adjacent-v1",
+  "marker_sha256": "6cf4ca844440d00fc9d848cd8124347408a530033132129dcb7a2dc8e2ba7e23",
+  "schema_version": "rles.world_model.registered_fold_baseline.v0"
+}

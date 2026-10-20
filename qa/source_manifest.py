@@ -14,25 +14,13 @@ from pathlib import Path
 from typing import Any
 
 
-_SOURCE_ROOTS = ("packages", "tests", "configs", "ci", "packaging", "requirements", "qa/smoke")
+_SOURCE_ROOTS = ("packages", "tests", "configs", "ci", "packaging", "requirements", "qa")
 _ROOT_FILES = (
     ".gitattributes",
     ".python-version",
     "pyproject.toml",
     "uv.lock",
     "RLES_v0.4.0_总开发与集成基线.md",
-    "qa/reconcile_native_equity_long_20261017.py",
-    "qa/train_signal_baselines.py",
-    "qa/analyze_stage58_train_coverage.py",
-    "qa/analyze_stage59_train_diagnostics.py",
-    "qa/preregister_stage59_train_diagnostics.py",
-    "qa/analyze_stage60_fixed_regimes.py",
-    "qa/preregister_stage60_fixed_regimes.py",
-    "qa/analyze_m33_action_value.py",
-    "qa/preregister_m33_action_value.py",
-    "qa/m13_stage_contribution_20261017.py",
-    "qa/analyze_m13_stage_contribution.py",
-    "qa/research_trial_inventory.py",
 )
 _EXCLUDED_PARTS = {"__pycache__", "build", "dist", ".pytest_cache", ".mypy_cache", ".tmp"}
 _EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
@@ -40,6 +28,17 @@ _EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _source_bytes(path: Path) -> bytes:
+    data = path.read_bytes()
+    if b"\0" in data:
+        return data
+    try:
+        data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data
+    return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
 
 def _source_files(root: Path) -> list[Path]:
@@ -53,12 +52,12 @@ def _source_files(root: Path) -> list[Path]:
         if not directory.is_dir() or directory.is_symlink():
             continue
         for path in directory.rglob("*"):
+            relative_parts = path.relative_to(root).parts
             generated_component = any(
                 part in _EXCLUDED_PARTS or part.startswith((".venv", "dist"))
-                for part in path.relative_to(root).parts
-            )
-            if (path.is_file() and not path.is_symlink()
-                    and not generated_component
+                for part in relative_parts
+            ) or relative_parts[:2] == ("qa", "reports")
+            if (not generated_component and not path.is_symlink() and path.is_file()
                     and path.suffix not in _EXCLUDED_SUFFIXES
                     and ".egg-info" not in path.as_posix()):
                 files.add(path)
@@ -103,10 +102,11 @@ def build_manifest(root: Path, *, generated_at_utc: str | None = None) -> dict[s
     files = [
         {
             "path": path.relative_to(root).as_posix(),
-            "size_bytes": path.stat().st_size,
-            "sha256": _sha256(path.read_bytes()),
+            "size_bytes": len(content),
+            "sha256": _sha256(content),
         }
         for path in _source_files(root)
+        for content in (_source_bytes(path),)
     ]
     upstream = _upstream_identity(root)
     identity = {"files": files, "upstream_nautilus": upstream}

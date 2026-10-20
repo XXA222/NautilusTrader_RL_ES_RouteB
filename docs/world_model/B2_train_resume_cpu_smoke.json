@@ -1,0 +1,69 @@
+{
+  "status": "PASS",
+  "scope": "synthetic_mechanism_only",
+  "optimizer_updates": 4,
+  "final_step": 4,
+  "device": "cpu:0",
+  "jax_platforms": [
+    "cpu"
+  ],
+  "python": "3.12.10",
+  "jax": "0.11.2",
+  "jaxlib": "0.11.2",
+  "upstream_sha256": "e01491fad6434b2245a3b8ca201dd7faedcc458c",
+  "snapshot_sha256": "80194a587444bf4a11f06f6e273723e5754f2483",
+  "worker_lock_sha256": "32b2d0f3371976fb51b484f8334c068f1659cb01fe3d21869c377b248034f7ca",
+  "uninterrupted_training_seconds": 2.5462303100000554,
+  "device_memory_stats_bytes": null,
+  "resume_parity": true,
+  "resumed_reports": 1,
+  "forecast_shape": [
+    3,
+    3,
+    5
+  ],
+  "one_step_distribution_shape": [
+    3,
+    5
+  ],
+  "one_step_return_nll_finite": true,
+  "worker_distribution_shape": [
+    1,
+    5
+  ],
+  "worker_one_step_return_nll_finite": true,
+  "worker_f1_forecast_shape": [
+    2,
+    1,
+    5
+  ],
+  "risk_training_loss_finite": true,
+  "risk_valid_targets_by_horizon": [
+    92.0,
+    92.0,
+    92.0,
+    92.0,
+    92.0
+  ],
+  "risk_barrier_volatility_quantile": 0.75,
+  "risk_barrier_fractions": [
+    0.0005547961557462352,
+    0.0012366926341531531,
+    0.0020624550331353442,
+    0.0025794619991581663,
+    0.003543645476234901
+  ],
+  "sampler_rng_resume_parity": true,
+  "prior_alignment_rows": 93,
+  "prior_alignment_valid_rows": 72,
+  "prior_alignment_sha256": "9e576b169a89e4c3392b0e8a84daae967e62c0d3aa90f19b0e722fc22d5d005a",
+  "direct_forecast_seed_repeatability": true,
+  "worker_forecast_seed_repeatability": true,
+  "worker_f1_forecast_ohlcv_valid": true,
+  "real_market_validation": false,
+  "economic_claim": false,
+  "train_sequence_schema": "routeb.train-sequences.v3",
+  "train_artifact_sha256": "dc5488ea5fb032ca9e1e775265564e3118f4373c28ede759c44b481c4fd96eef",
+  "ci_locked_environment_sync": true,
+  "installed_package_count": 61
+}

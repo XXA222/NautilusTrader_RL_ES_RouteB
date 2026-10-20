@@ -1,0 +1,35 @@
+{
+  "model": {
+    "blocks": 8,
+    "classes": 16,
+    "deter": 256,
+    "dynamics_scale": 1.0,
+    "feature_dim": 5,
+    "forecast_distribution": "gaussian",
+    "hidden": 128,
+    "min_scale": 0.02,
+    "posterior_auxiliary_scale": 0.1,
+    "prediction_scale": 1.0,
+    "reconstruction_scale": 0.2,
+    "representation_scale": 0.1,
+    "risk_horizons": [
+      1,
+      5,
+      15,
+      30,
+      60
+    ],
+    "risk_prediction_scale": 0.5,
+    "stoch": 16,
+    "forecast_objective": "open_loop_crps",
+    "open_loop_crps_horizon": 15
+  },
+  "training": {
+    "batch_size": 8,
+    "grad_clip": 100.0,
+    "lr": 0.0003,
+    "report_interval": 50,
+    "seed": 31,
+    "steps": 1000
+  }
+}

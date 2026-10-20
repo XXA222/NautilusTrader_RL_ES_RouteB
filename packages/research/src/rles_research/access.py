@@ -100,6 +100,17 @@ class ProjectResearchRegistry:
             c.execute("""CREATE TRIGGER IF NOT EXISTS access_no_delete
                 BEFORE DELETE ON access BEGIN
                 SELECT RAISE(ABORT,'project access records are append-only'); END""")
+            c.execute("""CREATE TABLE IF NOT EXISTS development_result (
+                access_key TEXT PRIMARY KEY, status TEXT NOT NULL,
+                report_sha TEXT NOT NULL, detail_json TEXT NOT NULL,
+                recorded REAL NOT NULL,
+                FOREIGN KEY(access_key) REFERENCES access(access_key))""")
+            c.execute("""CREATE TRIGGER IF NOT EXISTS development_result_no_update
+                BEFORE UPDATE ON development_result BEGIN
+                SELECT RAISE(ABORT,'development result receipts are append-only'); END""")
+            c.execute("""CREATE TRIGGER IF NOT EXISTS development_result_no_delete
+                BEFORE DELETE ON development_result BEGIN
+                SELECT RAISE(ABORT,'development result receipts are append-only'); END""")
             c.execute("CREATE TABLE IF NOT EXISTS inventory_import (sha TEXT PRIMARY KEY)")
             c.execute("""CREATE TABLE IF NOT EXISTS trial_attempt (
                 attempt_key TEXT PRIMARY KEY, protocol_id TEXT NOT NULL,
@@ -208,6 +219,42 @@ class ProjectResearchRegistry:
                                start_ns=start_ns, end_ns=end_ns, purpose=purpose, identity=identity)
         with self._tx() as c:
             return self._reserve_record(c, key, expected)
+
+    def reserve_fresh_development(self, *, key: str, owner: str, market: str, family: str,
+                                  start_ns: int, end_ns: int, identity: dict) -> str:
+        """Reserve a never-consumed development interval exactly once.
+
+        Fresh Route B folds reject any prior overlapping project access or formal
+        query intent. A failed run does not make this time interval reusable.
+        """
+        expected = self._scope(key=key, owner=owner, market=market, family=family,
+                               start_ns=start_ns, end_ns=end_ns, purpose="development",
+                               identity=identity)
+        with self._tx() as c:
+            if c.execute("SELECT 1 FROM access WHERE access_key=?", (key,)).fetchone():
+                raise ResearchLockError("fresh development reservation key was already used")
+            overlap = c.execute(
+                "SELECT access_key FROM access WHERE market=? AND family=? "
+                "AND start_ns<? AND end_ns>? LIMIT 1",
+                (market, family, end_ns, start_ns),
+            ).fetchone()
+            if overlap is not None:
+                raise ResearchLockError(
+                    f"fresh development scope overlaps previously consumed interval: {overlap[0]}"
+                )
+            intent = c.execute(
+                "SELECT intent_id FROM query_intent WHERE market=? AND family=? "
+                "AND start_ns<? AND end_ns>? LIMIT 1",
+                (market, family, end_ns, start_ns),
+            ).fetchone()
+            if intent is not None:
+                raise ResearchLockError(
+                    f"fresh development scope overlaps frozen formal query intent: {intent[0]}"
+                )
+            token = uuid.uuid4().hex
+            c.execute("INSERT INTO access VALUES(?,?,?,?,?,?,?,?,?,?,NULL)",
+                      (key, *expected, token, "recorded"))
+            return token
 
     def reserve_query_intent(self, *, protocol_id: str, intent_id: str, owner: str,
                              market: str, family: str, start_ns: int, end_ns: int,
@@ -442,6 +489,62 @@ class ProjectResearchRegistry:
             row = c.execute("SELECT state,report_sha FROM access WHERE access_key=?", (key,)).fetchone()
             if row != ("completed", report_sha):
                 raise ResearchLockError("report differs from its project completion receipt")
+
+    def record_development_result(self, *, key: str, identity: dict,
+                                  status: str, report_sha: str,
+                                  detail: dict | None = None) -> None:
+        """Append one terminal report receipt to an exact development access.
+
+        Development reads are charged immediately and remain in the historical
+        ``recorded`` state. This separate receipt binds the immutable access
+        identity to its terminal report without making a failed read reusable.
+        """
+        if (not isinstance(key, str) or not key
+                or status not in {"completed", "failed"}
+                or not isinstance(report_sha, str) or len(report_sha) != 64
+                or any(ch not in "0123456789abcdef" for ch in report_sha)
+                or not isinstance(identity, dict)
+                or (detail is not None and not isinstance(detail, dict))):
+            raise ValueError("valid development result receipt required")
+        try:
+            encoded = json.dumps(identity, sort_keys=True, separators=(",", ":"),
+                                 allow_nan=False)
+            detail_json = json.dumps(detail or {}, sort_keys=True,
+                                     separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError, RecursionError) as exc:
+            raise ValueError("development result receipt must be finite JSON data") from exc
+        expected = (status, report_sha, detail_json)
+        with self._tx() as c:
+            access = c.execute(
+                "SELECT purpose,identity,state FROM access WHERE access_key=?", (key,),
+            ).fetchone()
+            if access != ("development", encoded, "recorded"):
+                raise ResearchLockError(
+                    "development result differs from its exact recorded access"
+                )
+            previous = c.execute(
+                "SELECT status,report_sha,detail_json FROM development_result "
+                "WHERE access_key=?", (key,),
+            ).fetchone()
+            if previous is not None:
+                if previous != expected:
+                    raise ResearchLockError("development result receipt changed")
+                return
+            c.execute(
+                "INSERT INTO development_result VALUES(?,?,?,?,strftime('%s','now'))",
+                (key, *expected),
+            )
+
+    def development_result(self, key: str) -> dict | None:
+        with self._tx() as c:
+            row = c.execute(
+                "SELECT status,report_sha,detail_json FROM development_result "
+                "WHERE access_key=?", (key,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {"status": row[0], "report_sha256": row[1],
+                "detail": json.loads(row[2])}
 
     def register_trial_attempt(self, *, attempt_key: str, protocol_id: str,
                                candidate_id: str, recipe: dict,

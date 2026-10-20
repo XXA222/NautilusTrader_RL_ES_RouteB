@@ -1,0 +1,32 @@
+{
+  "status": "PASS",
+  "scope": "synthetic_mechanism_only",
+  "e1_e2_share_train_artifact": true,
+  "e1_e2_share_training_budget": true,
+  "e1_checkpoint_sha256": "210cfe546ab46578b2c38fccb68f61ee19f394391a09ab1a3c3e2c21cfd249b7",
+  "e2_checkpoint_sha256": "e6f5c27e66995fc5ab63868baffe955220d8091855b474e9af25cf79f45c3246",
+  "train_examples": 30,
+  "window_length": 16,
+  "optimizer_steps": 2,
+  "e2_synthetic_nll_initial": 5.8944854736328125,
+  "e2_synthetic_nll_final": 4.513453483581543,
+  "e2_synthetic_nll_decreased": true,
+  "synthetic_batched_forecast_shapes": {
+    "e1": [
+      2,
+      2,
+      3,
+      5
+    ],
+    "e2": [
+      2,
+      2,
+      3,
+      5
+    ]
+  },
+  "synthetic_one_shot_fold_pipeline": "COMPLETED",
+  "synthetic_one_shot_report_sha256": "0ab09a2cf591724d8b742a5c8a55f59661031b365ee38ac84b0c4b9d5bf7b1cc",
+  "real_market_validation": false,
+  "economic_claim": false
+}

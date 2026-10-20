@@ -1,0 +1,46 @@
+{
+  "constant_input_finite": true,
+  "constant_input_latent_variance": 0.03759765625,
+  "economic_claim": false,
+  "f1_prior_rollout_shapes": {
+    "1": [
+      2,
+      1,
+      5
+    ],
+    "15": [
+      2,
+      15,
+      5
+    ],
+    "5": [
+      2,
+      5,
+      5
+    ],
+    "60": [
+      2,
+      60,
+      5
+    ]
+  },
+  "future_observation_mutation_invariant": true,
+  "hierarchy_kl_weight_gradients": [
+    2.0,
+    3.5
+  ],
+  "loss": 9.913466453552246,
+  "prior_head_gradient_norm": 11.468870997428894,
+  "prior_sequence_shape": [
+    2,
+    8,
+    5
+  ],
+  "prior_transition_gradient_norm": 4.887304238975048,
+  "real_market_validation": false,
+  "risk_head_gradient_norm": 1.8764145970344543,
+  "risk_loss": 3.999554395675659,
+  "risk_transition_gradient_norm": 1.1770313568413258,
+  "scope": "synthetic_mechanism_only",
+  "status": "PASS"
+}

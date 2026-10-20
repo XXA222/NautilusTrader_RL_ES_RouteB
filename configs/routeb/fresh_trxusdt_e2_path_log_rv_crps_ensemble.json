@@ -1,0 +1,37 @@
+{
+  "model": {
+    "feature_dim": 5,
+    "prediction_scale": 1.0,
+    "risk_horizons": [
+      1,
+      5,
+      15,
+      30,
+      60
+    ],
+    "posterior_auxiliary_scale": 0.1,
+    "classes": 16,
+    "hidden": 128,
+    "dynamics_scale": 1.0,
+    "risk_prediction_scale": 1.0,
+    "deter": 256,
+    "stoch": 16,
+    "min_scale": 0.02,
+    "blocks": 8,
+    "representation_scale": 0.1,
+    "reconstruction_scale": 0.2,
+    "forecast_objective": "path_log_rv_crps",
+    "path_log_rv_crps_horizon": 15,
+    "path_log_rv_crps_paths": 4,
+    "rollout_risk_conditioning": false,
+    "rollout_risk_conditioning_strength": 0.0
+  },
+  "training": {
+    "grad_clip": 100.0,
+    "lr": 0.0003,
+    "steps": 1000,
+    "report_interval": 50,
+    "batch_size": 8,
+    "seed": 31
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "status": "PASS",
+  "scope": "synthetic_mechanism_only",
+  "e1_e2_share_train_artifact": true,
+  "e1_e2_share_training_budget": true,
+  "e1_checkpoint_sha256": "0b3367c30288f14fd9101b34d88ebc8bf9fb5b61c3a77be688f936c905669dc6",
+  "e2_checkpoint_sha256": "6101605e6d2568d4c06a9a6574799d1e635841f0e39660102db2d2d74078a38d",
+  "train_examples": 30,
+  "window_length": 16,
+  "optimizer_steps": 2,
+  "e2_synthetic_nll_initial": 6.031730651855469,
+  "e2_synthetic_nll_final": 5.2099528312683105,
+  "e2_synthetic_nll_decreased": true,
+  "e2_forecast_distribution": "mixture_gaussian",
+  "e2_mixture_components": 2,
+  "e2_scale_semantics": "marginal_standard_deviation",
+  "e2_next_distribution_shapes": {
+    "standardized_mean": [
+      1,
+      5
+    ],
+    "standardized_scale": [
+      1,
+      5
+    ],
+    "mixture_means": [
+      1,
+      2,
+      5
+    ],
+    "mixture_scales": [
+      1,
+      2,
+      5
+    ],
+    "mixture_weights": [
+      1,
+      2
+    ]
+  },
+  "synthetic_batched_forecast_shapes": {
+    "e1": [
+      2,
+      2,
+      3,
+      5
+    ],
+    "e2": [
+      2,
+      2,
+      3,
+      5
+    ]
+  },
+  "synthetic_one_shot_fold_pipeline": "COMPLETED",
+  "synthetic_one_shot_report_sha256": "a69870a5fc0dab4f8f7f783698c3ff2443420bd071c65e1db5c02759fc6860e5",
+  "prior_risk_forecast_shapes": {
+    "risk_mean": [
+      16,
+      5,
+      4
+    ],
+    "risk_scale": [
+      16,
+      5,
+      4
+    ],
+    "barrier_logits": [
+      16,
+      5,
+      2
+    ],
+    "risk_horizons": [
+      5
+    ]
+  },
+  "prior_risk_forecast_sha256": "df08e33dc593d13bedb8e759aae84061ecaee62a894a60c13149df4f67a15c78",
+  "real_market_validation": false,
+  "economic_claim": false
+}

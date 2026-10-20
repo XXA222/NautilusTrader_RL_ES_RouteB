@@ -708,6 +708,7 @@ source = { virtual = "." }
 dev = [
     { name = "mypy" },
     { name = "pytest" },
+    { name = "rles-data", extra = ["arrow"] },
     { name = "ruff" },
 ]
 
@@ -717,6 +718,7 @@ dev = [
 dev = [
     { name = "mypy", specifier = "==2.3.0" },
     { name = "pytest", specifier = "==9.1.1" },
+    { name = "rles-data", extras = ["arrow"], editable = "packages/data" },
     { name = "ruff", specifier = "==0.17.0" },
 ]
 
