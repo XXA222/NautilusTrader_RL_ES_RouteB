@@ -756,12 +756,18 @@ def test_rssm_config_rejects_nans_and_malformed_architecture():
     assert RSSMConfig(forecast_distribution="student_t", forecast_student_t_df=5.0).forecast_distribution == "student_t"
     assert RSSMConfig(forecast_distribution="mixture_gaussian").forecast_distribution == "mixture_gaussian"
     assert RSSMConfig(rollout_risk_conditioning=True).rollout_risk_conditioning is True
+    assert RSSMConfig(rollout_risk_conditioning=True,
+                      rollout_risk_sampling=True).rollout_risk_sampling is True
     assert RSSMConfig(rollout_risk_conditioning_strength=0.5).rollout_risk_conditioning_strength == 0.5
     for invalid_strength in (True, -0.1, 1.1, float("inf"), "0.5"):
         with pytest.raises(ValueError):
             RSSMConfig(rollout_risk_conditioning_strength=invalid_strength)
     with pytest.raises(ValueError):
         RSSMConfig(rollout_risk_conditioning=1)
+    with pytest.raises(ValueError):
+        RSSMConfig(rollout_risk_sampling=True)
+    with pytest.raises(ValueError):
+        RSSMConfig(rollout_risk_conditioning=True, rollout_risk_sampling=1)
     assert RSSMConfig(forecast_distribution="student_t", rollout_risk_conditioning=True,
                       rollout_risk_conditioning_strength=0.5).rollout_risk_conditioning
     with pytest.raises(ValueError):
@@ -843,6 +849,23 @@ def test_risk_conditioned_return_scale_matches_native_log_rv_in_raw_units():
     student_t_adjusted = _risk_conditioned_return_scale(
         scale, risk_mean, risk_scale, feature_std, student_t_df=5.0,
     )
+    sampled_risk_scale = risk_scale.at[:, 0, 1].set(0.5)
+    sampled_low = _risk_conditioned_return_scale(
+        scale, risk_mean, sampled_risk_scale, feature_std,
+        risk_noise=jnp.asarray([-1.0], dtype=jnp.float32),
+    )
+    sampled_median = _risk_conditioned_return_scale(
+        scale, risk_mean, sampled_risk_scale, feature_std,
+        risk_noise=jnp.zeros((1,), dtype=jnp.float32),
+    )
+    sampled_high = _risk_conditioned_return_scale(
+        scale, risk_mean, sampled_risk_scale, feature_std,
+        risk_noise=jnp.asarray([1.0], dtype=jnp.float32),
+    )
+    sampled_disabled = _risk_conditioned_return_scale(
+        scale, risk_mean, sampled_risk_scale, feature_std, strength=0.0,
+        risk_noise=jnp.asarray([1.0], dtype=jnp.float32),
+    )
     generated_return_std = jnp.sqrt(
         jnp.square(adjusted[0, 0] * feature_std[0])
         + jnp.square(adjusted[0, 1] * feature_std[1]),
@@ -852,6 +875,9 @@ def test_risk_conditioned_return_scale_matches_native_log_rv_in_raw_units():
     np.testing.assert_allclose(tempered[0, :2], jnp.sqrt(adjusted[0, :2] * scale[0, :2]),
                                rtol=1e-5, atol=1e-7)
     np.testing.assert_array_equal(unconditioned, scale)
+    assert sampled_low[0, 0] < sampled_median[0, 0] < sampled_high[0, 0]
+    assert sampled_low[0, 1] < sampled_median[0, 1] < sampled_high[0, 1]
+    np.testing.assert_array_equal(sampled_disabled, scale)
     np.testing.assert_array_equal(adjusted[0, 2:], scale[0, 2:])
     t_abs_ratio = (3.0**0.5 * math.gamma(2.0)
                    / (math.pi**0.5 * math.gamma(2.5)))
@@ -860,6 +886,11 @@ def test_risk_conditioned_return_scale_matches_native_log_rv_in_raw_units():
         + jnp.square(student_t_adjusted[0, 1] * feature_std[1]),
     )
     np.testing.assert_allclose(t_return_std * t_abs_ratio, 0.004, rtol=1e-5, atol=1e-7)
+    with pytest.raises(ValueError, match="risk noise"):
+        _risk_conditioned_return_scale(
+            scale, risk_mean, sampled_risk_scale, feature_std,
+            risk_noise=jnp.zeros((2,), dtype=jnp.float32),
+        )
 
 
 def test_optimizer_recipe_normalizes_tuple_fields_for_json_checkpoint_roundtrip():

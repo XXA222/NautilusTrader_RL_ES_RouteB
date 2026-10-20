@@ -43,6 +43,7 @@ class RSSMConfig:
     path_log_rv_crps_scale: float=1.0
     forecast_student_t_df: float=5.0
     rollout_risk_conditioning: bool=False
+    rollout_risk_sampling: bool=False
     rollout_risk_conditioning_strength: float=1.0
     min_scale: float=0.02
 
@@ -90,6 +91,9 @@ class RSSMConfig:
                      or self.path_log_rv_crps_horizon not in path_horizons))
             or self.forecast_student_t_df<=2.0
             or type(self.rollout_risk_conditioning) is not bool
+            or type(self.rollout_risk_sampling) is not bool
+            or (self.rollout_risk_sampling
+                and not self.rollout_risk_conditioning)
             or (self.rollout_risk_conditioning
                 and self.forecast_distribution=="mixture_gaussian")
             or not self.risk_horizons
@@ -110,14 +114,16 @@ def _weighted_risk_loss(continuous,barrier,weights):
 
 
 def _risk_conditioned_return_scale(prior_scale,risk_mean,risk_scale,feature_std,
-                                   strength:float=1.0,student_t_df:float|None=None):
+                                   strength:float=1.0,student_t_df:float|None=None,
+                                   risk_noise=None):
     """Match one-step raw log-return spread to the prior log-RV forecast.
 
     Channels 0/1 are the opening-gap and close-body log returns. Their frozen
     Train standard deviations convert their Gaussian scales back to raw return
-    units. The log-normal mean of the native one-minute RV head gives expected
-    absolute return; the distribution-specific E|X| / std ratio maps it to the
-    marginal return standard deviation.
+    units. With ``risk_noise=None``, the log-normal mean of the native one-minute
+    RV head gives expected absolute return. Otherwise, ``risk_noise`` selects a
+    log-RV draw and creates a scale mixture. The distribution-specific
+    E|X| / std ratio maps either value to marginal return standard deviation.
     """
     import jax.numpy as jnp
     if student_t_df is not None and (isinstance(student_t_df,bool)
@@ -131,15 +137,21 @@ def _risk_conditioned_return_scale(prior_scale,risk_mean,risk_scale,feature_std,
     feature_std=jnp.asarray(feature_std,dtype=jnp.float32)
     log_rv_mean=risk_mean[...,0,1]
     log_rv_scale=risk_scale[...,0,1]
-    expected_rv=jnp.maximum(
-        jnp.exp(log_rv_mean+0.5*jnp.square(log_rv_scale))-1e-8,1e-12)
+    if risk_noise is None:
+        log_rv=log_rv_mean+0.5*jnp.square(log_rv_scale)
+    else:
+        risk_noise=jnp.asarray(risk_noise,dtype=jnp.float32)
+        if risk_noise.shape!=log_rv_mean.shape:
+            raise ValueError("risk noise must match the one-minute log-RV shape")
+        log_rv=log_rv_mean+log_rv_scale*risk_noise
+    target_rv=jnp.maximum(jnp.exp(jnp.clip(log_rv,-30.0,20.0))-1e-8,1e-12)
     if student_t_df is None:
-        target_return_std=expected_rv*math.sqrt(math.pi/2.0)
+        target_return_std=target_rv*math.sqrt(math.pi/2.0)
     else:
         expected_abs_unit_std=(math.sqrt(student_t_df-2.0)
             *math.gamma((student_t_df-1.0)/2.0)
             /(math.sqrt(math.pi)*math.gamma(student_t_df/2.0)))
-        target_return_std=expected_rv/expected_abs_unit_std
+        target_return_std=target_rv/expected_abs_unit_std
     raw_return_std=jnp.sqrt(jnp.maximum(
         jnp.square(prior_scale[...,0]*feature_std[0])
         +jnp.square(prior_scale[...,1]*feature_std[1]),1e-24))
@@ -352,6 +364,13 @@ def make_model(checkout:str|Path,config:RSSMConfig):
                 stoch=nn.cast(dyn._dist(logits).sample(seed=nj.seed()))
                 z=jnp.concatenate([deter,stoch.reshape((stoch.shape[0],-1))],axis=-1)
                 mean,scale=self._prior_head(z)
+                if config.rollout_risk_conditioning:
+                    risk_mean,risk_scale,_=self._risk_head(z)
+                    risk_noise=(jax.random.normal(nj.seed(),risk_mean[...,0,1].shape)
+                                if config.rollout_risk_sampling else None)
+                    scale=_risk_conditioned_return_scale(
+                        scale,risk_mean,risk_scale,feature_std,
+                        config.rollout_risk_conditioning_strength,risk_noise=risk_noise)
                 observation=mean+scale*jax.random.normal(nj.seed(),mean.shape)
                 raw=observation*feature_std+feature_mean
                 returns.append(raw[:,0]+raw[:,1])
@@ -573,7 +592,9 @@ def make_model(checkout:str|Path,config:RSSMConfig):
             return scale on the opening-gap/body coordinates is conditioned on
             the prior head's one-minute log-RV forecast. Gaussian and
             variance-normalized Student-t priors are supported. Frozen Train
-            scaler moments convert those coordinates to raw return units.
+            scaler moments convert those coordinates to raw return units. With
+            ``rollout_risk_sampling``, each path samples its conditional log-RV
+            and therefore forms a volatility scale mixture.
             Samples are NOT fed back into the state, by design for F1.
             No true future observations are used.
             """
@@ -602,11 +623,14 @@ def make_model(checkout:str|Path,config:RSSMConfig):
                         raise ValueError("risk-conditioned rollout requires a Gaussian prior head")
                     _,prior_scale=distribution
                     risk_mean,risk_scale,_=self._risk_head(self._state_vector(f))
+                    risk_noise=(jax.random.normal(nj.seed(),risk_mean[...,0,1].shape)
+                                if config.rollout_risk_sampling else None)
                     distribution=(distribution[0],_risk_conditioned_return_scale(
                         prior_scale,risk_mean,risk_scale,feature_std,
                         config.rollout_risk_conditioning_strength,
                         config.forecast_student_t_df
-                        if config.forecast_distribution=="student_t" else None))
+                        if config.forecast_distribution=="student_t" else None,
+                        risk_noise))
                 observation=self._sample_prior_forecast(distribution)
                 outcomes.append(observation)
             return jnp.stack(outcomes,axis=1)

@@ -89,7 +89,9 @@ def main() -> int:
         deter=32,hidden=32,stoch=2,classes=4,blocks=4,
         risk_horizons=(1,3,5),risk_horizon_weights=(1.,1.,1.),
         forecast_objective="path_log_rv_crps",path_log_rv_crps_horizon=3,
-        path_log_rv_crps_horizons=(3,5),path_log_rv_crps_paths=4))
+        path_log_rv_crps_horizons=(3,5),path_log_rv_crps_paths=4,
+        rollout_risk_conditioning=True,rollout_risk_sampling=True,
+        rollout_risk_conditioning_strength=0.5))
     path_args=(jnp.asarray(features),jnp.asarray(reset),jnp.asarray(mask),True,
         jnp.asarray(path_targets),jnp.asarray(path_mask),
         jnp.asarray([0.,0.,0.,0.,0.],dtype=jnp.float32),
@@ -109,13 +111,15 @@ def main() -> int:
                        if "prior_forecast" in key)
     path_transition_norm=sum(value for key,value in path_norms.items()
                              if "dyngru" in key or "priorlogit" in key)
+    path_risk_head_norm=sum(value for key,value in path_norms.items()
+                            if "prior_risk" in key)
     path_changed=features.copy()
     path_changed[:,1:,:]+=rng.normal(0.0,7.0,size=path_changed[:,1:,:].shape).astype(
         np.float32)
     _,mutated_path_diagnostics=path_loss_fn(path_params,path_changed)
     if (not np.isfinite(float(path_loss)) or float(path_loss)<=0
             or float(path_diagnostics["valid_path_log_rv_crps"])!=2.0
-            or path_head_norm<=0 or path_transition_norm<=0
+            or path_head_norm<=0 or path_transition_norm<=0 or path_risk_head_norm<=0
             or not np.isclose(float(path_diagnostics["path_log_rv_crps"]),
                               float(mutated_path_diagnostics["path_log_rv_crps"]),
                               rtol=0.0,atol=0.0)):
@@ -191,16 +195,21 @@ def main() -> int:
     conditioned_model=make_model(
         os.environ["ROUTEB_DREAMERV3_CHECKOUT"],RSSMConfig(
             deter=32,hidden=32,stoch=2,classes=4,blocks=4,
-            rollout_risk_conditioning=True))
+            rollout_risk_conditioning=True,rollout_risk_sampling=True))
     conditioned_params=nj.init(conditioned_model)(
         {},*model_args,seed=31)
     train_feature_std=jnp.asarray([0.001,0.001,0.1,0.1,1.0],dtype=jnp.float32)
     _,conditioned_generated=nj.pure(conditioned_model.rollout)(
         conditioned_params,jnp.asarray(features[:,:3]),5,train_feature_std,
         seed=1915)
+    _,conditioned_generated_repeat=nj.pure(conditioned_model.rollout)(
+        conditioned_params,jnp.asarray(features[:,:3]),5,train_feature_std,
+        seed=1915)
     conditioned_generated=np.asarray(jax.device_get(conditioned_generated))
+    conditioned_generated_repeat=np.asarray(jax.device_get(conditioned_generated_repeat))
     if (conditioned_generated.shape!=(2,5,5)
-            or not np.isfinite(conditioned_generated).all()):
+            or not np.isfinite(conditioned_generated).all()
+            or not np.array_equal(conditioned_generated,conditioned_generated_repeat)):
         raise AssertionError("native-risk-conditioned prior rollout is invalid")
     report={
         "status": "PASS", "scope": "synthetic_mechanism_only",
@@ -216,6 +225,7 @@ def main() -> int:
             "valid_path_log_rv_crps"]),
         "path_log_rv_crps_prior_head_gradient_norm":path_head_norm,
         "path_log_rv_crps_prior_transition_gradient_norm":path_transition_norm,
+        "path_log_rv_crps_risk_head_gradient_norm":path_risk_head_norm,
         "path_log_rv_crps_future_mutation_invariant":True,
         "risk_loss":float(risk_loss),"risk_head_gradient_norm":risk_head_norm,
         "risk_transition_gradient_norm":risk_transition_norm,
