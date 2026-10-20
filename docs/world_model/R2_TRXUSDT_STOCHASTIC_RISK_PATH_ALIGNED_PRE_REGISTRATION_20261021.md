@@ -29,3 +29,12 @@ Frozen on 2026-10-21 before downloading or decoding the new source interval. The
 - Synthetic evidence before freeze: the path objective produced finite nonzero gradients for the prior head (`0.5669276`), transition (`0.9956610`), and risk head (`1.4325235`); future-observation mutation invariance and fixed-seed stochastic rollout reproducibility passed. Six isolated JAX tests and the 141-test host world-model suite passed (six expected host-JAX skips).
 
 No source, scoring, candidate recipe, or decision-rule changes are permitted after this freeze. Source/Fold identities and the final ledger preflight will be appended before the registered reader is invoked. If reservation fails, do not access Train/Validation.
+
+## Append-only verified source and Fold identities before registered access
+
+- Downloaded and checksum-verified all 94 official Binance daily archives. Source preparation independently rechecked all archive sidecars and ZIP members and produced 135,360 continuous closed bars with no missing or duplicate timestamps.
+- Source preparation SHA-256 `752b491d52945686e52753d0e060e5afa5bfd78d49f518b98928bd2b01ff814c`; curated Parquet SHA-256 `341c3042bf4caa4397944e6fd7063decea234c9a780cf426181bf84ae1f23522`.
+- Dataset hash `0b3da494630b33889c15e3358f7cf6edadf415c5b6eaa7c353a2b8baebd2649e`; completed marker SHA-256 `38521aee584801cdd40667a5cc3c2cd41ee8c14e3f949a85656d1dc233ef8210`.
+- Fold hash `1ebb025020559aaae3c6b3301fcaf14fcd45255919917a3d7cc95d38ba8d4d79`; Fold config `configs/routeb/fresh_trxusdt_20250426_stochastic_risk_path_aligned_60_15_15_fold.json`; SHA-256 `b685ec887dc59d37514f1b3f9b186e13888259b0904583eeaf2aa0341e75f910`.
+- Final prepared source identity SHA-256 `dc1a66cfa6b2a28f64117aa1cdb076328138aa8a0d07465997ec57d94cccbb28` (495 files).
+- Final read-only RouteB ledger preflight on 2026-10-21 again returned `access_overlap=0` and `query_intent_overlap=0` for exact Train+Validation nanoseconds `[1745625660000000000,1752364860000000000)`.
