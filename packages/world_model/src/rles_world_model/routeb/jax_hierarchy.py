@@ -28,8 +28,9 @@ def make_hierarchical_model(checkout,*,minute:RSSMConfig,hour:RSSMConfig,day:RSS
     import ninjax as nj
     import numpy as np
     import elements
-    import embodied.jax.nets as nn
     RSSM=import_pinned_upstream(checkout)
+    # The pinned checkout adds its vendored ``embodied`` package to sys.path.
+    import embodied.jax.nets as nn
 
     class ThreeScale(nj.Module):
         def _dyn(self,name,cfg):
@@ -77,7 +78,7 @@ def make_hierarchical_model(checkout,*,minute:RSSMConfig,hour:RSSMConfig,day:RSS
             joined=jnp.concatenate([minute_x,h_visible,d_visible,
                                      (hour_index>=0)[:,:,None].astype(jnp.float32),
                                      (day_index>=0)[:,:,None].astype(jnp.float32)],axis=-1)
-            tokens=self.sub('minute_conditioned',nn.Linear,minute.hidden)(joined)
+            tokens=self.sub('minute_conditioned',nn.Linear,minute.hidden)(nn.cast(joined))
             B,T,_=minute_x.shape
             resets=jnp.zeros((B,T),dtype=jnp.bool_).at[:,0].set(True)
             actions={"market_dummy":jnp.zeros((B,T,1),jnp.float32)}

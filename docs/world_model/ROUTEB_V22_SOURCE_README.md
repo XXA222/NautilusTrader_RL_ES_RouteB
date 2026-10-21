@@ -18,7 +18,7 @@
 7. **F2 边界与想象执行**：缺历史前缀导致整点/日线无法组成完整合成 bar 时拒绝。账户禁止反向回放/倒填动作；限价单在下一 bar 开盘即市价可成交的情况下按 taker 场景费率计费，触价在 bar 内仅按简化 maker 假设。
 8. **验证**：本运行环境 Python 3.13.5 + numpy/pytest + JAX 0.9.0.1 的 **35 项确定性测试全部通过**，涵盖参数/Optax树形式序列化（使用轻量树）、NPZ篡改、worker 请求等；Python 语法检查通过。
 
-**重要限制**：本机已恢复固定 DreamerV3 checkout，并使用锁定的 Python 3.12.10 + JAX 0.11.2 + Ninjax/Optax 环境通过了 B2 合成数据训练、checkpoint 中断恢复、预测及双 Python worker 分布导出的端到端 CPU smoke。该运行只证明工程机制，不代表真实行情拟合或 E2 预测技能。三尺度 B3 JAX 优化器仍未通过运行验证。升级后的 QA CPU smoke 位于 `qa/world_model/routeb_b2_cpu_smoke.py`，包含“训练 2 步＋续训到 4 步”与“从头训练 4 步”的**逐个参数和优化器数组完全一致**检查。
+**重要限制**：锁定的 Python 3.12.10 + JAX 0.11.2 + Ninjax/Optax 环境已通过 B2 和 B3 合成数据 CPU smoke。B3 的新 smoke 执行三层 RSSM 梯度更新，并逐数组确认“中断后续训”与“连续训练”的模型参数/优化器状态完全一致。它只证明工程机制和因果输入拒绝逻辑，不代表真实行情拟合、E3/E4 消融或预测技能。B3 已支持固定长度分钟窗口和受可见时钟约束的小时/日线上下文采样；注册式 E3/E4 运行器与 F2 三尺度 state feedback 仍未完成。
 
 ### 升级影响（必须注意）
 
@@ -26,7 +26,7 @@
 - `routeb.jax-checkpoint.v1` → **v2**（PyTree 结构与 scaler 元数据绑定）；旧研究检查点不能冒充新模型，应重新训练或显式实现经过验证的迁移工具。
 - 预报上下文与模型权重不能跨不一致的 scaler 使用；任何 Validation/Test/Holdout 读取授权仍由原项目的 ResearchRegistry 负责，worker **不提供**独立数据访问 API。
 - `return_paths` 不再允许省略 `previous_close`。这是一项故意的 fail-closed API 变化。
-- 独立 `hierarchy_dataset.py` 是 **B3 张量构造入口**，不是已经训练成功的 B3；`jax_hierarchy.py` 仍为未完成 JAX 运行审计的研究候选。
+- `hierarchy_dataset.py` 构造 Train-only 因果张量；`jax_hierarchy.py` 与 `jax_hierarchy_train.py` 已通过固定 JAX 环境的合成梯度/恢复 smoke，但尚不构成真实数据 R3 训练或 E3/E4 验证。
 
 ## 测试
 
@@ -43,6 +43,11 @@ $env:PYTHONPATH = (Join-Path $PWD 'packages\world_model\src')
 $env:JAX_PLATFORMS = 'cpu'
 & '.tmp\world-model-cpu-venv\Scripts\python.exe' qa\world_model\routeb_b2_cpu_smoke.py `
     --checkout .tmp\dreamerv3-route-b --output-dir .tmp\routeb-b2-v22-cpu-smoke
+
+# 三级 RSSM 的合成数据工程 smoke
+& 'packages\world_model\environment\.venv-win-cpu\Scripts\python.exe' `
+    qa\world_model\routeb_b3_cpu_smoke.py `
+    --checkout .tmp\dreamerv3-route-b --output-dir .tmp\routeb-b3-cpu-smoke
 ```
 
 ## 模块明细与状态
@@ -54,7 +59,7 @@ $env:JAX_PLATFORMS = 'cpu'
 | B2 JAX 训练 | `jax_model.py`、`jax_train.py` | 锁定 JAX CPU 环境下合成训练、恢复、forecast smoke PASS；真实 Train/Validation 研究验证受 B0 门禁阻塞 |
 | B2 IPC + checkpoint | `worker_cli.py`、`worker_client.py`、`checkpoint.py`、`integration.py` | 真实双 Python 子进程和 float32 NPZ 分布工件端到端 smoke PASS；仅合成未来标签 |
 | B3 多尺度数据 | `clock.py`、`hierarchy.py`、`hierarchy_dataset.py` | 因果张量单测 PASS |
-| B3 RSSM 候选 | `jax_hierarchy.py` | 仅研究性模型，未在固定 JAX 环境运行 |
+| B3 RSSM/optimizer | `jax_hierarchy.py`、`jax_hierarchy_train.py` | 三层梯度更新、Fail-closed 因果索引验证、checkpoint 续训 | 合成 CPU smoke PASS；真实 R3/E3/E4 未运行 |
 | F2 未来周期事件 | `synthetic_feedback.py` | 确定性边界测试 PASS，不含真实 B3 state feedback |
 | B4 想象账户 | `imagined_account.py` | 简化情景单测 PASS，经济结果绝不可替代 NautilusTrader |
 
@@ -82,7 +87,7 @@ $env:JAX_PLATFORMS = 'cpu'
 | B2 JAX RSSM learner | `jax_model.py`, `jax_train.py` | 固定 DreamerV3 RSSM + 独立金融预测头、KL、训练/预测算法 | **仅静态/语法检查；缺固定 JAX 环境的集成实测** |
 | B2 参数、优化器完整恢复 | `checkpoint.py` | 参数/optimizer leaf + step/seed + 配置/数据身份、无 pickle | JAX 树序列化测试通过；中断训练数值等价待验 |
 | 双 Python 环境通信 | `worker_client.py`, `worker_cli.py`, `integration.py` | 3.14 host → 3.12 worker；Train 已授权 NPZ | 静态/接口测试；真实子进程回归待验 |
-| B3 三级状态模型 | `jax_hierarchy.py` | **研究候选网络损失**，无正式 B3 optimizer / F2 的训练集成 | **未通过 JAX 运行验证；默认不得启用** |
+| B3 三级状态模型 | `jax_hierarchy.py`、`jax_hierarchy_train.py` | Train-only 三层梯度训练和身份绑定 checkpoint；无 F2 三尺度 state feedback | **合成 CPU 梯度/续训 smoke PASS；真实 R3/E3/E4 未验证，默认不得启用** |
 | B3/F2 合成时钟 | `synthetic_feedback.py` | 合成未来产生完整 1h/1d bar，禁止真实未来混入 | 本地测试通过；未接三层 RSSM inference |
 | B4 想象账户原型 | `imagined_account.py` | 单净仓、market/limit、下根 1m 生效、撤单、费用/MTM | 本地单元测试通过；**非原生交易事实** |
 | 验证 | `tests/world_model/test_routeb_additive.py` | 数据、时间、数值、检查点、账户验证 | 35 passed |
@@ -170,6 +175,6 @@ report=client.train(
 
 - `OHLCVCodec` 在约束空间中生成高低价，有异常尾部样本时明确拒绝，绝不静默输出负价格。对极端波动可能发生拒样，必须在报告记录拒样率，不能只保留“看起来正常”的样本造成选择偏差。
 - `jax_model.py` 的未来预测从最后一个可见后验出发，不注入未来真实标签或交易动作；其损失包含一步预测、当前重构和 DreamerV3 自带的 KL。当前预测头采用独立正态分布，无法保证高维金融变量协方差正确；必须由路径校准对照验证。
-- `jax_hierarchy.py` 是**待 JAX 验证的 B3 候选**，不是将 MTS3 源码移植进来，也不是成熟的三级 RSSM 实盘系统。
+- `jax_hierarchy.py` / `jax_hierarchy_train.py` 已完成合成机制验证，但不是将 MTS3 源码移植进来，也不是经独立 Validation 证明的成熟三级 RSSM 系统。
 - JAX 模型默认 `float32`；GPU/WSL2 尚需单独准入测试，绝不能以现有 PyTorch RTX 5070 CUDA PASS 代替 JAX PASS。
 - 该包按用户要求不引入哈希链、重复实现交易账户或者任何未经授权的实时 API。

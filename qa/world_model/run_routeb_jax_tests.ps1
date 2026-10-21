@@ -30,6 +30,8 @@ try {
             tests/world_model/test_routeb_e1.py::test_e1_train_loss_is_finite_and_respects_target_mask `
             tests/world_model/test_routeb_hierarchy_weights.py::test_hierarchical_kl_weights_apply_once_per_component `
             tests/world_model/test_routeb_hierarchy_weights.py::test_risk_horizon_weights_emphasize_long_horizon_losses `
+            tests/world_model/test_routeb_hierarchy_train.py::test_hierarchical_training_rejects_future_hour_state `
+            tests/world_model/test_routeb_hierarchy_train.py::test_hierarchical_window_keeps_slow_states_causal_and_fixed_shape `
             tests/world_model/test_routeb_quality_v2.py::test_checkpoint_detects_corruption_and_tree_permutation `
             tests/world_model/test_routeb_quality_v2.py::test_risk_conditioned_return_scale_matches_native_log_rv_in_raw_units
         if ($LASTEXITCODE -ne 0) {
