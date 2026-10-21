@@ -33,3 +33,7 @@ The current focused cross-layer regression passes **207 tests**, with 3 JAX-only
 ## Environment and lock
 
 `packages/world_model/environment/uv.lock` remains the Windows CPU environment. `packages/world_model/requirements-world-model-wsl-cuda.lock` now combines its exact training stack with the CUDA 13 runtime pins (78 exact package versions); its current SHA-256 is `e15b296ff2575272ad9f8e67c6a03dc74b2af57205321f363bf29b4e01c1243d`. The WSL venv lives in the ignored `packages/world_model/environment/.venv-wsl/` directory.
+
+## Status update — 2026-10-21
+
+RouteB now has a completed real-data Train/Validation audit on a fresh TRXUSDT Fold. Integrity checks found 112,320 scoped bars, no missing/duplicate minutes and no availability violations. The R2 multi-seed run completed and its report and ledger receipt verify. E2 had a lower mean 15-minute path log-RV CRPS than the selected baseline, but every seed's interval crossed zero and the preregistered Holm significance criterion failed. Generated volatility dispersion and absolute-return persistence were low. The R2 gate remains closed; R3-R6 remain gated. A focused follow-up is preregistered on disjoint 2025-11-06 through 2026-02-08 data to test AR(1)-correlated risk innovations with identical Train/F1 sampling.

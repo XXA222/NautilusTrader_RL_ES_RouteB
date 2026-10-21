@@ -48,3 +48,7 @@ The first Linux worker preflight stopped before output creation or ledger access
 - Updated RouteB source identity SHA-256 `f3f837690381630b8278f15bdca6387ba8d469151042220c442a0de825f5eccd`.
 
 No market rows were read and no access reservation was made by either failed preflight. Resume once with the frozen configs and an unused output directory under the registered output root.
+
+## Append-only registered-reader boundary failure and disposition
+
+After the worker dependency repair, the first runner invocation passed source/config/footer preflight and called `reserve_routeb_fresh_fold`. The registered reader then failed closed at Parquet row group 77 because that daily group crossed the frozen Train+Validation end boundary. The failure occurred before decoding row-group payloads, but the successful one-shot reservation remains in the RouteB ledger with no completion result; this interval is consumed and must not be retried. The separate later runner attempt is the successful replacement-window experiment recorded in `R2_TRXUSDT_STOCHASTIC_RISK_PATH_ALIGNED_RESULTS_20261021.md`. RouteB fixed the root cause by allowing the source writer to split a row group at the exact availability boundary and verified that the replacement scope's 78 groups had zero footer crossings.
