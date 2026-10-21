@@ -28,3 +28,15 @@ Frozen on 2026-10-21 after the preceding registered fresh-window experiment comp
 - New market archives will be downloaded only after this freeze. The preregistration and configurations are version-controlled before the download; the final commit-bound code fingerprint, config/source hashes, footer-only row-group audit, isolated CUDA worker identity and final read-only ledger state will be recorded in `pre_read_identity.json` before any registered payload access.
 
 
+
+
+## Prepared-source verification (2026-10-21)
+
+- Fold semantic hash: `9410f4338e71a89e513f157dbd25e45092c1c996d76a14e9ef657c9667e070e8`; Fold config SHA-256: `51251d456337b3b3956ca562e5a61d76b97c7444aebf6d945a2b4fb02acf1859`.
+- E1 config SHA-256: `579a6b89ceb9d66d8c4c04aacb957bb584825cd8ca8b59cab1ffc915782f01d4`; E2 config SHA-256: `bcb677c7f2070c47aaa92c86430ecf0fad431c2e9b0d532e0bd5b326eb0c4c08`.
+- Curated Parquet SHA-256: `5ce804625099cc7040f09f7e2edcd96a13b5fe5751dea5e3352363ce5b53c661`; completion marker SHA-256: `f1ff58a3344ac44b41bf031c2ec4e7e7a5615ad6cb66e0170cbb7578b3fe5523`; source-preparation receipt SHA-256: `08631f4659eb839caf878f797751dcae37a1add8c57d5e01addf1b5ba845d22f`.
+- Semantic identity is schema `0.4.1`, dataset hash `7819bff058090b9e18adc70773c268713d4dd4556f2512084ac6702285bc358d`, 135,360 events. Official archive SHA-256: 2026-05 `06e00dda918f0fa9200617ed5a27beac4a292925c3cc74623c756ddd6adff8ed`; 2026-06 `a773f127c61bec2ad4e73148038bfcc1b060ad459df654c177a6b260f119e0fd`; 2026-07 `81c5c17db1c7c11af9455b2b3318ffa6ed14604cede31d1d28d6ce5b7adb8ca1`; 2026-08 `ad52431714decc073223602ca80134c4bc53c6a74b5e8809af3b8a10ce4e57d3`.
+- Footer-only audit: 94 row groups total; reader scope selects 0–77; no row group crosses the exclusive Train+Validation boundary; group 78 begins at `available_at_ns=1785888061000000000`, one second after the reader boundary.
+- Read-only ledger recheck returned `access_overlap=0`, `query_intent_overlap=0`. Worker preflight returned NumPy `2.3.3`, JAX `0.11.2`, device `cuda:0`.
+- Final commit-bound code fingerprint, source-manifest identity, repeated immediate ledger check and immutable `pre_read_identity.json` will be recorded after the metadata commit and before the first registered payload read.
+
