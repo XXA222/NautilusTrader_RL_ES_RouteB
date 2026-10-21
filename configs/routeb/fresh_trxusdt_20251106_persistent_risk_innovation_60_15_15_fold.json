@@ -1,0 +1,36 @@
+{
+  "allow_legacy_isolated_snapshot": false,
+  "config": {
+    "environment": {
+      "instrument": "TRXUSDT-PERP.BINANCE",
+      "market_path": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB/.artifacts/world_model/fresh-trxusdt-20251106-persistent-risk-innovation-20261021/source/curated/market.parquet"
+    }
+  },
+  "fold": {
+    "dataset_hash": "d9c202e17488d5e4059347074aa23a8533e5d5a1aed1e1d0891b0dca146ab956",
+    "embargo_ns": 82800000000000,
+    "feature_hash": "fc7c4373d2a4e5d802f9c0663d37ecf89d900e73afc7742d2d6ea76258540890",
+    "purge_ns": 3600000000000,
+    "scaler_hash": null,
+    "schema_version": "0.4.0",
+    "test": {
+      "score_end_ns": 1770508860000000000,
+      "score_start_ns": 1769212860000000000,
+      "warmup_start_ns": 1768176060000000000
+    },
+    "train": {
+      "score_end_ns": 1767744060000000000,
+      "score_start_ns": 1762560060000000000,
+      "warmup_start_ns": 1762387260000000000
+    },
+    "validation": {
+      "score_end_ns": 1769126460000000000,
+      "score_start_ns": 1767830460000000000,
+      "warmup_start_ns": 1766793660000000000
+    }
+  },
+  "instrument": "TRXUSDT-PERP.BINANCE",
+  "label": "routeb-fold-trxusdt-binance-20251106-persistent-risk-innovation-v1",
+  "marker_sha256": "57bca13d146f70d44b0b3e322a4a99323ff1b0bd1757868dd9f998cd7405209b",
+  "schema_version": "rles.world_model.registered_fold_baseline.v0"
+}
