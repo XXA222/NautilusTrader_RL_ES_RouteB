@@ -758,14 +758,26 @@ def test_rssm_config_rejects_nans_and_malformed_architecture():
     assert RSSMConfig(rollout_risk_conditioning=True).rollout_risk_conditioning is True
     assert RSSMConfig(rollout_risk_conditioning=True,
                       rollout_risk_sampling=True).rollout_risk_sampling is True
+    assert RSSMConfig(
+        rollout_risk_conditioning=True, rollout_risk_sampling=True,
+        rollout_risk_noise_persistence=0.65,
+    ).rollout_risk_noise_persistence == 0.65
     assert RSSMConfig(rollout_risk_conditioning_strength=0.5).rollout_risk_conditioning_strength == 0.5
     for invalid_strength in (True, -0.1, 1.1, float("inf"), "0.5"):
         with pytest.raises(ValueError):
             RSSMConfig(rollout_risk_conditioning_strength=invalid_strength)
+    for invalid_persistence in (True, -0.01, 1.0, float("nan"), "0.65"):
+        with pytest.raises(ValueError):
+            RSSMConfig(rollout_risk_noise_persistence=invalid_persistence)
     with pytest.raises(ValueError):
         RSSMConfig(rollout_risk_conditioning=1)
     with pytest.raises(ValueError):
         RSSMConfig(rollout_risk_sampling=True)
+    with pytest.raises(ValueError):
+        RSSMConfig(rollout_risk_noise_persistence=0.65)
+    with pytest.raises(ValueError):
+        RSSMConfig(rollout_risk_conditioning=True,
+                   rollout_risk_noise_persistence=0.65)
     with pytest.raises(ValueError):
         RSSMConfig(rollout_risk_conditioning=True, rollout_risk_sampling=1)
     assert RSSMConfig(forecast_distribution="student_t", rollout_risk_conditioning=True,
@@ -893,10 +905,36 @@ def test_risk_conditioned_return_scale_matches_native_log_rv_in_raw_units():
         )
 
 
+def test_risk_noise_ar1_transform_preserves_stationary_variance_and_shape():
+    jnp = pytest.importorskip("jax.numpy")
+    from rles_world_model.routeb.jax_model import _correlate_risk_noise
+
+    previous = jnp.asarray([1.0, -1.0, 0.5], dtype=jnp.float32)
+    innovation = jnp.asarray([0.0, 1.0, -1.0], dtype=jnp.float32)
+    rho = 0.65
+    expected = rho * previous + math.sqrt(1.0 - rho**2) * innovation
+    actual = _correlate_risk_noise(previous, innovation, rho)
+    np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-7)
+    np.testing.assert_array_equal(_correlate_risk_noise(None, innovation, rho), innovation)
+    np.testing.assert_array_equal(_correlate_risk_noise(previous, innovation, 0.0), innovation)
+    rng = np.random.default_rng(650)
+    stationary_previous = rng.normal(size=65_536).astype(np.float32)
+    independent_innovation = rng.normal(size=65_536).astype(np.float32)
+    stationary_actual = np.asarray(_correlate_risk_noise(
+        jnp.asarray(stationary_previous), jnp.asarray(independent_innovation), rho,
+    ))
+    assert abs(float(stationary_actual.var()) - 1.0) < 0.02
+    assert abs(float(np.corrcoef(stationary_previous, stationary_actual)[0, 1]) - rho) < 0.02
+    with pytest.raises(ValueError, match="shapes"):
+        _correlate_risk_noise(previous, jnp.zeros((2,), dtype=jnp.float32), rho)
+
+
 def test_optimizer_recipe_normalizes_tuple_fields_for_json_checkpoint_roundtrip():
     model = RSSMConfig(
         risk_horizon_weights=(0.5, 0.5, 1.0, 1.5, 1.5),
         path_log_rv_crps_horizons=(15, 30, 60),
+        rollout_risk_conditioning=True, rollout_risk_sampling=True,
+        rollout_risk_noise_persistence=0.65,
         forecast_distribution="student_t", forecast_student_t_df=5.0,
     )
     recipe = optimizer_recipe(model, TrainingConfig())
@@ -905,6 +943,7 @@ def test_optimizer_recipe_normalizes_tuple_fields_for_json_checkpoint_roundtrip(
     assert recipe['model']['path_log_rv_crps_horizons'] == [15, 30, 60]
     assert recipe['model']['forecast_distribution'] == 'student_t'
     assert recipe['model']['forecast_student_t_df'] == 5.0
+    assert recipe['model']['rollout_risk_noise_persistence'] == 0.65
     assert json.loads(json.dumps(recipe)) == recipe
 
 

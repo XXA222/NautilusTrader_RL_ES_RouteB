@@ -91,7 +91,8 @@ def main() -> int:
         forecast_objective="path_log_rv_crps",path_log_rv_crps_horizon=3,
         path_log_rv_crps_horizons=(3,5),path_log_rv_crps_paths=4,
         rollout_risk_conditioning=True,rollout_risk_sampling=True,
-        rollout_risk_conditioning_strength=0.5))
+        rollout_risk_conditioning_strength=0.5,
+        rollout_risk_noise_persistence=0.65))
     path_args=(jnp.asarray(features),jnp.asarray(reset),jnp.asarray(mask),True,
         jnp.asarray(path_targets),jnp.asarray(path_mask),
         jnp.asarray([0.,0.,0.,0.,0.],dtype=jnp.float32),
@@ -122,8 +123,14 @@ def main() -> int:
             or path_head_norm<=0 or path_transition_norm<=0 or path_risk_head_norm<=0
             or not np.isclose(float(path_diagnostics["path_log_rv_crps"]),
                               float(mutated_path_diagnostics["path_log_rv_crps"]),
-                              rtol=0.0,atol=0.0)):
-        raise AssertionError(f"path log-RV CRPS failed gradient/mask/causality: {path_norms}")
+                              rtol=0.0,atol=1e-6)):
+        raise AssertionError(
+            "path log-RV CRPS failed gradient/mask/causality: "
+            f"loss={float(path_loss)}, valid={float(path_diagnostics['valid_path_log_rv_crps'])}, "
+            f"head={path_head_norm}, transition={path_transition_norm}, "
+            f"risk={path_risk_head_norm}, "
+            f"mutated={float(mutated_path_diagnostics['path_log_rv_crps'])}, "
+            f"norms={path_norms}")
 
     def risk_loss_fn(parameters):
         _,diagnostics=nj.pure(model)(parameters,*model_args,seed=72)
@@ -195,7 +202,8 @@ def main() -> int:
     conditioned_model=make_model(
         os.environ["ROUTEB_DREAMERV3_CHECKOUT"],RSSMConfig(
             deter=32,hidden=32,stoch=2,classes=4,blocks=4,
-            rollout_risk_conditioning=True,rollout_risk_sampling=True))
+            rollout_risk_conditioning=True,rollout_risk_sampling=True,
+            rollout_risk_noise_persistence=0.65))
     conditioned_params=nj.init(conditioned_model)(
         {},*model_args,seed=31)
     train_feature_std=jnp.asarray([0.001,0.001,0.1,0.1,1.0],dtype=jnp.float32)

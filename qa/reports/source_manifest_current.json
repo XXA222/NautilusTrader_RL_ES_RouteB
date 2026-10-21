@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v1",
-  "generated_at_utc": "2026-10-21T00:04:28.668765+00:00",
-  "source_identity_sha256": "0e2b4199e43aed953e1a9e81027e135d1785aa216fd626936b067d268aa6bf17",
+  "generated_at_utc": "2026-10-21T01:16:52.368260+00:00",
+  "source_identity_sha256": "e3eca695f859cc2f5a5306fa824e764ccb3cfffbe8ce32cfa33b8176ed7fda6a",
   "scope": {
     "included": [
       ".gitattributes",
@@ -934,6 +934,16 @@
       "sha256": "e3c7346250354a296b8afda70a10b2db78ec20e64d3d262157b2717a38066970"
     },
     {
+      "path": "configs/routeb/fresh_trxusdt_20251106_e1_persistent_risk_innovation_ensemble.json",
+      "size_bytes": 228,
+      "sha256": "07c90c08b898314723e939ef46b12c77d54e3b95fd956a240e02ccbb4ded2fd8"
+    },
+    {
+      "path": "configs/routeb/fresh_trxusdt_20251106_e2_persistent_risk_innovation_ensemble.json",
+      "size_bytes": 958,
+      "sha256": "678f473dbe47d094fc4559787294f2a8e3366668f38d2611a084662c81cad618"
+    },
+    {
       "path": "configs/routeb/fresh_trxusdt_e1_multihorizon_path_crps_ensemble.json",
       "size_bytes": 228,
       "sha256": "07c90c08b898314723e939ef46b12c77d54e3b95fd956a240e02ccbb4ded2fd8"
@@ -1765,8 +1775,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/jax_model.py",
-      "size_bytes": 37682,
-      "sha256": "14d3414f8f80197be51f469612a61fae87a57b6af901ae2ccee65e3a73261c1b"
+      "size_bytes": 39352,
+      "sha256": "01234f9d271dca184b96be7cb50654201c131b6f3cd30f16beb5abd1b4ea84fa"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/jax_train.py",
@@ -2070,8 +2080,8 @@
     },
     {
       "path": "qa/world_model/routeb_prior_gradient_smoke.py",
-      "size_bytes": 13418,
-      "sha256": "b6c066d3a69b1b42e87a9a8c4f25f55065c1f2fa4db26922721cf5f1f54d32bd"
+      "size_bytes": 13844,
+      "sha256": "9b58f147f963b1532967528cb81c810b63bae2061796ea6bf5a39169ed138e15"
     },
     {
       "path": "qa/world_model/run_registered_fold_ensemble.py",
@@ -2770,8 +2780,8 @@
     },
     {
       "path": "tests/world_model/test_routeb_quality_v2.py",
-      "size_bytes": 45737,
-      "sha256": "14ce24f897cef0a70c7a55ccf2834fa737fc0eaa1ce93ba313c3af02fee4f625"
+      "size_bytes": 47867,
+      "sha256": "d1d1e3fb3fb3f0921eda02c7af45b87cc747d004e56faf5ffb62c4c7d1c5e333"
     },
     {
       "path": "tests/world_model/test_routeb_risk_targets.py",

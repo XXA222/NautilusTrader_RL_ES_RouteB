@@ -45,6 +45,7 @@ class RSSMConfig:
     rollout_risk_conditioning: bool=False
     rollout_risk_sampling: bool=False
     rollout_risk_conditioning_strength: float=1.0
+    rollout_risk_noise_persistence: float=0.0
     min_scale: float=0.02
 
     def __post_init__(self)->None:
@@ -70,6 +71,10 @@ class RSSMConfig:
                 or not isinstance(self.rollout_risk_conditioning_strength,(int,float))
                 or not math.isfinite(self.rollout_risk_conditioning_strength)
                 or not 0.0<=self.rollout_risk_conditioning_strength<=1.0)
+            or (isinstance(self.rollout_risk_noise_persistence,bool)
+                or not isinstance(self.rollout_risk_noise_persistence,(int,float))
+                or not math.isfinite(self.rollout_risk_noise_persistence)
+                or not 0.0<=self.rollout_risk_noise_persistence<=0.99)
             or self.forecast_distribution not in {"gaussian","student_t","mixture_gaussian"}
             or self.forecast_objective not in {
                 "nll","crps","open_loop_crps","path_log_rv_crps"}
@@ -94,6 +99,8 @@ class RSSMConfig:
             or type(self.rollout_risk_sampling) is not bool
             or (self.rollout_risk_sampling
                 and not self.rollout_risk_conditioning)
+            or (self.rollout_risk_noise_persistence>0.0
+                and not (self.rollout_risk_sampling and self.rollout_risk_conditioning))
             or (self.rollout_risk_conditioning
                 and self.forecast_distribution=="mixture_gaussian")
             or not self.risk_horizons
@@ -111,6 +118,17 @@ def _weighted_risk_loss(continuous,barrier,weights):
     per_horizon=continuous+barrier
     horizon_weights=jnp.asarray(weights,dtype=per_horizon.dtype)
     return (per_horizon*horizon_weights).sum()/horizon_weights.sum()
+
+
+def _correlate_risk_noise(previous,innovation,persistence:float):
+    """Apply a stationary AR(1) transform to standardized log-RV noise."""
+    import jax.numpy as jnp
+    if previous is None or persistence==0.0:
+        return innovation
+    if previous.shape!=innovation.shape:
+        raise ValueError("previous and current risk-noise shapes must match")
+    rho=jnp.asarray(persistence,dtype=jnp.float32)
+    return rho*previous+jnp.sqrt(1.0-jnp.square(rho))*innovation
 
 
 def _risk_conditioned_return_scale(prior_scale,risk_mean,risk_scale,feature_std,
@@ -355,6 +373,7 @@ def make_model(checkout:str|Path,config:RSSMConfig):
             stoch=jnp.tile(stoch,(paths,1,1,1)).reshape(
                 (paths*batch*anchor_count,*stoch.shape[2:]))
             returns=[]
+            risk_noise_state=None
             action={"market_dummy":jnp.zeros((paths*batch*anchor_count,1),jnp.float32)}
             action_embedding=nn.DictConcat(dyn.act_space,1)(action)
             for _ in range(max_horizon):
@@ -366,8 +385,14 @@ def make_model(checkout:str|Path,config:RSSMConfig):
                 mean,scale=self._prior_head(z)
                 if config.rollout_risk_conditioning:
                     risk_mean,risk_scale,_=self._risk_head(z)
-                    risk_noise=(jax.random.normal(nj.seed(),risk_mean[...,0,1].shape)
-                                if config.rollout_risk_sampling else None)
+                    if config.rollout_risk_sampling:
+                        innovation=jax.random.normal(nj.seed(),risk_mean[...,0,1].shape)
+                        risk_noise=_correlate_risk_noise(
+                            risk_noise_state,innovation,
+                            config.rollout_risk_noise_persistence)
+                        risk_noise_state=risk_noise
+                    else:
+                        risk_noise=None
                     scale=_risk_conditioned_return_scale(
                         scale,risk_mean,risk_scale,feature_std,
                         config.rollout_risk_conditioning_strength,risk_noise=risk_noise)
@@ -593,8 +618,9 @@ def make_model(checkout:str|Path,config:RSSMConfig):
             the prior head's one-minute log-RV forecast. Gaussian and
             variance-normalized Student-t priors are supported. Frozen Train
             scaler moments convert those coordinates to raw return units. With
-            ``rollout_risk_sampling``, each path samples its conditional log-RV
-            and therefore forms a volatility scale mixture.
+            ``rollout_risk_sampling``, each path samples its conditional log-RV.
+            A configured persistence applies the same stationary AR(1) transform
+            used by the Train path log-RV objective.
             Samples are NOT fed back into the state, by design for F1.
             No true future observations are used.
             """
@@ -613,6 +639,7 @@ def make_model(checkout:str|Path,config:RSSMConfig):
             carry,entries,feat=dyn.observe(carry,x,zero,reset,False)
             f=jax.tree.map(lambda arr:arr[:,-1],feat)
             outcomes=[]
+            risk_noise_state=None
             for _ in range(steps):
                 carry,(f,_)=dyn.imagine(
                     carry,{"market_dummy":jnp.zeros((B,1),jnp.float32)},
@@ -623,8 +650,14 @@ def make_model(checkout:str|Path,config:RSSMConfig):
                         raise ValueError("risk-conditioned rollout requires a Gaussian prior head")
                     _,prior_scale=distribution
                     risk_mean,risk_scale,_=self._risk_head(self._state_vector(f))
-                    risk_noise=(jax.random.normal(nj.seed(),risk_mean[...,0,1].shape)
-                                if config.rollout_risk_sampling else None)
+                    if config.rollout_risk_sampling:
+                        innovation=jax.random.normal(nj.seed(),risk_mean[...,0,1].shape)
+                        risk_noise=_correlate_risk_noise(
+                            risk_noise_state,innovation,
+                            config.rollout_risk_noise_persistence)
+                        risk_noise_state=risk_noise
+                    else:
+                        risk_noise=None
                     distribution=(distribution[0],_risk_conditioned_return_scale(
                         prior_scale,risk_mean,risk_scale,feature_std,
                         config.rollout_risk_conditioning_strength,
