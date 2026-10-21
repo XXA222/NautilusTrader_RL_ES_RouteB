@@ -74,6 +74,28 @@ def test_curated_window_fails_when_window_cuts_a_row_group(tmp_path: Path) -> No
                             expected_marker_sha256=_marker_sha(path))
 
 
+def test_curated_writer_splits_row_groups_at_registered_scope_boundary(tmp_path: Path) -> None:
+    path = tmp_path / "scope-aligned.parquet"
+    source = _store()
+    write_curated(path, source, row_group_size=2, row_group_boundaries=(3,))
+
+    scoped = read_curated_window(path, 3 * MINUTE_NS, 5 * MINUTE_NS,
+                                 expected_marker_sha256=_marker_sha(path))
+
+    assert [event.event_id for event in scoped.events] == ["bar-3", "bar-4"]
+    assert [group["events"] for group in json.loads(
+        path.with_name(path.name + ".COMPLETED.json").read_text()
+    )["row_groups"]] == [2, 1, 1]
+
+
+@pytest.mark.parametrize("boundaries", [(0,), (6,), (3, 2), (2, 2), (True,)])
+def test_curated_writer_rejects_invalid_row_group_boundaries(
+    tmp_path: Path, boundaries: tuple[int, ...],
+) -> None:
+    with pytest.raises(DataError, match="boundaries"):
+        write_curated(tmp_path / "invalid.parquet", _store(), row_group_boundaries=boundaries)
+
+
 def test_curated_window_binds_the_manifest_digest_before_decoding(tmp_path: Path) -> None:
     path = tmp_path / "market.parquet"
     write_curated(path, _store(), row_group_size=2)

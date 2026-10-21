@@ -301,7 +301,8 @@ def ingest_arrow(path: str | Path, source_hash: str, kind: str, provenance: str,
 
 
 def write_curated(path: str | Path, store: CuratedStore, *,
-                  row_group_size: int = CURATED_ROW_GROUP_SIZE) -> str:
+                  row_group_size: int = CURATED_ROW_GROUP_SIZE,
+                  row_group_boundaries: tuple[int, ...] = ()) -> str:
     """Write immutable Parquet, then a verified COMPLETE marker; crash remains blocked."""
     try:
         import pyarrow as pa
@@ -315,6 +316,12 @@ def write_curated(path: str | Path, store: CuratedStore, *,
         raise DataError("curated snapshot path already occupied")
     if type(row_group_size) is not int or row_group_size <= 0:
         raise DataError("curated row group size must be a positive integer")
+    if (not isinstance(row_group_boundaries, tuple)
+            or any(type(offset) is not int for offset in row_group_boundaries)
+            or any(offset <= 0 or offset >= len(store.events)
+                   for offset in row_group_boundaries)
+            or tuple(sorted(set(row_group_boundaries))) != row_group_boundaries):
+        raise DataError("curated row-group boundaries must be unique ordered interior offsets")
     target.parent.mkdir(parents=True, exist_ok=True)
     temp = target.with_name("." + target.name + "." + uuid.uuid4().hex + ".staging")
     try:
@@ -329,8 +336,12 @@ def write_curated(path: str | Path, store: CuratedStore, *,
         ])
         row_groups = []
         with pq.ParquetWriter(temp, schema, compression="zstd") as writer:
-            for index, offset in enumerate(range(0, len(store.events), row_group_size)):
-                event_group = store.events[offset: offset + row_group_size]
+            cuts = (0, *row_group_boundaries, len(store.events))
+            offsets = (offset for left, right in zip(cuts, cuts[1:])
+                       for offset in range(left, right, row_group_size))
+            for index, offset in enumerate(offsets):
+                next_cut = next((cut for cut in cuts[1:] if cut > offset), len(store.events))
+                event_group = store.events[offset:min(offset + row_group_size, next_cut)]
                 rows = []
                 for e in event_group:
                     rows.append({"event_id": e.event_id, "kind": e.kind,

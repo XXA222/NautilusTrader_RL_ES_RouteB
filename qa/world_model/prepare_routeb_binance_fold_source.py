@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_left
 from datetime import date, datetime, timedelta, timezone
 from hashlib import sha256
 import json
@@ -34,6 +35,8 @@ def main() -> int:
     parser.add_argument('--start-open', default='2025-09-20T00:00:00Z')
     parser.add_argument('--end-open', default='2026-10-18T00:00:00Z', help='exclusive UTC open-time boundary')
     parser.add_argument('--availability-delay-ms', type=int, default=1000)
+    parser.add_argument('--row-group-boundary-available-at-ns', action='append', default=[],
+                        type=int, help='split Parquet row groups before the first event at this availability timestamp')
     args = parser.parse_args()
     if args.availability_delay_ms <= 0:
         raise SystemExit('availability delay must be positive')
@@ -104,7 +107,19 @@ def main() -> int:
     target.mkdir(parents=True, exist_ok=True)
     store = CuratedStore(events)
     parquet_path = target / 'market.parquet'
-    dataset_hash = write_curated(parquet_path, store, row_group_size=1440)
+    available_times = [event.available_at_ns for event in events]
+    if any(value is None for value in available_times):
+        raise SystemExit('source contains an event without availability time')
+    row_group_boundaries = tuple(sorted({
+        bisect_left(available_times, boundary)
+        for boundary in args.row_group_boundary_available_at_ns
+    }))
+    if any(offset <= 0 or offset >= len(events) for offset in row_group_boundaries):
+        raise SystemExit('row-group boundary must fall inside the prepared source interval')
+    dataset_hash = write_curated(
+        parquet_path, store, row_group_size=1440,
+        row_group_boundaries=row_group_boundaries,
+    )
     identity = curated_source_identity(parquet_path)
     bounds = curated_event_time_bounds(parquet_path, expected_marker_sha256=identity['marker_sha256'])
     if identity['schema_version'] != '0.4.1' or identity['snapshot_hash'] != dataset_hash:
@@ -119,6 +134,10 @@ def main() -> int:
         'availability_delay_ns': delay_ns,
         'bar_count': len(events),
         'row_group_size': 1440,
+        'row_group_boundaries': [
+            {'event_offset': offset, 'available_at_ns': available_times[offset]}
+            for offset in row_group_boundaries
+        ],
         'dataset_hash': dataset_hash,
         'marker_sha256': identity['marker_sha256'],
         'source_file_sha256': identity['file_sha256'],

@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v1",
-  "generated_at_utc": "2026-10-20T23:55:10.896325+00:00",
-  "source_identity_sha256": "f3f837690381630b8278f15bdca6387ba8d469151042220c442a0de825f5eccd",
+  "generated_at_utc": "2026-10-21T00:00:52.241410+00:00",
+  "source_identity_sha256": "faa7903c2976d12144900a98b13e9ba52fa9a3ec3a23e9e9828f1196246cf6ca",
   "scope": {
     "included": [
       ".gitattributes",
@@ -30,26 +30,46 @@
     ]
   },
   "runtime": {
-    "python": "3.14.7",
+    "python": "3.12.10",
     "platform": "Windows-11-10.0.26200-SP0",
     "machine": "AMD64",
     "os_name": "nt",
     "installed_distributions": [
       {
-        "name": "ast_serialize",
-        "version": "0.12.1"
+        "name": "absl-py",
+        "version": "2.5.1"
       },
       {
-        "name": "attrs",
-        "version": "26.1.0"
+        "name": "annotated-doc",
+        "version": "0.0.5"
+      },
+      {
+        "name": "annotated-types",
+        "version": "0.8.0"
+      },
+      {
+        "name": "anyio",
+        "version": "4.15.1"
+      },
+      {
+        "name": "av",
+        "version": "19.0.1"
       },
       {
         "name": "certifi",
         "version": "2026.7.22"
       },
       {
+        "name": "cffi",
+        "version": "2.1.1"
+      },
+      {
         "name": "charset-normalizer",
         "version": "3.5.2"
+      },
+      {
+        "name": "chex",
+        "version": "0.1.92"
       },
       {
         "name": "click",
@@ -60,44 +80,60 @@
         "version": "3.1.2"
       },
       {
-        "name": "cma",
-        "version": "4.5.0"
-      },
-      {
         "name": "colorama",
         "version": "0.4.6"
       },
       {
-        "name": "contourpy",
-        "version": "1.4.0"
+        "name": "cryptography",
+        "version": "50.0.2"
       },
       {
-        "name": "cycler",
-        "version": "0.12.1"
+        "name": "einops",
+        "version": "0.8.1"
       },
       {
-        "name": "evotorch",
-        "version": "0.6.1"
+        "name": "elements",
+        "version": "3.19.1"
       },
       {
-        "name": "Farama-Notifications",
-        "version": "0.0.6"
+        "name": "fastapi",
+        "version": "0.143.3"
       },
       {
-        "name": "filelock",
-        "version": "4.1.0"
+        "name": "google-api-core",
+        "version": "2.42.0"
       },
       {
-        "name": "fonttools",
-        "version": "4.66.1"
+        "name": "google-auth",
+        "version": "2.62.0"
       },
       {
-        "name": "fsspec",
-        "version": "2026.9.0"
+        "name": "google-cloud-core",
+        "version": "2.8.0"
       },
       {
-        "name": "gymnasium",
-        "version": "1.3.0"
+        "name": "google-cloud-storage",
+        "version": "3.17.1"
+      },
+      {
+        "name": "google-crc32c",
+        "version": "1.9.0"
+      },
+      {
+        "name": "google-resumable-media",
+        "version": "2.11.0"
+      },
+      {
+        "name": "googleapis-common-protos",
+        "version": "1.75.5"
+      },
+      {
+        "name": "h11",
+        "version": "0.16.0"
+      },
+      {
+        "name": "httptools",
+        "version": "0.9.0"
       },
       {
         "name": "idna",
@@ -108,216 +144,160 @@
         "version": "2.3.1"
       },
       {
-        "name": "Jinja2",
-        "version": "3.1.6"
+        "name": "jax",
+        "version": "0.11.2"
       },
       {
-        "name": "jsonschema",
-        "version": "4.26.0"
+        "name": "jaxlib",
+        "version": "0.11.2"
       },
       {
-        "name": "jsonschema-specifications",
-        "version": "2025.9.1"
+        "name": "jaxtyping",
+        "version": "0.3.11"
       },
       {
-        "name": "kiwisolver",
-        "version": "1.5.1"
-      },
-      {
-        "name": "librt",
-        "version": "0.16.0"
-      },
-      {
-        "name": "MarkupSafe",
-        "version": "3.0.4"
-      },
-      {
-        "name": "matplotlib",
-        "version": "3.11.2"
-      },
-      {
-        "name": "mpmath",
-        "version": "1.3.0"
+        "name": "ml_dtypes",
+        "version": "0.6.0"
       },
       {
         "name": "msgpack",
         "version": "1.2.3"
       },
       {
-        "name": "mypy",
-        "version": "2.3.0"
-      },
-      {
-        "name": "mypy_extensions",
-        "version": "1.1.0"
-      },
-      {
-        "name": "nautilus-trader",
-        "version": "2.0.0rc6"
-      },
-      {
-        "name": "networkx",
-        "version": "3.7"
+        "name": "ninjax",
+        "version": "3.5.1"
       },
       {
         "name": "numpy",
-        "version": "2.5.4"
+        "version": "2.3.3"
+      },
+      {
+        "name": "opentelemetry-api",
+        "version": "1.45.1"
+      },
+      {
+        "name": "opt_einsum",
+        "version": "3.4.0"
+      },
+      {
+        "name": "optax",
+        "version": "0.2.8"
       },
       {
         "name": "packaging",
         "version": "26.3"
       },
       {
-        "name": "pandas",
-        "version": "3.0.6"
-      },
-      {
-        "name": "pathspec",
-        "version": "1.1.1"
-      },
-      {
         "name": "pillow",
-        "version": "12.3.0"
+        "version": "13.0.0"
       },
       {
         "name": "pluggy",
-        "version": "1.6.0"
+        "version": "1.7.0"
+      },
+      {
+        "name": "portal",
+        "version": "3.8.1"
+      },
+      {
+        "name": "proto-plus",
+        "version": "1.29.0"
       },
       {
         "name": "protobuf",
         "version": "7.36.2"
       },
       {
-        "name": "pyarrow",
-        "version": "25.0.1"
+        "name": "psutil",
+        "version": "7.2.2"
+      },
+      {
+        "name": "pyasn1",
+        "version": "0.6.4"
+      },
+      {
+        "name": "pyasn1_modules",
+        "version": "0.4.2"
+      },
+      {
+        "name": "pycparser",
+        "version": "3.11"
+      },
+      {
+        "name": "pydantic",
+        "version": "2.14.1"
+      },
+      {
+        "name": "pydantic_core",
+        "version": "2.50.1"
       },
       {
         "name": "Pygments",
         "version": "2.21.0"
       },
       {
-        "name": "pyparsing",
-        "version": "3.3.3"
-      },
-      {
         "name": "pytest",
         "version": "9.1.1"
       },
       {
-        "name": "python-dateutil",
-        "version": "2.9.0.post0"
+        "name": "python-dotenv",
+        "version": "1.2.4"
       },
       {
         "name": "PyYAML",
         "version": "6.0.3"
       },
       {
-        "name": "ray",
-        "version": "2.59.0"
-      },
-      {
-        "name": "referencing",
-        "version": "0.37.0"
-      },
-      {
         "name": "requests",
         "version": "2.34.2"
       },
       {
-        "name": "rles-compute-runtime",
-        "version": "0.4.1"
+        "name": "ruamel.yaml",
+        "version": "0.19.1"
       },
       {
-        "name": "rles-contracts",
-        "version": "0.4.0"
+        "name": "scipy",
+        "version": "1.18.1"
       },
       {
-        "name": "rles-data",
-        "version": "0.4.1"
+        "name": "scope",
+        "version": "0.4.12"
       },
       {
-        "name": "rles-es-evotorch",
-        "version": "0.4.0.dev2"
+        "name": "starlette",
+        "version": "1.8.0"
       },
       {
-        "name": "rles-es-evotorch",
-        "version": "0.4.0.dev2"
+        "name": "toolz",
+        "version": "1.2.0"
       },
       {
-        "name": "rles-execution",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rles-gym-bridge",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rles-nautilus-adapter",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rles-orchestrator",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rles-orchestrator",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rles-research",
-        "version": "0.4.1"
-      },
-      {
-        "name": "rles-risk",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rles-rl-sb3",
-        "version": "0.4.1"
-      },
-      {
-        "name": "rles-world-model",
-        "version": "0.1.0.dev0"
-      },
-      {
-        "name": "rpds-py",
-        "version": "2026.9.1"
-      },
-      {
-        "name": "ruff",
-        "version": "0.17.0"
-      },
-      {
-        "name": "setuptools",
-        "version": "84.0.0"
-      },
-      {
-        "name": "six",
-        "version": "1.17.0"
-      },
-      {
-        "name": "stable_baselines3",
-        "version": "2.9.0"
-      },
-      {
-        "name": "sympy",
-        "version": "1.14.0"
-      },
-      {
-        "name": "torch",
-        "version": "2.14.1"
+        "name": "typing-inspection",
+        "version": "0.4.4"
       },
       {
         "name": "typing_extensions",
         "version": "4.16.0"
       },
       {
-        "name": "tzdata",
-        "version": "2026.5"
-      },
-      {
         "name": "urllib3",
         "version": "2.8.0"
+      },
+      {
+        "name": "uvicorn",
+        "version": "0.54.0"
+      },
+      {
+        "name": "wadler_lindig",
+        "version": "0.1.7"
+      },
+      {
+        "name": "watchfiles",
+        "version": "1.3.0"
+      },
+      {
+        "name": "websockets",
+        "version": "17.2"
       }
     ]
   },
@@ -1220,8 +1200,8 @@
     },
     {
       "path": "packages/data/src/rles_data/io.py",
-      "size_bytes": 28709,
-      "sha256": "6ee6ca90b96350249569e89c8463353e7828ea4f7cea4ead185073f34589dd0f"
+      "size_bytes": 29476,
+      "sha256": "15087d12498f63d31cdcc08b8e19156cd27149f2da36f188e678bfb876231a13"
     },
     {
       "path": "packages/data/src/rles_data/quality.py",
@@ -2045,8 +2025,8 @@
     },
     {
       "path": "qa/world_model/prepare_routeb_binance_fold_source.py",
-      "size_bytes": 7078,
-      "sha256": "8cb62fb555ed4ce314e7c665edccf74ceaa6f3a63f4779c752c9098d1c3e8513"
+      "size_bytes": 8102,
+      "sha256": "90167dfb343c3fab6470da4a50a7152bd5b82727e5d7e28dda6326aabefeb819"
     },
     {
       "path": "qa/world_model/reconcile_routeb_research_ledger.py",
@@ -2480,8 +2460,8 @@
     },
     {
       "path": "tests/test_curated_window_read.py",
-      "size_bytes": 6300,
-      "sha256": "24e7206664061d81059854bc885d10103258f652a6d7883a241d844737e307b0"
+      "size_bytes": 7271,
+      "sha256": "76897f8d55ec205907d6408e7cd7bbe9d402611e1b05c9ba018fcdaee38c499a"
     },
     {
       "path": "tests/test_data_event_guards.py",
