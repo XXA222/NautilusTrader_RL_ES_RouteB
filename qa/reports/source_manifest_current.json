@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v1",
-  "generated_at_utc": "2026-10-21T02:09:55.467241+00:00",
-  "source_identity_sha256": "8509e6a65e8d73aeb27795cd6ee8a1973360f645ef117aec9172afa0c2e0a802",
+  "generated_at_utc": "2026-10-21T02:59:09.526526+00:00",
+  "source_identity_sha256": "a0edcf14597f65811c3ec8bc5a52ec200fd43dfd4ab786a707084c8110e7f3be",
   "scope": {
     "included": [
       ".gitattributes",
@@ -962,6 +962,16 @@
       "path": "configs/routeb/fresh_trxusdt_20260211_risk_conditioning_strength025_60_15_15_fold.json",
       "size_bytes": 1384,
       "sha256": "24b79a47267c2b7358bf79367bd3881a9277e645cbf972d90b308a3966670419"
+    },
+    {
+      "path": "configs/routeb/fresh_trxusdt_20260519_e1_risk_persistence035_strength025_ensemble.json",
+      "size_bytes": 228,
+      "sha256": "be826d0b685bdfb611c4347bddbb6f829caf5ec309035b29a71f483ff11db587"
+    },
+    {
+      "path": "configs/routeb/fresh_trxusdt_20260519_e2_risk_persistence035_strength025_ensemble.json",
+      "size_bytes": 959,
+      "sha256": "31e62c37d774226e1a8d71f37ed98bcc05d950d59fa5cbbf78957dc4e2f08b0e"
     },
     {
       "path": "configs/routeb/fresh_trxusdt_e1_multihorizon_path_crps_ensemble.json",
