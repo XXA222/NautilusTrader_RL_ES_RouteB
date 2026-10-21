@@ -15,7 +15,7 @@ Frozen on 2026-10-21 after the preceding registered fresh-window experiment comp
 
 - Binance USD-M TRXUSDT 1m source-open interval `[2026-05-19T00:00:00Z,2026-08-21T00:00:00Z)`: 94 UTC days and 135,360 expected closed bars.
 - Approved 60/15/15 Fold with one-hour purge and 23-hour embargo. The exact Fold config, source marker and semantic dataset hash will be frozen after monthly archives are verified and curated, but before the registered reader is allowed to decode Train/Validation.
-- Train+Validation reader scope is `[2026-05-19T00:01:00Z,2026-08-05T00:01:00Z)` (`[1779152460000000000,1785891660000000000)`). Test score is `[2026-08-06T00:01:00Z,2026-08-21T00:01:00Z)`.
+- Train+Validation reader scope is `[2026-05-19T00:01:00Z,2026-08-05T00:01:00Z)` (`[1779148860000000000,1785888060000000000)`). Test score is `[2026-08-06T00:01:00Z,2026-08-21T00:01:00Z)`.
 - This window begins after the preceding Test interval ended on 2026-05-16T00:00Z. No Test/Holdout payload will be read.
 - Output root: `.artifacts/world_model/fresh-trxusdt-20260519-risk-persistence035-20261021/`.
 - Repeat the read-only project-ledger overlap check immediately before registered access; both access and query-intent overlaps must be zero.
@@ -26,4 +26,5 @@ Frozen on 2026-10-21 after the preceding registered fresh-window experiment comp
 - E2 config: `configs/routeb/fresh_trxusdt_20260519_e2_risk_persistence035_strength025_ensemble.json`; persistence `0.35`, conditioning strength `0.25`.
 - Compared with the immediately preceding candidate, persistence is the sole model-configuration change. No tuning based on the new Validation window is allowed.
 - New market archives will be downloaded only after this freeze. The preregistration and configurations are version-controlled before the download; the final commit-bound code fingerprint, config/source hashes, footer-only row-group audit, isolated CUDA worker identity and final read-only ledger state will be recorded in `pre_read_identity.json` before any registered payload access.
+
 
