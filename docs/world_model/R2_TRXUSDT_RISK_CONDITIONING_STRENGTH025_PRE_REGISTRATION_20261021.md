@@ -40,3 +40,9 @@ The prior fresh-window R2 run (2025-11-06 through 2026-02-08) did not meet its p
 - Refreshed source manifest: 504 tracked source files, identity `8509e6a65e8d73aeb27795cd6ee8a1973360f645ef117aec9172afa0c2e0a802`.
 - The final commit-bound code fingerprint and repeated just-before-reader ledger check are recorded in `pre_read_identity.json` before running the registered reader.
 
+
+
+## Registered-run outcome (2026-10-21)
+
+The all-seeds R2 gate failed. Pooled 15m path log-RV CRPS favored E2 by 0.02451 (95% CI [-0.04241,-0.00888], p=0.0060), but per-seed Holm gates passed only for seed 102 (p=0.03698); seed 31 p=0.13293 and seed 20261018 p=0.05397. E2 rolling-RV mean matched realized closely, while p95 was somewhat high and generated absolute-return lag-1 autocorrelation was 0.2107 versus realized 0.0913. All paths were valid and no corrected 15m return-CRPS harm was detected. Test was not decoded. Full outcome and artifact verification are in `docs/world_model/R2_TRXUSDT_RISK_CONDITIONING_STRENGTH025_RESULTS_20261021.md`. The next permitted R2 follow-up is a fresh disjoint Fold testing persistence 0.35 with strength fixed at 0.25.
+
