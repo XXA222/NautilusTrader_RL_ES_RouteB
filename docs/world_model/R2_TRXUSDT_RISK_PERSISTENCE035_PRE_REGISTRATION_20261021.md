@@ -40,3 +40,9 @@ Frozen on 2026-10-21 after the preceding registered fresh-window experiment comp
 - Read-only ledger recheck returned `access_overlap=0`, `query_intent_overlap=0`. Worker preflight returned NumPy `2.3.3`, JAX `0.11.2`, device `cuda:0`.
 - Final commit-bound code fingerprint, source-manifest identity, repeated immediate ledger check and immutable `pre_read_identity.json` will be recorded after the metadata commit and before the first registered payload read.
 
+
+
+## Registered-run outcome (2026-10-21)
+
+The strict all-seeds R2 predictive gate passed. E2-minus-selected-E0 15m path log-RV CRPS was -0.06690 (seed 31, 95% CI [-0.09284,-0.04086], Holm p=0.00550), -0.05775 (seed 102, CI [-0.08024,-0.04192], p=0.00550), and -0.06509 (seed 20261018, CI [-0.08243,-0.04710], p=0.00550). Pooled difference was -0.06599 (95% CI [-0.08066,-0.04903], p=0.00050). No corrected 15m return-CRPS harm occurred and all generated OHLCV paths were valid. E2 absolute-return lag-1 autocorrelation was 0.1063 vs realized 0.0737; rolling-RV mean/p95 remain high at 0.0001948/0.0004255 vs 0.0001456/0.0003160. Test remained unopened and perpetual economics remain ineligible. The R2 gate now permits preregistering R3 hierarchical model research; it does not constitute R3, economic, or Test evidence. See `docs/world_model/R2_TRXUSDT_RISK_PERSISTENCE035_RESULTS_20261021.md`.
+
