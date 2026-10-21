@@ -28,3 +28,15 @@ Frozen on 2026-10-21 after the preceding registered experiment completed and bef
 ## Previous-window outcome informing this hypothesis
 
 The prior fresh-window R2 run (2025-11-06 through 2026-02-08) did not meet its path-score gate. Pooled E2-minus-E0 15-minute path log-RV CRPS was `+0.02547` (95% CI `[-0.00393,+0.04840]`, `p=0.05597`), with Holm-corrected significant path-score harm on seed 20261018. Generated E2 rolling-RV mean/p95 were `0.0002797/0.0005632`, below realized `0.0003329/0.0006645`. Generated absolute-return lag-1 autocorrelation was `0.1130` versus realized `0.0806`. The new window tests whether a stronger risk-to-return-scale blend addresses dispersion while retaining the improved persistence. Full previous-run evidence is recorded in `R2_TRXUSDT_PERSISTENT_RISK_INNOVATION_RESULTS_20261021.md`.
+## Prepared-source verification (2026-10-21)
+
+- Registered Fold semantic hash: `e2cb5dc62cc55beb03e322fe5d281561fa07067700180c30536983bb749d1aca`; Fold config SHA-256: `24b79a47267c2b7358bf79367bd3881a9277e645cbf972d90b308a3966670419`.
+- E1 config SHA-256: `e3f979c910c8e4d4f3c70e11475516c5c5b2b86b1be1d2e222799d416aea2c38`; E2 config SHA-256: `64194210210e5183d114c1ce1c5437c890a43c0e7e82fb340c93a042caf6ad0f`.
+- Binance download receipt SHA-256: `068368647419333876100ab80993c834a5043228540763a47c5f87daf9c396c9`; curated Parquet SHA-256: `deb82fcf5a7e4f7ba3e872e53f0662441501f88af3c018000677a3fcd66d1691`; completion marker SHA-256: `fcbeaa361e912d926b53d3cebcd83db151f948cc45980428dd429fe7d8f6c5d7`; source-preparation receipt SHA-256: `5b7f4962a471d2e10dd09c49891dc377cbc3376e3e7faf676f18b2b7b9f2a8d6`.
+- Source semantic identity is schema `0.4.1`, snapshot hash `528bdc786707272888248e088cc364198a570db24b7b5fc6b2a997db2947a378`, with 135,360 events. Archives: 2026-02 `37ad3848b0497dfa0d1283d432ff9be8602408beb1443057d7b5406389c59947`; 2026-03 `7e0027c87d8f955458692cc277d532e7020c7649e2b429f80cf717da407242ab`; 2026-04 `b44781c6e24c5aad44168b62a0a2232c8903523053793796c50aa54c564e0d56`; 2026-05 `06e00dda918f0fa9200617ed5a27beac4a292925c3cc74623c756ddd6adff8ed`.
+- Footer-only audit: 94 row groups total; reader scope selects groups 0–77; no group crosses the Train+Validation end; group 78 begins at `available_at_ns=1777507261000000000`, one second after the exclusive reader boundary. No Test payload was decoded.
+- E1/E2 optimizer configurations compare equal: 1,000 updates, batch 8, learning rate `0.0003`, report interval 50. The frozen E2 values are persistence `0.65` and risk-conditioning strength `0.25`.
+- Immediate read-only ledger recheck returned `access_overlap=0`, `query_intent_overlap=0`. Worker preflight returned NumPy `2.3.3`, JAX `0.11.2`, device `cuda:0`.
+- Refreshed source manifest: 504 tracked source files, identity `8509e6a65e8d73aeb27795cd6ee8a1973360f645ef117aec9172afa0c2e0a802`.
+- The final commit-bound code fingerprint and repeated just-before-reader ledger check are recorded in `pre_read_identity.json` before running the registered reader.
+

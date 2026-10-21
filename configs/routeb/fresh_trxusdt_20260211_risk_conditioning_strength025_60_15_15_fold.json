@@ -1,0 +1,36 @@
+{
+  "allow_legacy_isolated_snapshot": false,
+  "config": {
+    "environment": {
+      "instrument": "TRXUSDT-PERP.BINANCE",
+      "market_path": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB/.artifacts/world_model/fresh-trxusdt-20260211-risk-conditioning-strength025-20261021/source/curated/market.parquet"
+    }
+  },
+  "fold": {
+    "dataset_hash": "528bdc786707272888248e088cc364198a570db24b7b5fc6b2a997db2947a378",
+    "embargo_ns": 82800000000000,
+    "feature_hash": "fc7c4373d2a4e5d802f9c0663d37ecf89d900e73afc7742d2d6ea76258540890",
+    "purge_ns": 3600000000000,
+    "scaler_hash": null,
+    "schema_version": "0.4.0",
+    "test": {
+      "score_end_ns": 1778889660000000000,
+      "score_start_ns": 1777593660000000000,
+      "warmup_start_ns": 1776556860000000000
+    },
+    "train": {
+      "score_end_ns": 1776124860000000000,
+      "score_start_ns": 1770940860000000000,
+      "warmup_start_ns": 1770768060000000000
+    },
+    "validation": {
+      "score_end_ns": 1777507260000000000,
+      "score_start_ns": 1776211260000000000,
+      "warmup_start_ns": 1775174460000000000
+    }
+  },
+  "instrument": "TRXUSDT-PERP.BINANCE",
+  "label": "routeb-fold-trxusdt-binance-20260211-risk-conditioning-strength025-v1",
+  "marker_sha256": "fcbeaa361e912d926b53d3cebcd83db151f948cc45980428dd429fe7d8f6c5d7",
+  "schema_version": "rles.world_model.registered_fold_baseline.v0"
+}
