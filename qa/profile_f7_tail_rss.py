@@ -68,11 +68,10 @@ def _value(index: int) -> float:
 
 
 def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for block in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
+    # Git may check out the same Python source with CRLF or LF depending on
+    # core.autocrlf. Bind evidence to normalized source text, not checkout EOLs.
+    contents = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(contents).hexdigest()
 
 
 def _worker(count: int, mode: str) -> dict[str, Any]:
