@@ -432,6 +432,7 @@ def test_worker_rejects_tampered_context_before_forward(tmp_path, monkeypatch, c
     ('anchor_close',float('nan'),'anchor close'),
     ('anchor_close',False,'anchor close'),
     ('anchor_close',0.0,'anchor close'),
+    ('seed',float('nan'),'request.seed'),
 ])
 def test_worker_rejects_invalid_anchor_or_instrument_before_forward(
         tmp_path, monkeypatch, capsys, field, value, message):

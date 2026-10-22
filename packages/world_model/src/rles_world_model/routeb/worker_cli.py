@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import hashlib
+import math
 import os
 import tempfile
 from pathlib import Path
@@ -25,6 +26,19 @@ from .randomness import validate_jax_seed, validate_jax_seed_offset
 from ..json_utils import loads_unique_json
 
 BATCH_ANCHOR_CHUNK_SIZE = 4
+
+
+def _reject_nonfinite_request_values(value: object, *, path: str = "request") -> None:
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError(f"{path} must be finite")
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if path == "request" and key == "anchor_close":
+                continue
+            _reject_nonfinite_request_values(item, path=f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _reject_nonfinite_request_values(item, path=f"{path}[{index}]")
 
 
 def main(argv:list[str]|None=None)->int:
@@ -116,7 +130,18 @@ def main(argv:list[str]|None=None)->int:
                     "kind":"E1_TRAIN_DIAGNOSTIC_ONLY" if e1 else "TRAIN_DIAGNOSTIC_ONLY",
                     "checkpoint":args.checkpoint,"reports":report}
         else:
-            request=loads_unique_json(Path(args.request).read_text('utf-8'))
+            request_text = Path(args.request).read_text('utf-8')
+            try:
+                request = loads_unique_json(request_text)
+            except ValueError as exc:
+                if not str(exc).startswith("non-standard JSON constant:"):
+                    raise
+                # Keep duplicate-key rejection while allowing the request's
+                # field validators to report which numeric field was invalid.
+                request = loads_unique_json(
+                    request_text, allow_nonstandard_constants=True,
+                )
+            _reject_nonfinite_request_values(request)
             batch=args.command in {'forecast-batch','e1-forecast-batch','risk-distribution-batch'}
             expected={"schema","train_scope_id","dataset_id","history_npz","context_sha256","scaler_sha256","horizon",
                       "n_paths","seed","train_npz_sha256","instrument"}

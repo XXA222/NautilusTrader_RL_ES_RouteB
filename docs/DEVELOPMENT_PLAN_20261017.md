@@ -1987,3 +1987,13 @@ Expanded exact Decimal helpers below the default Emin while retaining the defaul
 **Verification:** `tests/world_model/test_reconcile_routeb_research_ledger.py` — **26 passed**; Ruff passed for the changed source and test; py_compile passed; project MyPy passed for **225 source files**. Source manifest verifies **604 files**, identity `48815532670160883cc0f2f1c37a82aeab8603e6bd9a9a52ea5101bf0c911350`. Evidence: `docs/audit_evidence/20261023/reconcile_directory_scan_fail_closed_20261023.json`. Only temporary synthetic SQLite records and report receipts were used; no project ledger, market, account, Validation, Test, or Holdout data was accessed.
 
 **Next cursor:** continue the dependency-satisfied A01–A14 source audit. External authenticated cashflows, clean Hosted CI, independent Validation, new market-scope authorization, authentic depth, historical trial coverage, and M4.2 remain separate gates.
+
+## 2026-10-23 — M0.2 worker CLI finite-field diagnostics from Hosted CI
+
+**Finding:** Hosted workflow run `39834856764` failed both Windows and Linux CPU world-model jobs on `test_worker_rejects_invalid_anchor_or_instrument_before_forward[anchor_close-nan-anchor close]`. Strict JSON decoding rejected `NaN` before the worker's anchor field validator, so the result was correctly `BLOCKED` but its detail lacked the specific `anchor close` diagnostic required by the contract.
+
+**Fix:** `loads_unique_json()` remains strict by default and continues rejecting duplicate keys. The worker request boundary retries only non-standard numeric constants with duplicate-key protection intact, then recursively rejects non-finite values; the dedicated anchor check now reports its specific finite-positive requirement. Added coverage that a non-finite `seed` still fails at its own field path.
+
+**Verification:** the focused worker request/duplicate-key selector passes; the full RouteB app `tests/world_model` suite passes (**228 passed, 14 JAX-only skipped**; the earlier Hosted JAX CPU job passed). Full Ruff passes; MyPy passes for **225 source files**; changed modules compile. The source manifest verifies **604 files**, identity `c0bbd1ed76eab14292776aceb96b86478274b2494f59a2e6e89dfe7fc70637ab`. Evidence: `docs/audit_evidence/20261023/worker_cli_anchor_nonfinite_validation_20261023.json`. The hosted failure is from `d1defb7298314ce6231178842dac204f23c75619`; validation on the repaired revision remains pending.
+
+**Next cursor:** obtain a clean Hosted Linux/Windows run on the repaired branch revision, then continue dependency-satisfied A01–A14 code audit. External cashflows, independent Validation, authorized market scope, authentic depth, historical trial coverage, and M4.2 remain separate gates.

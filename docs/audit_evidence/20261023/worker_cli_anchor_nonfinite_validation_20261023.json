@@ -1,0 +1,16 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "M0.2 / worker request field-validation diagnostics and Hosted CI follow-up",
+  "finding": "Hosted run 39834856764 failed the Windows and Linux CPU world-model jobs on test_worker_rejects_invalid_anchor_or_instrument_before_forward[anchor_close-nan-anchor close]. The strict JSON parser rejected NaN before the request validator could report the invalid anchor_close field, yielding a generic parser detail instead of the field-specific diagnostic asserted by the contract test.",
+  "change": "Keep duplicate-key rejection and strict rejection of non-standard JSON constants by default. The worker request boundary now retries only the non-standard-constant parse case with constants represented as floats, rejects all non-finite request values recursively, and lets the existing anchor_close validation produce its precise finite-positive error. Other request fields remain explicitly rejected when non-finite.",
+  "verification": {
+    "hosted_failure_reproduced": "The hosted job log shows status BLOCKED with detail 'non-standard JSON constant: NaN'; the test expected the detail to include 'anchor close'.",
+    "focused_worker_contract_selector": "tests/world_model/test_routeb_quality_v2.py invalid anchor/instrument and duplicate-key selector passed after the fix.",
+    "full_world_model_suite": "The local RouteB app environment passed tests/world_model: 228 passed, 14 skipped. Skips are JAX-dependent cases because this app environment does not contain JAX. Hosted JAX CPU job passed on the earlier CI run.",
+    "ruff": "Full workspace Ruff check (packages ci qa tests) passed.",
+    "mypy": "Full project MyPy check (packages qa) passed with 225 source files.",
+    "source_manifest": "604 files verified; source_identity_sha256 c0bbd1ed76eab14292776aceb96b86478274b2494f59a2e6e89dfe7fc70637ab.",
+    "scope": "Synthetic temporary worker requests and contexts only. No market, account, project ledger, Validation, Test, or Holdout data was accessed.",
+    "hosted_rerun": "Pending on the repaired commit; the observed failure belongs to earlier commit d1defb7298314ce6231178842dac204f23c75619."
+  }
+}

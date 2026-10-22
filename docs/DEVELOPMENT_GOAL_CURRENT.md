@@ -1,5 +1,9 @@
 # RouteB 审计整改：当前连续开发目标
 
+## 2026-10-23 最新续做：修复 Hosted CI worker 字段诊断
+
+读取 GitHub Actions #8 作业日志发现 Windows/Linux 的 world-model selector 因 `anchor_close=NaN` 报通用 JSON 错误而失败（219 passed、14 skipped、1 failed；JAX CPU 作业通过）。现保留 JSON 默认严格解析和重复键保护，仅让 worker request 在非标准数值进入字段校验前做安全的唯一键解析；递归拒绝其它非有限字段，anchor_close 返回字段专用拒绝。修改后 app venv 的完整 `tests/world_model` 回归 **228 passed、14 个 JAX-only skipped**，全仓 Ruff、MyPy（225 files）通过；604-file source manifest identity `c0bbd1ed76eab14292776aceb96b86478274b2494f59a2e6e89dfe7fc70637ab`。Hosted 修复版重跑仍待确认。证据：`docs/audit_evidence/20261023/worker_cli_anchor_nonfinite_validation_20261023.json`。此前 A04 legacy R4 损坏账目拒绝修复亦已完成。
+
 ## 2026-10-23 最新续做：A04 legacy R4 账本损坏记录
 
 复核旧版 R4 失败报告的唯一 attempt 匹配时发现，账本中畸形 recipe/event-detail JSON 曾被静默跳过。现改为失败关闭并拒绝不完整账本视图；临时合成 SQLite 回归覆盖损坏配方和非对象事件 detail，合法单匹配恢复仍通过。对账器回归 **26 passed**，Ruff、py_compile、全仓 MyPy（225 files）通过；604-file source manifest identity `48815532670160883cc0f2f1c37a82aeab8603e6bd9a9a52ea5101bf0c911350`。证据位于 `docs/audit_evidence/20261023/reconcile_directory_scan_fail_closed_20261023.json`。无项目账本、市场、账户或正式评估数据访问。继续 A01–A14 代码审计。
