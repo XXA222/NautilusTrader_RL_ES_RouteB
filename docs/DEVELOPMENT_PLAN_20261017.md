@@ -2050,6 +2050,16 @@ The F7 audit found duplicate retained state in online reporting. Unique fills an
 
 **Boundary / next cursor:** synthetic snapshots only; no market, account, registry, Validation, Test, or Holdout payload was accessed. Continue dependency-satisfied A01–A14 audit; authenticated cashflows, historical access coverage, independent Validation, new market authorization, authentic depth, historical trial coverage, and M4.2 remain separate external/input gates.
 
+## 2026-10-23 — M0.1/A08 signed native fee rebate accounting
+
+**Finding:** instrument rules and the Native fee model retain negative maker/taker rates as exchange rebates; commission parsing also allowed signed Money amounts. `AccountFactsAccumulator` nevertheless rejected every negative row fee, so direct facts and batch/online native reports failed on valid rebates.
+
+**Fix:** accept finite signed fee rows while retaining nonnegative turnover, positive equity, and existing slippage constraints. The signed fee remains present in `total_fee` and gross-return normalization removes it consistently.
+
+**Verification:** a direct account-facts rebate test and batch/online Native report parity test failed before the fix and pass after it. The Native/metrics/historical-factory source selector passes **216 tests, 18 dependency warnings**; the RouteB app-venv wheel parity selector passes **120 tests** with `PYTHONPATH` unset. Offline research wheel build/install succeeds, and source/installed `metrics.py` SHA-256 matches at `dcb22bafd1249274ed3a096375605849cae96532744813892be15b3c0b9d4985`. Full Ruff and MyPy (`packages qa`, **225 files**) pass. The 604-file source manifest verifies identity `a2fd164e9c63a2bc13989bba8d38d4ed6c2ed894da9a1c85d94ead126809d69f`; compile and diff checks pass. Evidence: `docs/audit_evidence/20261023/m01_signed_native_fee_rebate_20261023.json`.
+
+**Boundary / next cursor:** synthetic fee/equity facts only; no market, account, registry, Validation, Test, or Holdout payload was accessed. Continue dependency-satisfied A01–A14 audit; external cashflow provenance, pre-registration history, independent Validation, new market authorization, authentic depth, historic trial coverage, and M4.2 remain separate gates.
+
 ### 2026-10-23 M0.2 follow-up — canonical inventory checksum bytes
 
 Hosted run `39837931130` confirmed the Linux wheel root fix, then failed when reaching the inventory: the Git blob was LF (`2950db3e…`), while its marker matched only Windows CRLF working-copy bytes (`9fb401e…`). Added exact-byte `-text` attributes for both inventory and marker, normalized the tracked file to LF, and rebound the marker to the LF SHA-256. A further package-root audit found the same fixed-depth assumption in WFO source hashing and world-model CLI code identity; both now discover the workspace marker through package-file ancestors. The research-access + world-model CLI suites pass **131 tests**, WFO passes **36**, full Ruff/MyPy (**225 source files**) pass, and the 604-file source identity is `59a584b0864d448535e1905a39905e2099536050a9d7550fad94d272327deb73`. Updated evidence: `docs/audit_evidence/20261023/research_registry_linux_wheel_root_20261023.json`. Hosted verification of the combined fixes remains pending.

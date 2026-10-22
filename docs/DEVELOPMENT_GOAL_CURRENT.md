@@ -1,5 +1,9 @@
 # RouteB 审计整改：当前连续开发目标
 
+## 2026-10-23 最新续做：M0.1 接受 Native maker fee 返佣
+
+审计发现数据规则和原生费用模型已支持负 maker/taker 费率返佣，Native commission 解析也保留有符号金额，但账户指标累加器仍拒绝负手续费，致使返佣在直接、批处理和在线经济报告中报错。现允许有限的有符号手续费；成交额仍非负、权益必须为正，滑点约束不变。新增直接账户事实与 batch/online Native parity 回归。四个源码套件 **216 passed、18 warnings**；RouteB 独立 wheel 两套件 **120 passed**。离线 wheel 已安装到 RouteB app venv，源/安装模块 SHA-256 一致；全仓 Ruff 与 MyPy 225 文件通过；604 文件 source manifest 验证通过。证据：`docs/audit_evidence/20261023/m01_signed_native_fee_rebate_20261023.json`。仅合成费用事实；未访问市场、账户、登记库或正式评价数据。继续剩余可本地实施审计项。
+
 ## 2026-10-23 最新续做：线性权益初始屏障拒绝预存清算订单
 
 复核 M0.1 对账不变量发现，批处理与在线线性权益对账的初始屏障均漏检 `liquidation_orders`，预存强平订单可能被接受为“无事件”基线。现在两条路径都拒绝初始屏障中的可见清算订单；批处理入口也校验提供的清算订单历史类型。新增同一合成输入对批处理/在线路径的双参数回归。四个 Native/metrics/历史工厂源码套件 **214 passed、18 warnings**；RouteB 独立 wheel 两套件 **118 passed**。Wheel 离线构建并安装成功，源与安装模块 SHA-256 一致；Ruff、目标 MyPy、语法编译、清单验证和差异检查通过。Source manifest：604 files，identity `137a3fee290d06711a0bf487521a79933ca0ba718461364647182b30835687f1`。证据：`docs/audit_evidence/20261023/m01_initial_liquidation_event_guard_20261023.json`。仅合成快照；未访问行情、账户、登记库或 Validation/Test/Holdout。继续其余可本地解决审计项。

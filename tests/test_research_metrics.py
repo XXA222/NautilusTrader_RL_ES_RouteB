@@ -12,7 +12,7 @@ from rles_research.metrics import (
     series_metrics,
 )
 from rles_research.native_metrics import account_rows, native_report, reconcile_linear_equity
-from rles_research.native_metrics import _ordered_snapshots
+from rles_research.native_metrics import _ordered_snapshots, NativeReportAccumulator
 from rles_research.statistics import (
     deflated_sharpe, deflated_sharpe_trial_count_sensitivity,
 )
@@ -105,6 +105,25 @@ def test_account_metrics_use_period_flows_and_native_signed_funding_once() -> No
     # Net equity already includes these flows. The gross metric strips each
     # period cost once and removes the signed funding cashflow once.
     assert result["gross_return_before_reported_costs"] == pytest.approx(-0.099)
+
+
+def test_account_metrics_preserve_signed_maker_fee_rebate() -> None:
+    facts = (
+        {"ts_ns": 1, "equity": 1_000.0, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+         "slippage_cost": 0.0},
+        {"ts_ns": 11, "equity": 1_000.1, "external_cashflow": 0.0,
+         "turnover_notional": 100.0, "fee": -0.1, "funding": 0.0,
+         "slippage_cost": 0.0},
+        {"ts_ns": 21, "equity": 1_000.2, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+         "slippage_cost": 0.0},
+    )
+
+    result = from_account_facts(facts, periods_per_year=2, sample_interval_ns=10)
+
+    assert result["total_fee"] == pytest.approx(-0.1)
+    assert result["gross_return_before_reported_costs"] == pytest.approx(0.0001)
 
 
 def test_account_metrics_only_compute_profit_factor_from_closed_trade_pnls() -> None:
@@ -294,6 +313,41 @@ def test_native_report_reassembles_incremental_fill_and_funding_facts() -> None:
     assert report["metrics"]["total_funding"] == pytest.approx(-0.2)
     assert compact_report["metrics"] == report["metrics"]
     assert "account_rows" not in compact_report
+
+
+def test_batch_and_online_native_reports_preserve_signed_maker_fee_rebate() -> None:
+    rebate = {
+        "event_id": "rebate-fill-1", "client_order_id": "rebate-order-1",
+        "order_side": "BUY", "last_qty": "1", "last_px": "100",
+        "commission": "-0.1 USDT",
+    }
+
+    def snapshot(timestamp: int, equity: str, fills=()):
+        return SimpleNamespace(
+            decision_ts_ns=timestamp, currency="USDT", equity=Decimal(equity),
+            positions=(), orders=(), fills=fills, funding=(),
+            liquidation_capability=True, liquidation_orders=(),
+        )
+
+    snapshots = (
+        snapshot(1, "1000"), snapshot(11, "1000.1", (rebate,)),
+        snapshot(21, "1000.2"),
+    )
+    references = {"rebate-order-1": Decimal("100")}
+    batch = native_report(
+        snapshots, fill_references=references, sample_interval_ns=10,
+        contract_multiplier=Decimal(1),
+    )
+    online = NativeReportAccumulator(
+        sample_interval_ns=10, max_return_count=2, contract_multiplier=Decimal(1),
+    )
+    for item in snapshots:
+        online.add_snapshot(item, references)
+    streamed = online.finish()
+
+    assert batch["metrics"]["total_fee"] == pytest.approx(-0.1)
+    assert batch["account_rows"][1]["fee"] == pytest.approx(-0.1)
+    assert streamed["metrics"] == batch["metrics"]
 
 
 @pytest.mark.parametrize("field, amount", (("commission", "1,2 USDT"),
