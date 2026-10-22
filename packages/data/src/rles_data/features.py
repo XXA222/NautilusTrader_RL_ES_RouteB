@@ -219,6 +219,9 @@ def _assert_contiguous(bars: tuple[dict, ...] | list[dict], timeframe: int) -> N
 
 @dataclass(frozen=True)
 class FeatureRow:
+    __slots__ = ("schema_hash", "decision_ts_ns", "available_at_ns", "instrument",
+                 "values", "_bound_hash")
+
     schema_hash: str
     decision_ts_ns: int
     available_at_ns: int
@@ -239,6 +242,15 @@ class FeatureRow:
                 self.available_at_ns > self.decision_ts_ns):
             raise DataError("future or non-finite feature observation")
         object.__setattr__(self, "_bound_hash", digest(self))
+
+    def __getstate__(self) -> dict[str, object]:
+        return {name: getattr(self, name) for name in self.__slots__}
+
+    def __setstate__(self, state: dict[str, object]) -> None:
+        if not isinstance(state, dict) or set(state) != set(self.__slots__):
+            raise DataError("invalid serialized feature row state")
+        for name, value in state.items():
+            object.__setattr__(self, name, value)
 
     @property
     def hash(self) -> str:
