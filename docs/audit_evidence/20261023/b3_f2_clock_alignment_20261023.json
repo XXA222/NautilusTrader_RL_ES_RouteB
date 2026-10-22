@@ -1,0 +1,94 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "B3 F2 decision-barrier alignment and MultiScaleClock future schedule",
+  "finding": "F2 advanced the minute prior after emitting its forecast, so an hourly or daily state available at a decision barrier affected the following minute prediction instead of that barrier forecast.",
+  "change": "F2 now applies each due slow prior event, advances the minute RSSM with the resulting slow context, and decodes the returned minute prior for the same decision. The forecast API accepts frozen per-scale availability delays and projects UTC close events from MultiScaleClock using stored last-observed slow close timestamps; it never accepts future OHLCV.",
+  "verification": {
+    "b3_cpu_smoke": {
+      "status": "PASS",
+      "scope": "synthetic_mechanism_only",
+      "time_scales": [
+        "minute",
+        "hour",
+        "day"
+      ],
+      "optimizer_updates": 2,
+      "final_step": 2,
+      "train_windows": 538,
+      "parameter_count": 3208,
+      "resume_parity": true,
+      "finite_metrics": true,
+      "all_scale_gradients_nonzero": true,
+      "scale_gradient_norms": {
+        "grad_minute_dyn_norm": 285.3298645019531,
+        "grad_hour_dyn_norm": 22.227258682250977,
+        "grad_day_dyn_norm": 68.70552062988281
+      },
+      "f2_minute_forecast_shape": [
+        1,
+        4,
+        5
+      ],
+      "f2_generated_hour_shape": [
+        1,
+        4,
+        5
+      ],
+      "f2_generated_day_shape": [
+        1,
+        4,
+        5
+      ],
+      "f2_event_masks_respected": true,
+      "f2_future_event_perturbation_causal": true,
+      "f2_delayed_event_barrier_alignment": true,
+      "f2_event_schedule_from_multiscale_clock": true,
+      "future_decision_ns": [
+        259080000000000,
+        259140000000000,
+        259200000000000,
+        259260000000000
+      ],
+      "future_hour_available_at_ns": [
+        259200000000000
+      ],
+      "future_day_available_at_ns": [
+        259200000000000
+      ],
+      "forecast_delay_ns": {
+        "hour": 0,
+        "day": 0
+      },
+      "delayed_hour_available_at_ns": [
+        259260000000000
+      ],
+      "delayed_day_available_at_ns": [
+        259260000000000
+      ],
+      "delayed_forecast_delay_ns": {
+        "hour": 60000000000,
+        "day": 60000000000
+      },
+      "real_market_validation": false,
+      "economic_claim": false,
+      "snapshot_sha": "80194a587444bf4a11f06f6e273723e5754f2483",
+      "upstream_sha": "e01491fad6434b2245a3b8ca201dd7faedcc458c"
+    },
+    "clock_pytest": "8 passed (tests/world_model/test_routeb_hierarchy_clock.py)",
+    "ruff": "Passed for changed RouteB hierarchy modules, smoke, and clock tests.",
+    "mypy": "Passed for five hierarchy modules with import-not-found disabled because global MyPy lacks optional JAX/Dreamer dependencies; locked JAX runtime smoke covers those imports.",
+    "compileall": "Passed for changed Python modules and smoke/test scripts.",
+    "clock_contract": "A one-minute/hour event delay and a two-minute/hour event delay were consumed at their first observable decision barriers in the JAX smoke and clock regression. Earlier forecasts remain bit-identical; event-time forecasts change immediately. Independent hour/day delay schedules are accepted; invalid, duplicate, and post-horizon schedules fail closed.",
+    "code_sha256": {
+      "packages/world_model/src/rles_world_model/routeb/clock.py": "79ac179cfb8ed2e1f195479a2df0d27760706a1f77751ff27ae98a9135d897dd",
+      "packages/world_model/src/rles_world_model/routeb/hierarchy.py": "92545f8016c01ac03b6f69a02da4201ad7cdec7027ebb9dd4846e07b58c595d4",
+      "packages/world_model/src/rles_world_model/routeb/hierarchy_dataset.py": "a5e8840db77d29fe831d93b2639e159467ed097ae324ceb5e9a8cf2750de48a6",
+      "packages/world_model/src/rles_world_model/routeb/jax_hierarchy.py": "039b1162f35b6742d7ddcf0f14feba431fdcba123264e79725ea7fc93e267351",
+      "packages/world_model/src/rles_world_model/routeb/jax_hierarchy_train.py": "bef7aef3085193951267b088606505e08bfb75fcbe53592fcea9661115455fe8",
+      "qa/world_model/routeb_b3_cpu_smoke.py": "eca90a355d232aaf5e37208f632bd4abb403b8e3181d3e74398c5536fee69bf0",
+      "tests/world_model/test_routeb_hierarchy_clock.py": "a40d16ba713279beabe2cabf751891e0d3c5edd5dc0ce2a8d58d913f2925686f"
+    },
+    "world_model_full_suite": "128 passed, 3 skipped in 14.12s across tests/world_model; skipped tests require JAX in the separate pinned CPU environment, whose RouteB B3 smoke passed."
+  },
+  "scope": "Pinned Python 3.12.10/JAX 0.11.2 CPU environment, synthetic bars only. No market, account, Validation, Test, or Holdout data accessed; this provides no market-quality or economic evidence."
+}

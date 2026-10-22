@@ -5,6 +5,7 @@ are available. Does not synthesize partially closed high-timeframe observations.
 """
 from __future__ import annotations
 from dataclasses import dataclass
+from numbers import Integral
 from typing import Iterable
 from .market import Candle, MINUTE_NS
 
@@ -71,6 +72,38 @@ class MultiScaleClock:
                 by_time.setdefault(b.available_at_ns,[]).append(b)
         return {ts: tuple(sorted(b, key=lambda x: -x.timeframe_minutes))
                 for ts,b in sorted(by_time.items())}
+
+    @staticmethod
+    def future_availability_schedule(*, minute_decisions_ns: Iterable[int],
+            timeframe_minutes: int, availability_delay_ns: int,
+            observed_close_through_ns: int) -> tuple[int, ...]:
+        """Project future slow-bar barriers from UTC closes and a frozen delay.
+
+        This uses only the minute decision calendar, the last observed slow-bar
+        availability barrier, and an explicit delay assumption. It never reads
+        future OHLCV. Events are returned at their expected availability times;
+        the forecast caller maps them to the first decision barrier that sees
+        each event.
+        """
+        decisions = tuple(minute_decisions_ns)
+        if (timeframe_minutes not in (60, 1440) or not decisions
+                or any(not isinstance(x, Integral) or isinstance(x, bool)
+                       or x <= 0 or x % MINUTE_NS for x in decisions)
+                or any(right <= left for left, right in zip(decisions, decisions[1:]))
+                or type(availability_delay_ns) is not int or availability_delay_ns < 0
+                or type(observed_close_through_ns) is not int
+                or observed_close_through_ns <= 0
+                or observed_close_through_ns % (timeframe_minutes * MINUTE_NS)):
+            raise ValueError("invalid future availability schedule inputs")
+        span = timeframe_minutes * MINUTE_NS
+        # Close identity is kept separately from actual availability, so a
+        # different forecast delay can never re-emit the final observed bar.
+        earliest_close = observed_close_through_ns + span
+        latest_close = (decisions[-1] - availability_delay_ns) // span * span
+        if earliest_close > latest_close:
+            return ()
+        return tuple(close + availability_delay_ns
+                     for close in range(earliest_close, latest_close + 1, span))
 
     def latest(self, timeframe_minutes: int, decision_ns: int) -> ClosedBucket | None:
         bs = self.buckets(timeframe_minutes, as_of_ns=decision_ns)

@@ -1,0 +1,20 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "B4 imagined-account input availability and instrument boundary",
+  "finding": "The simulator allowed decisions after a candle close but before its delayed available_at_ns, and the net-position account could consume multiple instruments.",
+  "change": "ImaginedAccount now floors order decision time at the last candle availability, rejects availability regressions, and binds replay to the first candle instrument before changing state.",
+  "verification": {
+    "world_model_full_suite": "130 passed, 3 JAX-only skipped (12.30s).",
+    "regressions": [
+      "test_imagined_account_uses_bar_availability_as_the_order_decision_floor",
+      "test_imagined_account_locks_instrument_and_rejects_availability_regression"
+    ],
+    "ruff": "Passed for ImaginedAccount and its regression suite.",
+    "mypy": "Passed for packages/world_model/src/rles_world_model/routeb/imagined_account.py.",
+    "source_sha256": {
+      "packages/world_model/src/rles_world_model/routeb/imagined_account.py": "e7ea91ad6c92a7bc7bb8f2a48c07501591f1e71a95cf79e50de9027762848830",
+      "tests/world_model/test_routeb_quality_v2.py": "d135ae65c1d920e080350e0e1d3a875c2eb40271a9e32a5e6bbb6288f7739787"
+    }
+  },
+  "scope": "Synthetic candles only. No real market/account, Validation, Test, or Holdout data accessed. This does not establish native execution parity or economic validity; economics_eligible remains false."
+}
