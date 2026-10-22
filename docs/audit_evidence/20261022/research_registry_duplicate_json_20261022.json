@@ -1,0 +1,35 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / research registry persisted identity JSON integrity",
+  "finding": "Research registry reservation/query-intent readers used default JSON decoding. In one authorization path malformed prior identities were skipped, which could allow a frozen formal query ID to be reused for a disjoint interval after stored identity corruption.",
+  "change": "Added a package-local recursive duplicate-key JSON parser for persisted access identities, query intents, development receipts, trial recipes/events and summary reads. Corrupt prior formal identities now raise ResearchLockError and fail closed instead of being skipped. Added a regression that corrupts a SQLite identity after dropping the immutable trigger in its isolated test database.",
+  "source_files": {
+    "packages/research/src/rles_research/json_utils.py": "35fc33062c8acb9278fb6aa099c0013ba7536e0b33448b778869a67f641425f4",
+    "packages/research/src/rles_research/access.py": "50e254347280f0b19ba67d679a0a2c171b658c7e0c3f932ed861636ee6472038"
+  },
+  "test_files": {
+    "tests/test_research_access.py": "e4564ef31934b494d4c26e72bb309fff864f6b16015568beed3294fca274d820"
+  },
+  "verification": {
+    "pytest_source": "tests/test_research_access.py: 113 passed",
+    "ruff": "passed for helper, access module, and test module",
+    "mypy": "passed for 2 source modules with import-untyped disabled for dependency wheels",
+    "source_manifest": {
+      "file_count": 579,
+      "source_identity_sha256": "57a2e2bb4ba046e00adf204fe4d8e9c25325b3f3cbd86c27fcb1463b3ac14065",
+      "verified": true
+    },
+    "wheel_build": "built offline using the existing RouteB UV cache; no PyPI access",
+    "pytest_installed_wheel": "registry + WFO + application CLI + fresh-fold access + RouteB ledger reconciler, PYTHONPATH unset: 225 passed",
+    "installed_source_parity": {
+      "installed_sha256": "50e254347280f0b19ba67d679a0a2c171b658c7e0c3f932ed861636ee6472038",
+      "source_sha256": "50e254347280f0b19ba67d679a0a2c171b658c7e0c3f932ed861636ee6472038",
+      "matches": true
+    }
+  },
+  "distribution": {
+    "wheel": "C:\\Users\\QX\\Documents\\ChatGPT\\RouteB\\routeb-research-wheel-20261022-offline\\rles_research-0.4.1-py3-none-any.whl",
+    "installed_into": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app"
+  },
+  "scope": "Synthetic identities and temporary SQLite only; no real market, ledger, Validation, Test, or Holdout database opened."
+}

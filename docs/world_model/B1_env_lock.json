@@ -1,0 +1,36 @@
+{
+  "schema_version": "rles.world_model.b1_environment.v0",
+  "status": "PASS_CPU_ONLY",
+  "python": "3.12.10",
+  "supported_python_range": "==3.12.10",
+  "platform": "Ubuntu 24.04 WSL2 x86_64",
+  "jax": "0.11.2",
+  "devices": [
+    "cpu:0"
+  ],
+  "environment_project": "packages/world_model/environment/pyproject.toml",
+  "environment_lock": "packages/world_model/environment/uv.lock",
+  "environment_lock_sha256": "32b2d0f3371976fb51b484f8334c068f1659cb01fe3d21869c377b248034f7ca",
+  "upstream_repository": "https://github.com/danijar/dreamerv3.git",
+  "upstream_commit": "e01491fad6434b2245a3b8ca201dd7faedcc458c",
+  "adapter_version": "rles-market-rssm-v0",
+  "upstream_patch_manifest": "packages/world_model/upstream_patch_manifest.json",
+  "patches": [],
+  "wsl_cuda": {
+    "status": "PASS_RSSM_SYNTHETIC_ONLY",
+    "distribution": "Ubuntu 24.04 via WSL2",
+    "python": "3.12.10",
+    "jax": "0.11.2",
+    "jaxlib": "0.11.2",
+    "cuda_plugin": "jax-cuda13-plugin 0.11.2",
+    "lockfile": "packages/world_model/requirements-world-model-wsl-cuda.lock",
+    "lockfile_sha256": "16f23e3ab6c27603a2ace915f03a3f577b35639d2b52aeaabfa44dbb4ea43ce1",
+    "locked_packages": 78,
+    "gpu": "NVIDIA GeForce RTX 5070 Laptop GPU",
+    "smoke": "qa/world_model/routeb_b2_cpu_smoke.py --expected-platform cuda",
+    "smoke_result": "docs/world_model/B2_cuda_smoke.json",
+    "verified": "Risk-head Train supervision at all five horizons; four optimizer updates; exact model and Optax resume parity; three-step forecast; one-step distribution; worker IPC; fixed-seed direct and worker forecasts are array-identical; actual device cuda:0.",
+    "measured": "Latest v3 risk/alignment/sampler smoke on 2026-10-18: uninterrupted four-step synthetic fit 5.539 seconds; JAX peak bytes in use 268638976; JAX pool peak 270532608 bytes.",
+    "limits": "Small synthetic mechanism smoke only; not a throughput study, real-market Validation, forecast-skill result, or economic claim."
+  }
+}

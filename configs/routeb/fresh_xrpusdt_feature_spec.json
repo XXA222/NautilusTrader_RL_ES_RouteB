@@ -1,0 +1,16 @@
+{
+  "availability": "closed_bar_plus_1s",
+  "bar_clock": "open_time_plus_one_minute",
+  "coordinates": [
+    "log_open_over_previous_close",
+    "log_close_over_open",
+    "log_upper_wick_plus_eps",
+    "log_lower_wick_plus_eps",
+    "log1p_volume"
+  ],
+  "eps": 1e-06,
+  "normalization": "mean_std_fit_train_score_only",
+  "schema": "routeb.ohlcv_geometry_v1",
+  "source": "binance_usdm_1m_kline",
+  "source_instrument": "XRPUSDT-PERP.BINANCE"
+}

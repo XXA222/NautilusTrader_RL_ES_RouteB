@@ -1,0 +1,28 @@
+{
+  "schema_version": "rles.world_model.b0_audit.v0",
+  "status": "COMPLETED_WITH_LIMITATIONS",
+  "scope": "registered_fresh_fold_train_validation",
+  "repository_commit": "da89fdfa8fefcf4efec9f5ea30bbef8d1f282b39",
+  "dataset_hash": "2cbafd76127a661054a3b2fbe92539ab6f07249ccf128812784e077ddf4562d5",
+  "fold_hash": "29e9251606e9190d5457c3da48a475c7f5b80107199c5723f7d8268dabc34314",
+  "bar_count": 112320,
+  "missing_minutes": 0,
+  "duplicate_minutes": 0,
+  "market_model_eligible": true,
+  "perpetual_economics_eligible": false,
+  "source_identity": {
+    "events": 135360,
+    "file_sha256": "0221c8e63227f5a5cfe9837f6aeae27fa89f4aede900b1c3b7ef113bc3b81d6c",
+    "marker_sha256": "1fe27ce49336df56595b552e30089dbf480fe3bd45387a0a3f1c8576aa4c151c",
+    "schema_version": "0.4.1",
+    "snapshot_hash": "2cbafd76127a661054a3b2fbe92539ab6f07249ccf128812784e077ddf4562d5"
+  },
+  "read_scope": {
+    "end_ns": 1760745660000000000,
+    "includes_test": false,
+    "start_ns": 1754006460000000000
+  },
+  "reason": "Fresh row-group-scoped source and registered 60/15/15 Train/Validation audit completed. The R2 predictive gate did not pass its preregistered significance criterion; perpetual economics remain unavailable.",
+  "engineering_test_result": "13 curated-window tests passed; source preparation Ruff and compile checks passed; registered three-seed CUDA ensemble completed.",
+  "next_action": "Implement and preregister temporally persistent risk innovations for Train path scoring and F1 rollout; validate on a disjoint fresh fold. Keep R3-R6 gated until an R2 Validation gate passes."
+}

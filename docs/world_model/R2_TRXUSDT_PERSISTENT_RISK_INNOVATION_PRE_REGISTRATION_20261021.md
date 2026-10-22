@@ -1,0 +1,41 @@
+# R2 persistent risk innovation — fresh-window pre-registration
+
+Frozen on 2026-10-21 before downloading or decoding the new market interval. The preceding stochastic risk/path alignment run completed with valid generated paths but did not pass its forecast-skill gate. E2 produced a lower Validation path log-RV CRPS mean than the selected baseline, but the confidence interval crossed zero on every seed; generated rolling-RV mean/p95 and absolute-return persistence were below the observed diagnostics. This follow-up tests one structural change on an untouched time interval. It does not reuse the prior Validation observations for model selection.
+
+## Frozen hypothesis and protocol
+
+- Hypothesis: independent per-minute log-RV draws weaken return-magnitude persistence. Apply a stationary Gaussian AR(1) transform to standardized risk innovations, `epsilon_t = 0.65 * epsilon_(t-1) + sqrt(1 - 0.65^2) * eta_t`, with an independent standard-normal `eta_t` and a fresh initial draw per path.
+- E2 uses the existing Gaussian RSSM and Train-only multi-horizon path log-RV CRPS at `[15,30,60]`, coefficient `3.0`, 16 Train paths, native risk loss scale `1.0`, and risk-conditioning strength `0.1`. The AR(1) risk-noise transformation is applied in both Train path scoring and F1 rollout, preserving distributional alignment. The single frozen new parameter is `rollout_risk_noise_persistence=0.65`.
+- E1 remains the unchanged fixed GRU comparator. Both candidates use 1,000 updates, batch size 8, learning rate 0.0003, report interval 50 and seeds `[31,102,20261018]`.
+- Validation: 180 anchors at 120-minute spacing, 32 paths per seed, 96 pooled paths, 4-anchor chunks, 2,000 paired moving-block bootstrap replicates, block length 12.
+- Same gate as the preceding pre-registration: each seed must show E2-minus-selected-E0 15-minute path log-RV CRPS 95% CI strictly below zero and Holm `p<0.05` in the fixed 11-test family; no seed may show significant Holm-corrected E2 harm to 15-minute return CRPS; generated OHLCV paths must be valid; rolling-RV mean/p95 and absolute-return persistence remain required diagnostics. No Test/Holdout read, economic claim or automatic promotion.
+
+## Frozen data scope
+
+- Binance USD-M TRXUSDT 1m source-open interval `[2025-11-06T00:00:00Z,2026-02-08T00:00:00Z)`: 94 UTC days and 135,360 expected closed bars.
+- Approved 60/15/15 Fold with one-hour purge and 23-hour embargo. Train+Validation reader scope `[2025-11-06T00:01:00Z,2026-01-23T00:01:00Z)` (`[1762387260000000000,1769126460000000000)`). Train score starts 2025-11-08T00:01Z; Validation score ends 2026-01-23T00:01Z; Test score is `[2026-01-24T00:01:00Z,2026-02-08T00:01:00Z)`.
+- Read-only ledger preflight on 2026-10-21 returned `access_overlap=0` and `query_intent_overlap=0` for the exact Train+Validation nanoseconds above. The prior reservation ends 2025-10-18T00:01Z, so this interval is disjoint.
+- Parquet writer must split before the first event whose `available_at_ns >= 1769126460000000000`; the registered reader remains the only operation that decodes Train/Validation row groups.
+- Output root: `.artifacts/world_model/fresh-trxusdt-20251106-persistent-risk-innovation-20261021/`.
+- Download official Binance archives only after this freeze. Verify published checksum sidecars, ZIP contents, continuous bars, source and Fold identities; repeat read-only ledger preflight immediately before registered access. Do not read Test/Holdout.
+
+## Implementation and identity freeze
+
+- Implement the AR(1) transform as a shared risk-noise helper used by Train path scoring and F1 rollout, with default persistence `0.0` retaining existing behavior. Reject persistence outside `[0,0.99]`, and reject nonzero persistence unless risk conditioning and risk sampling are both enabled.
+- Add focused checks for shape handling, persistence boundaries, deterministic seeded rollout, positive path-CRPS gradients through prior/transition/risk heads, and Train/F1 transformation parity. These tests validate mechanism only; the registered Validation gate remains decisive.
+- Append implementation commit, RouteB source fingerprint, candidate/Fold config hashes, worker identity, prepared-source hashes and final ledger preflight after data preparation and before the registered reader. No additional modeling changes after that freeze.
+
+## Append-only prepared-source and pre-read identity record
+
+Prepared after the frozen hypothesis and interval above:
+
+- Official Binance USD-M monthly archive and sidecar checks passed for TRXUSDT 1m: 2025-11 `e7a0f53d4521e378e680504c3171b91262841e40e6573431bbc189fce6e721a8`; 2025-12 `c3066dd9b2b94ff9239907a280c7bb1f42539201a7e085cc4f6378efb019302c`; 2026-01 `376f6deb82773d6ddd754f8fe4ec1d967120af34211e0eacdf73137a7aed388a`; 2026-02 `37ad3848b0497dfa0d1283d432ff9be8602408beb1443057d7b5406389c59947`. The downloader receipt is `.artifacts/world_model/fresh-trxusdt-20251106-persistent-risk-innovation-20261021/source/raw/download_receipt.json` (SHA-256 `7180593f5739c95109fe58804b3b014bc14fcf46931a2e246a1fd2681a2847ea`).
+- Source preparation report SHA-256 `5d4a239edff6842b4479caa813ad15dc3db80ba42253d25eb7b2009a8d3ccf37`; 135,360 continuous closed bars, with no missing or duplicate one-minute timestamps. Curated Parquet SHA-256 `358dce9c317f485de50123fde20d1283c5e8bb55fc9d02c2d2f44eb34ca18036`; dataset hash `d9c202e17488d5e4059347074aa23a8533e5d5a1aed1e1d0891b0dca146ab956`; completed marker SHA-256 `57bca13d146f70d44b0b3e322a4a99323ff1b0bd1757868dd9f998cd7405209b`.
+- Footer-only Parquet audit found 94 row groups total. Registered Train+Validation groups 0–77 are wholly inside `[1762387260000000000,1769126460000000000)`; there are zero crossing groups. The writer split at event offset 112,320; group 78 starts at `available_at_ns=1769126461000000000`. No Parquet payload rows were decoded during this audit.
+- Semantic Fold hash `cd9113d0c1ea80e996e7f803a2e5e3e2922a062a7455424b17e98cae8eb1b67d`; registered Fold config SHA-256 `6d2e868b98a5f966375ccc8210f7b1ea2d7ae88f1c5b6837b87bcd226948277d`. E1 config SHA-256 `e3f979c910c8e4d4f3c70e11475516c5c5b2b86b1be1d2e222799d416aea2c38`; E2 config SHA-256 `ae12e75ef4054dd0d88eec482e5969aa14c08f8961729885ccb8241273351808`.
+- RouteB source manifest identity SHA-256 `3bfe998eb3caac70768f4941cf78dad76d354d18b126bc84dd4e8385520cb3b8`. Registered runner SHA-256 `9fc8c0a98579d5564e4abaad61a702694f6006e6c56118610aa3854100d78f7a`; isolated worker environment declaration SHA-256 `04951e1986b75ece21e64f67774b8f820d20a5e0ab710a99a4bf2725e653161c`; worker lock SHA-256 `69584c518ce6fb3ce01ae7c4900b9f5d5c5bc522796399f72686042784ed0256`.
+- The isolated worker preflight passed with NumPy `2.3.3`, JAX `0.11.2`, and device `cuda:0`. Fold validation passed. The pre-download and post-preparation read-only RouteB ledger queries each found zero overlapping access rows and zero overlapping query-intent rows for the exact Train+Validation scope.
+- The final repository commit, commit-bound RouteB model code fingerprint, repeated immediate ledger preflight, and worker output are captured together in `.artifacts/world_model/fresh-trxusdt-20251106-persistent-risk-innovation-20261021/pre_read_identity.json` after the metadata commit and before the registered reader. The runner remains the one-shot authorization and sole Train/Validation Parquet payload reader. Test/Holdout payloads remain unopened.
+## Post-run outcome (append-only)
+
+The registered run completed and its canonical report digest was independently verified: `d9c667ae3d4c5bfad326c7768d326519c34d0b1179fe319e1cdba22ba7ff3526`. The R2 path-skill gate failed; pooled E2-minus-E0 15-minute log-RV CRPS was `+0.02547` with 95% CI `[-0.00393,+0.04840]` and `p=0.05597`. Seed 20261018 showed Holm-corrected significant harm to the path score (`+0.05322`, CI `[+0.01983,+0.07760]`, Holm `p=0.00550`). No significant Holm-corrected 15-minute return-CRPS harm occurred. Generated paths were valid, but rolling-RV mean/p95 remained below realized values. Full report and per-seed values are in `R2_TRXUSDT_PERSISTENT_RISK_INNOVATION_RESULTS_20261021.md`; exact registration, receipt and forecasts are under `.artifacts/world_model/fresh-trxusdt-20251106-persistent-risk-innovation-20261021/ensemble/run-01/`. The completed result does not authorize R3-R6.

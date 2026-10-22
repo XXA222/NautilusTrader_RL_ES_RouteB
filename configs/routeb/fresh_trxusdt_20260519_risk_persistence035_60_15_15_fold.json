@@ -1,0 +1,36 @@
+{
+  "allow_legacy_isolated_snapshot": false,
+  "config": {
+    "environment": {
+      "instrument": "TRXUSDT-PERP.BINANCE",
+      "market_path": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB/.artifacts/world_model/fresh-trxusdt-20260519-risk-persistence035-20261021/source/curated/market.parquet"
+    }
+  },
+  "fold": {
+    "dataset_hash": "7819bff058090b9e18adc70773c268713d4dd4556f2512084ac6702285bc358d",
+    "embargo_ns": 82800000000000,
+    "feature_hash": "fc7c4373d2a4e5d802f9c0663d37ecf89d900e73afc7742d2d6ea76258540890",
+    "purge_ns": 3600000000000,
+    "scaler_hash": null,
+    "schema_version": "0.4.0",
+    "test": {
+      "score_end_ns": 1787270460000000000,
+      "score_start_ns": 1785974460000000000,
+      "warmup_start_ns": 1784937660000000000
+    },
+    "train": {
+      "score_end_ns": 1784505660000000000,
+      "score_start_ns": 1779321660000000000,
+      "warmup_start_ns": 1779148860000000000
+    },
+    "validation": {
+      "score_end_ns": 1785888060000000000,
+      "score_start_ns": 1784592060000000000,
+      "warmup_start_ns": 1783555260000000000
+    }
+  },
+  "instrument": "TRXUSDT-PERP.BINANCE",
+  "label": "routeb-fold-trxusdt-binance-20260519-risk-persistence035-v1",
+  "marker_sha256": "f1ff58a3344ac44b41bf031c2ec4e7e7a5615ad6cb66e0170cbb7578b3fe5523",
+  "schema_version": "rles.world_model.registered_fold_baseline.v0"
+}

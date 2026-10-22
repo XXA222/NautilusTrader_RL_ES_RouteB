@@ -1,0 +1,30 @@
+{
+  "schema": "rles.routeb.audit-evidence.archive-csv-utf8-errors.v1",
+  "date": "2026-10-22",
+  "finding": "Invalid UTF-8 bytes in aggTrades, bookTicker, or kline CSV members escaped archive_events as UnicodeDecodeError instead of the archive reader's stable DataError contract.",
+  "change": "Added one streaming CSV row reader for all three archive branches. It preserves bounded-memory iteration and normalizes Unicode decoding and csv.Error failures to DataError before stream-specific interpretation.",
+  "verification": {
+    "regression_before_fix": "3 synthetic ZIP cases failed with raw UnicodeDecodeError across aggTrades, bookTicker, and klines",
+    "source_archive_and_event_tests": "37 passed",
+    "installed_wheel_archive_and_event_tests": "37 passed with PYTHONPATH unset",
+    "ruff": "passed",
+    "py_compile": "passed",
+    "targeted_mypy": "Success: no issues found in 1 source file",
+    "source_manifest": {
+      "files": 595,
+      "source_identity_sha256": "105dd6cc2afabd851182e1a3b0484134467b88fa264142cebff53081a315eb03",
+      "verified": true
+    },
+    "distribution": {
+      "wheelhouse": "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-wheels-a08-aggtrade-utf8-20261022",
+      "wheels_built": 12,
+      "sdists_built": 12,
+      "source_matches_all_wheels": true,
+      "data_wheel_sha256": "80460410ec0bdee321fbcda5dc1d40c498aaa645a672fbefcf55aca171ed280f",
+      "installed_data_module_sha256": "fec1be93c347ba4d39c2df3887b4a519ea4146df512e6061d2f0f2f9f9714699",
+      "installed_module_matches_source": true,
+      "dependency_check": "69 packages compatible"
+    }
+  },
+  "scope_limit": "Synthetic temporary ZIP fixtures only. No Binance archive was downloaded or read; no market, account, ledger, Validation, Test, or Holdout payload was accessed."
+}

@@ -1,0 +1,15 @@
+{
+  "model": {
+    "min_scale": 0.02,
+    "hidden": 64,
+    "feature_dim": 5
+  },
+  "training": {
+    "grad_clip": 100.0,
+    "lr": 0.0003,
+    "steps": 500,
+    "report_interval": 50,
+    "batch_size": 8,
+    "seed": 31
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A11 / M1.3 strict stage-analyzer JSON input contract",
+  "reproduction": {
+    "duplicate_json": "Both the current and still-callable revision-2 readers used default json.loads, accepting duplicate keys (including nested objects) and selecting the last value.",
+    "invalid_utf8": "read_text(encoding='utf-8') leaked UnicodeDecodeError instead of the analyzer ValueError contract."
+  },
+  "change": "Both analyzers use a recursive object_pairs_hook to reject duplicate JSON keys. I/O, UTF-8 and JSON syntax failures normalize to ValueError with the input path. The revision-2 compatibility analyzer also rejects non-finite/bool numerics, empty or inconsistent equity reconciliation, malformed account rows, bool/non-integer counters, and execution/risk counters exceeding policy decisions.",
+  "verification": {
+    "pytest": "tests/test_m13_stage_contribution_v2.py + tests/test_m13_stage_contribution_analysis.py: 37 passed, 1 skipped (symlink creation unavailable on this system)",
+    "ruff": "passed for both analyzers and both regression modules",
+    "mypy": "passed for both analyzers with --follow-imports=silent --disable-error-code=import-untyped; installed package has no py.typed marker",
+    "source_manifest": {
+      "files": 569,
+      "identity_sha256": "ead7d900481620b2c26c4c10e4353f1e3825c346eaa1e5087bafa6334e194aa4",
+      "verify": "passed"
+    }
+  },
+  "scope": "Synthetic temporary fixtures only; no market bundle payload, ledger, Validation, Test or Holdout was opened. M1.3 remains partial until compatible E1/R1/E2 native reports exist.",
+  "source_files": {
+    "qa/analyze_m13_stage_contribution_v2.py": "474fa11d3674a2032db1157efb197e13ecc95fb10cdf7eea3399483634075ba0",
+    "qa/analyze_m13_stage_contribution.py": "6cc6889b88d80e578c1042ef41518ad418e3642dc4b73b7ccd9bb44a2346038b"
+  },
+  "test_files": {
+    "tests/test_m13_stage_contribution_v2.py": "a0a37e1eb97ba5c7093ca85e58b3561121bb5c43165940a2a45938e54dadbc77",
+    "tests/test_m13_stage_contribution_analysis.py": "8747ac19f7a95868649249e584d1afbc39e36e1535e6047ed33fb2789427fbee"
+  }
+}

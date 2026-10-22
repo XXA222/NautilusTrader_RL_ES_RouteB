@@ -1,0 +1,37 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A04/A05 / legacy research inventory path containment and Holdout isolation",
+  "finding": "The legacy access inventory could read account rows from holdout-report.json to infer an unknown Holdout boundary, which opened a Holdout payload during inventory. Its discovered manifest, config, database, and standalone report paths were not uniformly checked for symlink or root escape. The trial inventory accepted scan roots from a mutable JSON manifest and did not constrain database paths to those roots.",
+  "change": "Removed Holdout report fallback reads; unknown Holdout bounds are conservatively quarantined through MAX_NS. Both inventory tools now resolve and reject symlinked or escaping inputs before reading. The trial inventory requires the exact frozen scan roots and constrains database paths to them. Escaping standalone report paths are recorded as unresolved so registry import remains blocked.",
+  "source_files": {
+    "qa/research_access_inventory.py": "a8f34372d3aa4bad844b3e96b0973ae239d7603ba7f8894618a5136b5df16b17",
+    "qa/research_trial_inventory.py": "6668550be92944be071dcca3455194b1bd108bddf1ad3516eaa573c20139c029"
+  },
+  "test_files": {
+    "tests/test_research_inventory_json_integrity.py": "10d3bf3dc6d951f5ae80669789fb0c3fcc1d5ba7a591b093066883c29f220ad2"
+  },
+  "verification": {
+    "pytest": "Legacy inventory boundary + research registry + fresh-fold + ledger reconciler selector: 162 passed.",
+    "ruff": "passed for both inventory tools and the regression file.",
+    "py_compile": "passed for both inventory tools and the regression file.",
+    "mypy": "packages qa: 224 source files, no issues; installed untyped-package diagnostic disabled.",
+    "source_manifest": {
+      "file_count": 590,
+      "source_identity_sha256": "a85efab192b2c5c22343485ac6696bdedcc40247cb63d7f0c8d428b8196327bd",
+      "verified": true
+    }
+  },
+  "scope": "Synthetic temporary JSON/SQLite tests plus read-only existence/discovery probe. The actual legacy .tmp roots and ledgers are missing; no project ledger, market, account, Validation, Test, or Holdout payload was opened.",
+  "current_legacy_inventory_probe": {
+    "result": "0 databases, 0 entries, 3 unresolved",
+    "unresolved": [
+      ".tmp/real-ethusdt-scenario missing",
+      ".tmp/wfo-validation-recovery-20261013 missing",
+      "rg discovery exit code 2"
+    ],
+    "market_data_loaded": false,
+    "legacy_databases_modified": false,
+    "trial_inventory": "fails closed with ValueError: legacy research root missing",
+    "output": "C:\\Users\\QX\\Documents\\ChatGPT\\RouteB\\legacy_access_inventory_20261022_after_missing_root_fix.json"
+  }
+}

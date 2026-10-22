@@ -1,0 +1,62 @@
+{
+  "schema": "rles.f7-snapshot-container-memory.v3",
+  "date": "2026-10-22",
+  "finding": "Compact native snapshots retained an O(n) per-barrier fact sequence and repeated Python wrappers for dynamic numeric payloads.",
+  "change": "Compact snapshots use exact Decimal coefficient/exponent/sign storage, integer timestamp columns, lazy views, and run columns that retain repeated facts only at value changes. Exact fallbacks preserve unsupported values.",
+  "container_profile": "qa/reports/f7_snapshot_container_memory_run_columns_20261022.json",
+  "full_replay_profile": "qa/reports/f7_synthetic_native_growth_run_columns_20261022.json",
+  "verification": {
+    "snapshot_count": 129600,
+    "container_semantic_equivalence": true,
+    "common_value_profile": {
+      "common_scalar_payloads_excluded_from_tracing": true,
+      "dataclass_list_retained_bytes": 21876616,
+      "column_store_retained_bytes": 5476116,
+      "retained_bytes_saved": 16400500,
+      "saved_bytes_per_snapshot": 126.54706790123457,
+      "dataclass_list_construction_seconds": 1.1198161999927834,
+      "column_store_construction_seconds": 2.658195100026205
+    },
+    "dynamic_payload_profile": {
+      "equity_mark_timestamp_allocated_inside_tracing": true,
+      "dataclass_list_retained_bytes": 58164800,
+      "column_store_retained_bytes": 5476580,
+      "retained_bytes_saved": 52688220,
+      "saved_bytes_per_snapshot": 406.5449074074074,
+      "semantic_equivalence": true,
+      "dataclass_list_construction_seconds": 3.2048743000486866,
+      "column_store_construction_seconds": 4.244587199995294
+    },
+    "synthetic_90_day_native_replay": {
+      "decision_steps": 129597,
+      "retained_trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f",
+      "lean_trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f",
+      "trajectory_equivalent": true,
+      "native_metrics_sha256": "0c9bb2fbdbd241a24d05c4c9b6a3e864bf37db3ea5e78dc71eb9785ea9e50a45",
+      "retained_rss_peak_delta_bytes": 519860224,
+      "retained_elapsed_seconds": 86.8062425000826,
+      "lean_rss_peak_delta_bytes": 510681088,
+      "lean_elapsed_seconds": 77.2304925000062,
+      "rss_and_runtime_are_single_observations": true
+    },
+    "source_and_installed_joint_tests": "191 passed each; installed run had PYTHONPATH unset",
+    "ruff": "passed",
+    "mypy": "Success: no issues found in historical.py with all package source roots configured",
+    "py_compile": "passed",
+    "source_manifest": {
+      "files": 596,
+      "source_identity_sha256": "d82774c94e57081807669e570331968943aa42451fde8afa186baab38b0734cd",
+      "verified": true
+    },
+    "wheelhouse": {
+      "wheel_count": 12,
+      "all_match": true,
+      "gym_bridge_source_sha256": "c0375418460ab0316bf5ca1e317ee0ee8da4e451b0c3c86c0bec511fcb74d477",
+      "gym_bridge_installed_sha256": "c0375418460ab0316bf5ca1e317ee0ee8da4e451b0c3c86c0bec511fcb74d477",
+      "gym_bridge_wheel_sha256": "d262aae50c4a120187bf78add96aca75e32e053313166283ab73cf2625eeb4e0"
+    },
+    "dependency_check": "69 packages compatible"
+  },
+  "limitations": "tracemalloc profiles isolated Python allocations, not native engine memory. Column construction was slower in this single synthetic benchmark. Full-process RSS and runtime are single observations and do not establish stable end-to-end gains. Equity, mark, timestamp, and changing state facts remain O(n); summary-only streaming for include_account_rows=false remains open.",
+  "scope_limit": "Synthetic data only. No market archive, account, ledger, Validation, Test, or Holdout payload was accessed. RouteB only; the main project and RouteA were not modified."
+}

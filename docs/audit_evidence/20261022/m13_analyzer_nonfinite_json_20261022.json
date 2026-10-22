@@ -1,0 +1,23 @@
+{
+  "schema": "rles.routeb.audit-evidence.m13-analyzer-json-integrity.v1",
+  "date": "2026-10-22",
+  "finding": "Both independent M1.3 report analyzers rejected duplicate keys but their file readers accepted Python json's non-standard NaN and Infinity constants, including in extension fields outside metric validators.",
+  "change": "Both readers now reject non-standard JSON constants at parse time and surface a stable ValueError boundary.",
+  "verification": {
+    "command": ".venv-win-app\\Scripts\\python.exe -B -m pytest -p no:cacheprovider tests\\test_m13_stage_contribution_v2.py tests\\test_m13_stage_contribution_analysis.py tests\\test_m13_runner_json_integrity.py tests\\test_m13_analysis_json_integrity.py",
+    "result": "46 passed, 1 skipped (host cannot create symlinks)",
+    "ruff": "passed for both analyzers and the new regression module",
+    "mypy": "Success: no issues found in 2 source files",
+    "source_manifest": {
+      "files": 594,
+      "source_identity_sha256": "a8b56b74d59ad12d2d9414650c777723f5d5b52bcde5a9f98b94925b1f51ae5e",
+      "verified": true
+    }
+  },
+  "source_sha256": {
+    "qa/analyze_m13_stage_contribution.py": "2e8f9bfdda3de003a8b51e78eb9da571b80616e8d23c33be7c318b1725f5212c",
+    "qa/analyze_m13_stage_contribution_v2.py": "5c0ea2ee9e8556fe8082ed3462ee9dadd6b74b9662406ab8b7ad753ad0a2cfd",
+    "tests/test_m13_analysis_json_integrity.py": "10994c7f6101e386f7671418cc0befe50ccacbb9505ebe28cda525fe0612a22e"
+  },
+  "scope_limit": "Synthetic malformed reports only; this closes an input-integrity finding and does not establish that compatible native stage artifacts or external A01-A14 research evidence gates are complete."
+}

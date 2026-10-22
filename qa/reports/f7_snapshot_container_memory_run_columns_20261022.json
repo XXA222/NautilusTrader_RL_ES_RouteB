@@ -1,0 +1,28 @@
+{
+  "column_store": {
+    "construction_seconds": 2.658195100026205,
+    "retained_container_bytes": 5476116
+  },
+  "common_scalar_payloads_excluded_from_tracing": true,
+  "count": 129600,
+  "dataclass_list": {
+    "construction_seconds": 1.1198161999927834,
+    "retained_container_bytes": 21876616
+  },
+  "dynamic_payload_profile": {
+    "column_store_construction_seconds": 4.244587199995294,
+    "column_store_retained_bytes": 5476580,
+    "dataclass_list_construction_seconds": 3.2048743000486866,
+    "dataclass_list_retained_bytes": 58164800,
+    "retained_bytes_saved": 52688220,
+    "saved_bytes_per_snapshot": 406.5449074074074,
+    "semantic_equivalence": true
+  },
+  "note": "Isolated Python allocations only. The common-value profile excludes shared values; dynamic_payload_profile creates and retains changing equity, mark and timestamp values. Neither includes native-engine RSS.",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.14.7",
+  "retained_container_bytes_saved": 16400500,
+  "saved_bytes_per_snapshot": 126.54706790123457,
+  "schema": "rles.f7-snapshot-container-memory.v1",
+  "semantic_equivalence": true
+}

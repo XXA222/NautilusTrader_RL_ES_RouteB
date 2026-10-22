@@ -1,0 +1,49 @@
+{
+  "boundary": "Only synthetic inventory data and the tracked inventory metadata were inspected. No research ledger mutation, market/account payload, Validation, Test, or Holdout access occurred.",
+  "date": "2026-10-22",
+  "finding": "The project registry verified a legacy access inventory SHA-256 and then parsed JSON with duplicate-key last-value semantics. A duplicate unresolved field could shadow a non-empty list with an empty list and proceed to import.",
+  "implementation": [
+    "Legacy research inventory decoding rejects duplicate object keys and invalid UTF-8.",
+    "The inventory schema is checked before reading entries or unresolved records.",
+    "Unresolved access records continue to block registry startup."
+  ],
+  "reproduction": {
+    "after_fix": "DataError rejects duplicate JSON keys before registry import.",
+    "before_fix": "Regression failed because project_registry did not raise DataError; the ambiguous inventory was accepted.",
+    "fixture": "synthetic legacy inventory with unresolved=[{market: BTCUSDT}] followed by a duplicate unresolved=[] key and matching SHA marker"
+  },
+  "schema": "routeb.audit.legacy-inventory-strict-json.v1",
+  "source_manifest": {
+    "files": 569,
+    "identity_sha256": "2a27b3b332721b53bc3b5a19804d2bdbbbb37fce5b8f2bcd55393e8098b10d38",
+    "verified": true
+  },
+  "verification": {
+    "app_environment_uv_check": "69 installed packages compatible",
+    "app_world_model_suite": {
+      "result": "208 passed, 14 skipped",
+      "skips": "JAX-only cases; JAX coverage run separately in the isolated CPU venv"
+    },
+    "command": ".venv-win-app/Scripts/python.exe -m pytest -p no:cacheprovider --basetemp <workspace-temp> tests/test_research_access.py tests/world_model/test_reconcile_routeb_research_ledger.py -q",
+    "cpu_jax_world_model_suite": {
+      "result": "207 passed",
+      "scope": "tests/world_model excluding test_cli.py, which requires gymnasium absent from the dedicated world-model lock; test_cli.py was covered by app_world_model_suite"
+    },
+    "full_windows_pr_selector": {
+      "duration_seconds": 265.15,
+      "result": "722 passed, 4 skipped, 317 deselected, 46 warnings",
+      "skips": "one CUDA-only provider case and three JAX-only cases in the Python 3.14 app venv"
+    },
+    "mypy": "passed on changed orchestrator source with RouteB workspace roots",
+    "result": "92 passed",
+    "ruff": "passed on changed orchestrator source and research-access tests",
+    "source_manifest": {
+      "files": 569,
+      "identity_sha256": "2a27b3b332721b53bc3b5a19804d2bdbbbb37fce5b8f2bcd55393e8098b10d38",
+      "result": "verified"
+    },
+    "tracked_inventory": "strict parse passed; schema rles.legacy-research-access.v1, 67 entries, 0 unresolved",
+    "wheel_build": "12 wheels and 12 sdists built; wheel source manifest all_match=true",
+    "wheel_install": "12 packages reinstalled into RouteB .venv-win-app; import provenance smoke verified 12 modules and 6 entry points"
+  }
+}

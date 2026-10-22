@@ -1,0 +1,100 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "finding": "The native historical factory hard-coded ETH order quantity units and planner contract multiplier 1, while the Nautilus perpetual constructor defaulted its base/quote currencies to ETH/USDT. Feature observations and WFO feature identities also needed to follow each instrument's frozen contract units.",
+  "changes": [
+    "Instrument-rule validation requires canonical base_currency and quote_currency, quantity_unit equal to base_currency for the supported linear contract, and a positive contract_multiplier.",
+    "Historical planning, feature schemas, WFO candidate feature identities, and native CryptoPerpetual construction consume the same frozen currencies, quantity unit, and multiplier.",
+    "The checked-in ETH scenario rule records its explicit specification; synthetic rules cover BTC/USDT and multiplier 2, including BTC volume/position units and USDT equity units."
+  ],
+  "source_files": [
+    {
+      "path": "packages/data/src/rles_data/schemas.py",
+      "sha256": "9b5a7a08dac6d80f2510cbc9cc6667478db048e20a749440c9c7faf1364324ce"
+    },
+    {
+      "path": "packages/gym_bridge/src/rles_gym_bridge/historical.py",
+      "sha256": "5159b1576739423406248dde5856a15ef504097d1073f668b7ae9820806099df"
+    },
+    {
+      "path": "packages/nautilus_adapter/src/rles_nautilus_adapter/perpetual.py",
+      "sha256": "f5aca5ac71e231a4af70e776893b0ecd17e267df3c0571041c71e5f499573276"
+    },
+    {
+      "path": "qa/profile_f7_synthetic_native_growth.py",
+      "sha256": "65e785536500c46e7b7aaf3f15e880d73f0c73215d5a689b8b9d503ae0527b62"
+    },
+    {
+      "path": "tests/test_data_event_guards.py",
+      "sha256": "e511034f94f8967eb237c19832e6c3a2817f3bf27907d3fa0a029cd134ffc5a9"
+    },
+    {
+      "path": "tests/test_economic_coverage.py",
+      "sha256": "2ce64887a0bcb541dce71362697bbd53fbf6092a3b05611353f61d6505d87827"
+    },
+    {
+      "path": "tests/test_historical_factory.py",
+      "sha256": "74564150c13612dc101c0eea535da1484e7809e789a7e7e4a649e737080a3221"
+    },
+    {
+      "path": "tests/test_layer_invariants.py",
+      "sha256": "b49fa8d9a12381903cc933666535f1c97ef0381412441a65db87c0c0c6b0fa8a"
+    },
+    {
+      "path": "tests/test_nautilus_adapter_smoke.py",
+      "sha256": "9bb04c17ec7e10886564b50091babcfa9f254862d779b0a7128d39312834c9fb"
+    },
+    {
+      "path": "tests/fixtures/real_ethusdt_20240101/scenario_rules.json",
+      "sha256": "e96d12e82058e7346a702fac19022c87062410d9060ae34dc5ea9ef9bb19d548"
+    },
+    {
+      "path": "packages/orchestrator/src/rles_orchestrator/wfo_application.py",
+      "sha256": "dd6c548f5164c1e21b6866b69a42fedcf834f7e7899b095736ab710a082db1bf"
+    },
+    {
+      "path": "qa/low_capacity_predictor_20261016.py",
+      "sha256": "84c84cd4269f1eebc7030fa1e9d43f3048f3456bf4ab6c2316c4dd605e23a4f3"
+    },
+    {
+      "path": "tests/test_research_wfo.py",
+      "sha256": "1e56f187b82ccd09f8101435036c1109e4b9d53435e5b96a29a5d13a80159921"
+    }
+  ],
+  "verification": {
+    "source_pytest": {
+      "command": "python -m pytest -q tests/test_data_event_guards.py tests/test_economic_coverage.py tests/test_historical_factory.py tests/test_layer_invariants.py tests/test_execution_contract_bridge.py tests/test_nautilus_adapter_smoke.py -p no:cacheprovider",
+      "result": "201 passed, 18 dependency warnings"
+    },
+    "installed_wheel_pytest": {
+      "command": "Same selector with PYTHONPATH unset against RouteB .venv-win-app",
+      "result": "201 passed, 18 dependency warnings"
+    },
+    "latest_currency_symbol_consistency_regression": {
+      "command": "tests/test_nautilus_adapter_smoke.py tests/test_historical_factory.py::test_historical_planner_uses_frozen_quantity_unit_and_contract_multiplier",
+      "source_result": "34 passed",
+      "installed_wheel_result": "34 passed",
+      "assertion": "Rejects instrument symbol / base-quote currency mismatch before native engine startup"
+    },
+    "ruff": "passed for changed Python sources and tests",
+    "mypy": "mypy packages qa --disable-error-code=import-untyped: success, 224 source files",
+    "dependency_check": "uv pip check: 69 packages compatible",
+    "distribution": {
+      "source_manifest_files": 590,
+      "source_identity_sha256": "21cd85bbaf214e86afaa5f398e78a00f8adecc25b889b2e5448af5b31a31507d",
+      "wheel_count": 12,
+      "all_wheels_match_source": true,
+      "installed_package_modules": 12,
+      "installed_entry_points": 6,
+      "wheel_manifest": "qa/reports/wheel_manifest_a09_feature_units_20261022.json"
+    },
+    "feature_unit_hash_regression": {
+      "command": "tests/test_historical_factory.py tests/test_research_wfo.py tests/test_application_cli.py",
+      "source_result": "167 passed, 18 dependency warnings in 136.81s",
+      "installed_wheel_result": "167 passed, 18 dependency warnings in 135s",
+      "assertion": "BTC market volume and position quantity use BTC units; equity uses USDT; WFO candidate feature specs receive units from frozen rules"
+    }
+  },
+  "scope": "Synthetic BTC/ETH contract metadata only. The ETH fixture's rule is scenario-only, and the BTC case checks mechanism, not exchange rules. No market, account, ledger, Validation, Test, or Holdout payload was read.",
+  "remaining": "M4.1 remains partial pending source-authenticated BTC/ETH/SOL InstrumentRules and cross-asset quantity precision, Funding, and equity-unit reconciliation. M4.2 remains deferred."
+}
+

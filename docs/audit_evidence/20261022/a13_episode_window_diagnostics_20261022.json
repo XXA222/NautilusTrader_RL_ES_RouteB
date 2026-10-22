@@ -1,0 +1,36 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A13 / M3.2 episode-window diagnostic integrity",
+  "source_file": "packages/rl_sb3/src/rles_rl_sb3/provider.py",
+  "source_sha256": "9af7b9b907889445f7fe8b98d1303f64bc6149c6ceca6444d8c0a4e0459652fd",
+  "test_file": "tests/test_native_training_episode.py",
+  "test_sha256": "18a99b8680fd403b6d25988d8e4977bbd9ac5513c903ca5e777ba48cd3c523b4",
+  "findings": [
+    "episode window facts were not checked for ordered positive bounds, positive decision-step count, or inclusion of the observed decision timestamp",
+    "repeated facts for the same worker/episode/start-offset identity could silently overwrite changed window boundaries",
+    "TrainingDiagnostics documentation described fixed volatility cut points as per-call empirical quartiles"
+  ],
+  "changes": [
+    "validate exact window keys and integer types",
+    "require a positive inclusive interval containing each observed decision timestamp",
+    "require positive decision_steps",
+    "reject changed bounds for the same episode identity",
+    "correct the volatility bin documentation"
+  ],
+  "verification": {
+    "pytest": {
+      "command": "python -m pytest tests/test_native_training_episode.py -q",
+      "result": "30 passed, 16 warnings against source and the installed RouteB wheel"
+    },
+    "ruff": "passed for provider.py and test_native_training_episode.py",
+    "mypy": "passed for provider.py",
+    "distribution": {
+      "workspace_wheels": 12,
+      "workspace_sdists": 12,
+      "wheel_manifest_all_match": true,
+      "installed_provider_sha256_matches_source": true,
+      "compatible_app_packages": 69
+    },
+    "synthetic_scope": "Synthetic native environments only; no project ledger or formal evaluation data accessed"
+  }
+}

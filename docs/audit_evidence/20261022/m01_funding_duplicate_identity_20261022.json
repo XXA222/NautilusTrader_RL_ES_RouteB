@@ -1,0 +1,23 @@
+{
+  "schema": "rles.routeb.audit-evidence.m01-funding-identity.v1",
+  "date": "2026-10-22",
+  "status": "PASS_SYNTHETIC_ENGINEERING_ONLY",
+  "finding": "M0.1 already deduplicated identical Funding event facts, but lacked a direct regression proving that a reused Funding event ID with changed PnL is rejected consistently by both batch and online reporting.",
+  "change": "Added a regression that supplies two same-timestamp barriers with the same Funding event ID and different PnL facts. It asserts that NativeReportAccumulator rejects the second barrier and native_report rejects the batch with the conflicting-identity MetricsError.",
+  "verification": {
+    "source_selector": "195 passed; 18 existing dependency/upstream warnings",
+    "installed_wheel_selector": "195 passed; 18 existing dependency/upstream warnings; PYTHONPATH unset",
+    "selectors": [
+      "tests/test_native_report_accumulator_parity.py",
+      "tests/test_research_metrics.py",
+      "tests/test_native_liquidation_facts.py",
+      "tests/test_historical_factory.py"
+    ],
+    "ruff": "passed for tests/test_native_report_accumulator_parity.py",
+    "git_diff_check": "passed for tests/test_native_report_accumulator_parity.py",
+    "wheel_manifest": "12/12 RouteB wheels match package source",
+    "pytest_temp": "The first installed-wheel attempt could not create pytest temp directories in the sandbox default temp root. Rerun with TEMP/TMP directed to the authorized RouteB scratch workspace passed all 195 tests."
+  },
+  "source_identity_sha256": "c83496706f98ce34f5f9cadeb4a8b1c9677e88159267a65a9aac93b32fec2ec1",
+  "scope": "Synthetic conflicting ledger facts only. No market, account, registry, validation, test, or holdout payload was read. No RouteA or main-project files were changed by this tranche."
+}

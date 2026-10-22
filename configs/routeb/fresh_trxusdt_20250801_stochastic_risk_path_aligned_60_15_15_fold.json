@@ -1,0 +1,36 @@
+{
+  "allow_legacy_isolated_snapshot": false,
+  "config": {
+    "environment": {
+      "instrument": "TRXUSDT-PERP.BINANCE",
+      "market_path": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB/.artifacts/world_model/fresh-trxusdt-20250801-stochastic-risk-path-aligned-20261021/source/curated/market.parquet"
+    }
+  },
+  "fold": {
+    "dataset_hash": "2cbafd76127a661054a3b2fbe92539ab6f07249ccf128812784e077ddf4562d5",
+    "embargo_ns": 82800000000000,
+    "feature_hash": "fc7c4373d2a4e5d802f9c0663d37ecf89d900e73afc7742d2d6ea76258540890",
+    "purge_ns": 3600000000000,
+    "scaler_hash": null,
+    "schema_version": "0.4.0",
+    "test": {
+      "score_end_ns": 1762128060000000000,
+      "score_start_ns": 1760832060000000000,
+      "warmup_start_ns": 1759795260000000000
+    },
+    "train": {
+      "score_end_ns": 1759363260000000000,
+      "score_start_ns": 1754179260000000000,
+      "warmup_start_ns": 1754006460000000000
+    },
+    "validation": {
+      "score_end_ns": 1760745660000000000,
+      "score_start_ns": 1759449660000000000,
+      "warmup_start_ns": 1758412860000000000
+    }
+  },
+  "instrument": "TRXUSDT-PERP.BINANCE",
+  "label": "routeb-fold-trxusdt-binance-20250801-stochastic-risk-path-aligned-v1",
+  "marker_sha256": "1fe27ce49336df56595b552e30089dbf480fe3bd45387a0a3f1c8576aa4c151c",
+  "schema_version": "rles.world_model.registered_fold_baseline.v0"
+}

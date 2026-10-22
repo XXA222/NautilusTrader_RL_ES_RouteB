@@ -1,0 +1,19 @@
+{
+  "column_store": {
+    "construction_seconds": 1.1683485000394285,
+    "retained_container_bytes": 12546432
+  },
+  "common_scalar_payloads_excluded_from_tracing": true,
+  "count": 129600,
+  "dataclass_list": {
+    "construction_seconds": 1.1204043000470847,
+    "retained_container_bytes": 21876616
+  },
+  "note": "Isolated Python retained-container allocation only; excludes shared values, native engine and process RSS.",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.14.7",
+  "retained_container_bytes_saved": 9330184,
+  "saved_bytes_per_snapshot": 71.99216049382716,
+  "schema": "rles.f7-snapshot-container-memory.v1",
+  "semantic_equivalence": true
+}

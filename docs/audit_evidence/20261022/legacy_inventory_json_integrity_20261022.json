@@ -1,0 +1,24 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A04/A05 legacy access and trial inventory input integrity",
+  "finding": "The read-only historical access inventory and trial inventory accepted duplicate JSON fields in legacy configs, report summaries, or their frozen inventory manifest. That could silently omit or replace prior access/trial evidence during coverage accounting.",
+  "change": "Both inventory tools now recursively reject duplicate JSON object keys, normalize IO/UTF-8/JSON errors to ValueError, and require object roots before interpreting prior access or trial evidence. Added synthetic duplicate-key, invalid UTF-8, and wrong-root regressions for both readers.",
+  "source_files": {
+    "qa/research_access_inventory.py": "4135614f83b62c27712190f35858f908ebd0e3f91465198a20e73694d26fc2ef",
+    "qa/research_trial_inventory.py": "f23c905cc191aad6b60ad3350b2c5bc9701c5ef2555011cf0087caca7ffc50b1"
+  },
+  "test_files": {
+    "tests/test_research_inventory_json_integrity.py": "cbe1ad4e055653a01424495100c002ff9890f28c090ca703c99b9b29afca413b"
+  },
+  "verification": {
+    "pytest": "research inventory strict-reader tests: 6 passed",
+    "ruff": "passed for both inventory tools and test module",
+    "mypy": "packages qa: 224 source files, no issues; installed untyped-wheel diagnostic disabled",
+    "source_manifest": {
+      "file_count": 581,
+      "source_identity_sha256": "e7004296bba56cca8fa1f69e6899e7c47203c8709c7830e5f28b89e88865dcd0",
+      "verified": true
+    }
+  },
+  "scope": "Only temporary synthetic JSON was parsed. Historical research ledgers and market data were not opened."
+}

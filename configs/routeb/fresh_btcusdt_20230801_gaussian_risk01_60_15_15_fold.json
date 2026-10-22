@@ -1,0 +1,36 @@
+{
+  "allow_legacy_isolated_snapshot": false,
+  "config": {
+    "environment": {
+      "instrument": "BTCUSDT-PERP.BINANCE",
+      "market_path": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB/.artifacts/world_model/fresh-btcusdt-20230801-gaussian-risk01-20261020/source/curated/market.parquet"
+    }
+  },
+  "fold": {
+    "dataset_hash": "edb8996498f9636a74f9d18b8d4d1794053dea88a9a7e901bd2186f29b2f63ea",
+    "embargo_ns": 82800000000000,
+    "feature_hash": "fc7c4373d2a4e5d802f9c0663d37ecf89d900e73afc7742d2d6ea76258540890",
+    "purge_ns": 3600000000000,
+    "scaler_hash": null,
+    "schema_version": "0.4.0",
+    "test": {
+      "score_end_ns": 1698969660000000000,
+      "score_start_ns": 1697673660000000000,
+      "warmup_start_ns": 1696723260000000000
+    },
+    "train": {
+      "score_end_ns": 1696204860000000000,
+      "score_start_ns": 1691020860000000000,
+      "warmup_start_ns": 1690848060000000000
+    },
+    "validation": {
+      "score_end_ns": 1697587260000000000,
+      "score_start_ns": 1696291260000000000,
+      "warmup_start_ns": 1695254460000000000
+    }
+  },
+  "instrument": "BTCUSDT-PERP.BINANCE",
+  "label": "routeb-fold-btcusdt-binance-601515-20230801-gaussian-risk01-v1",
+  "marker_sha256": "07027ea80189516165063051b24c60d9af4d24697a9181ad935e0edc90697235",
+  "schema_version": "rles.world_model.registered_fold_baseline.v0"
+}

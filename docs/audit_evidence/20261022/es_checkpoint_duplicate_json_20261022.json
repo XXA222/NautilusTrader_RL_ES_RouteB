@@ -1,0 +1,41 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / EvoTorch checkpoint and native state JSON integrity",
+  "finding": "E1/E2 checkpoint manifests and the embedded JSON metadata for native optimizer/distribution/population/RNG state were parsed with the default JSON decoder, allowing duplicate keys to be silently overwritten.",
+  "change": "Added a package-local recursive duplicate-key parser. ESCheckpointStore rejects ambiguous manifests under its corruption RuntimeError contract, and the native-state decoder rejects ambiguous metadata before restoring optimizer state.",
+  "source_files": {
+    "packages/es_evotorch/src/rles_es_evotorch/json_utils.py": "2ac1798d5b191dbb868c57a037fb91af8899442ed48229b36a0c0088cb056e39",
+    "packages/es_evotorch/src/rles_es_evotorch/checkpoint.py": "cc87e37c54c0a8afd94069824b634be2bbed05e5d88880663c8897a7ee497f3a",
+    "packages/es_evotorch/src/rles_es_evotorch/provider.py": "0438eaecdcbfb36767f17b588d406d9018a03c116974236066759d807e555036"
+  },
+  "test_files": {
+    "tests/test_es_checkpoint_json_integrity.py": "369850316bb1f5fd3831c63e4b7928d2571b7a466eac8b92e89f1cca8bd3f8a4"
+  },
+  "verification": {
+    "pytest_source": "duplicate-key and checkpoint resume selector: 8 passed",
+    "pytest_installed_wheel": "same selector with PYTHONPATH unset: 8 passed, including PGPE/CMA-ES uninterrupted-versus-resumed candidate parity",
+    "ruff": "passed for new parser, checkpoint, provider, and test module",
+    "mypy": "passed for 3 changed source modules",
+    "dependency_check": "uv pip check: all 69 RouteB app packages compatible",
+    "installed_source_parity": {
+      "checkpoint": {
+        "installed_sha256": "cc87e37c54c0a8afd94069824b634be2bbed05e5d88880663c8897a7ee497f3a",
+        "source_sha256": "cc87e37c54c0a8afd94069824b634be2bbed05e5d88880663c8897a7ee497f3a"
+      },
+      "provider": {
+        "installed_sha256": "0438eaecdcbfb36767f17b588d406d9018a03c116974236066759d807e555036",
+        "source_sha256": "0438eaecdcbfb36767f17b588d406d9018a03c116974236066759d807e555036"
+      }
+    },
+    "source_manifest": {
+      "file_count": 577,
+      "source_identity_sha256": "0b655feeb2e80887bef956bd91ecbd747abd26e8429308c9b2f6dd44b8d624da",
+      "verified": true
+    }
+  },
+  "distribution": {
+    "wheel": "C:\\Users\\QX\\Documents\\ChatGPT\\RouteB\\routeb-evotorch-wheel-20261022\\rles_es_evotorch-0.4.0.dev2-py3-none-any.whl",
+    "installed_into": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app"
+  },
+  "scope": "Temporary synthetic ES checkpoint and native state only; no real optimizer run, market data, or formal evaluation payload was read."
+}

@@ -1,0 +1,59 @@
+{
+  "cases": [
+    {
+      "lean": {
+        "days": 90,
+        "decision_steps": 129597,
+        "elapsed_seconds": 75.59364760003518,
+        "native_report": null,
+        "retain_report_snapshots": false,
+        "rss_end_bytes": 1058598912,
+        "rss_peak_bytes": 1100587008,
+        "rss_peak_delta_bytes": 143548416,
+        "rss_start_bytes": 957038592,
+        "trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f"
+      },
+      "retained": {
+        "days": 90,
+        "decision_steps": 129597,
+        "elapsed_seconds": 81.321510400041,
+        "native_report": {
+          "fill_count": 2,
+          "funding_count": 0,
+          "metrics_sha256": "0c9bb2fbdbd241a24d05c4c9b6a3e864bf37db3ea5e78dc71eb9785ea9e50a45",
+          "snapshot_count": 129600,
+          "terminal_flat": true
+        },
+        "retain_report_snapshots": true,
+        "rss_end_bytes": 1215016960,
+        "rss_peak_bytes": 1236488192,
+        "rss_peak_delta_bytes": 648200192,
+        "rss_start_bytes": 588288000,
+        "trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f"
+      },
+      "trajectory_equivalent": true
+    }
+  ],
+  "market_data_used": false,
+  "measurement_note": "Process RSS peaks include synthetic factory construction, per-step execution, snapshot retention, and native_report for the retained mode.",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.14.7",
+  "research_registry_accessed": false,
+  "schema": "rles.f7-synthetic-native-growth.v1",
+  "scope": "synthetic Train-only native-engine replay; no market data or registry access",
+  "source": {
+    "event_count": 389258,
+    "generation_seconds": 14.274500700063072,
+    "rss_end_bytes": 590057472,
+    "rss_peak_bytes": 638562304,
+    "snapshot_sha256": "1e3bba1d8fce94206b52b26588b7e14d0c70b23e90ad15d6393f0eb49f3c627c"
+  },
+  "source_files_sha256": {
+    "packages/gym_bridge/src/rles_gym_bridge/historical.py": "2f09b258f029c583f58f05ed9d9dd538f48ae85e613a66844e7cb1fcf8950c05",
+    "packages/orchestrator/src/rles_orchestrator/application.py": "6662f129e89e904a98345c4d417d67b689390a7c4840a1d48376211136a03b6f",
+    "packages/research/src/rles_research/native_metrics.py": "101bb07aa51960bf89b41310c26753f19de1fac82592bab406903d8fef627d53",
+    "qa/profile_f7_synthetic_native_growth.py": "23aada3aa4ca306e2be245276fb04cdad8aa6842691d9b24eadcd0baa6b09a31"
+  },
+  "status": "PASS_SYNTHETIC_ENGINEERING_ONLY",
+  "test_data_used": false
+}

@@ -1,0 +1,8 @@
+{
+  "schema_version": "world_model.b0.v1",
+  "dataset": "data/binance_ethusdt_20231230_20240415/market.parquet",
+  "instrument": "ETHUSDT-PERP.SIM",
+  "seed": 20261017,
+  "paths_per_origin": 128,
+  "s2_mean_block": 10
+}

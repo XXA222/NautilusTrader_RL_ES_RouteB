@@ -1,0 +1,57 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "finding": "Raw JSON readers for Binance transfer income pages, source/wheel manifests, and installed-wheel direct_url provenance accepted Python-only NaN/Infinity constants even though duplicate keys were rejected.",
+  "changes": [
+    "Binance single-response and paginated income readers now reject non-standard JSON constants before account cashflow facts are created.",
+    "Source and wheel manifest readers reject non-standard constants before accepting source identity metadata.",
+    "Installed-wheel direct_url.json validation rejects non-standard constants in provenance metadata."
+  ],
+  "source_files": [
+    {
+      "path": "packages/research/src/rles_research/binance_cashflows.py",
+      "sha256": "d3c4f4430015f73ba09686a6eaa944d09c5a3b6bed30da9eac7a1a87686e9485"
+    },
+    {
+      "path": "qa/source_manifest.py",
+      "sha256": "7f2512fff4810365e81191837c44074b09bb93da0d0c8ca8de978f6e449ac4d4"
+    },
+    {
+      "path": "qa/wheel_manifest.py",
+      "sha256": "35165faadb77dc51a2c6e894c2b7282115e92886f81ece19af4004c82bd7c7a0"
+    },
+    {
+      "path": "qa/smoke/wheel_imports.py",
+      "sha256": "ba752d4f122ee4703712eb91b8c866a88fd2593c3215557d4c32cda87bdacbd3"
+    },
+    {
+      "path": "tests/test_binance_cashflows.py",
+      "sha256": "31d988bd4a6d1fb5ecc353f462199f4b50f0486b5146b3af76555b8b83fc9c86"
+    },
+    {
+      "path": "tests/test_source_manifest.py",
+      "sha256": "db217af0f7dd39408d286200238fd871d63c3e90e53a5dc417fb0f8ddc354ed9"
+    },
+    {
+      "path": "tests/test_wheel_manifest.py",
+      "sha256": "83a0ab118e657e0afae0c4366e3c34916e2149978ae9c648d4b8615142ad542a"
+    }
+  ],
+  "verification": {
+    "source_pytest": "Binance cashflows + source manifest + wheel manifest selectors: 237 passed, one expected duplicate-ZIP-member fixture warning",
+    "installed_wheel_pytest": "Same selectors with PYTHONPATH unset against RouteB .venv-win-app: 237 passed, one expected duplicate-ZIP-member fixture warning",
+    "ruff": "ruff check packages ci qa tests: passed",
+    "mypy": "mypy packages qa --disable-error-code=import-untyped: success, 224 source files",
+    "dependency_check": "uv pip check: 69 packages compatible",
+    "distribution": {
+      "source_manifest_files": 593,
+      "source_identity_sha256": "ee99c214d58820978f8e1e8650d0868530fd140472c8a0c208e40fd05f6725a1",
+      "wheel_count": 12,
+      "all_wheels_match_source": true,
+      "installed_package_modules": 12,
+      "installed_entry_points": 6,
+      "wheel_manifest": "qa/reports/wheel_manifest_json_boundary_final_20261022.json"
+    }
+  },
+  "scope": "Synthetic cashflow and malformed JSON fixtures only. No private account payload or exchange API was accessed; no market/evaluation/Validation/Test/Holdout payload was read.",
+  "remaining": "Hosted Linux/Windows CI and authenticated account cashflow/market-economics evidence gates remain open."
+}

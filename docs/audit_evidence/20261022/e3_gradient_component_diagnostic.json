@@ -1,0 +1,245 @@
+{
+  "cases": {
+    "initialization_model_noise_102": {
+      "component_losses": {
+        "minute_prediction": 7.068692684173584,
+        "posterior_auxiliary": 0.8434926271438599,
+        "risk_auxiliary": 75.69718933105469,
+        "shared_kl_residual": 1.103790283203125,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": 0.4866619012820293,
+        "posterior_auxiliary": -0.8174721244965187,
+        "risk_auxiliary": 0.999534806921066,
+        "shared_kl_residual": 0.8937037252307711,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 20.527437876345708,
+        "posterior_auxiliary": 7.2610364875761935,
+        "risk_auxiliary": 552.339626316234,
+        "shared_kl_residual": 1.1289918741796683,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 114,
+      "total_gradient_norm": 557.1458930103657,
+      "total_loss": 84.71316492557526,
+      "training_seed": 31,
+      "window_start": 2901
+    },
+    "initialization_only_102": {
+      "component_losses": {
+        "minute_prediction": 7.009223937988281,
+        "posterior_auxiliary": 0.8342598080635071,
+        "risk_auxiliary": 76.78117370605469,
+        "shared_kl_residual": 1.1039047241210938,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": 0.10183920239571412,
+        "posterior_auxiliary": -0.07835246858145968,
+        "risk_auxiliary": 0.9992863008654509,
+        "shared_kl_residual": 0.16585601774755707,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 20.114912097132482,
+        "posterior_auxiliary": 8.845997910873743,
+        "risk_auxiliary": 458.14634891508877,
+        "shared_kl_residual": 1.2059648989516178,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 43,
+      "total_gradient_norm": 459.37476762890316,
+      "total_loss": 85.72856217622757,
+      "training_seed": 31,
+      "window_start": 2901
+    },
+    "initialization_sampling_102": {
+      "component_losses": {
+        "minute_prediction": 6.88187837600708,
+        "posterior_auxiliary": 0.8090128898620605,
+        "risk_auxiliary": 77.87535095214844,
+        "shared_kl_residual": 1.101837158203125,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": 0.9238841623577536,
+        "posterior_auxiliary": 0.426901479156863,
+        "risk_auxiliary": 0.9995866017073114,
+        "shared_kl_residual": -0.25178036559234757,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 69.6204233539226,
+        "posterior_auxiliary": 7.9486775237359035,
+        "risk_auxiliary": 1081.805026193128,
+        "shared_kl_residual": 0.5812031700622259,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 43,
+      "total_gradient_norm": 1148.9259830011906,
+      "total_loss": 86.6680793762207,
+      "training_seed": 31,
+      "window_start": 3523
+    },
+    "model_noise_only_102": {
+      "component_losses": {
+        "minute_prediction": 7.688227653503418,
+        "posterior_auxiliary": 0.7634164690971375,
+        "risk_auxiliary": 46.764503479003906,
+        "shared_kl_residual": 1.1000709533691406,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": -0.1656670618090544,
+        "posterior_auxiliary": -0.01926727665218786,
+        "risk_auxiliary": 0.9903917315544114,
+        "shared_kl_residual": -0.40266229794438957,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 24.56621642051302,
+        "posterior_auxiliary": 2.123193481484524,
+        "risk_auxiliary": 176.1881762846037,
+        "shared_kl_residual": 0.03486844757079931,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 114,
+      "total_gradient_norm": 170.37055173035233,
+      "total_loss": 56.3162185549736,
+      "training_seed": 31,
+      "window_start": 2901
+    },
+    "sampling_model_noise_102": {
+      "component_losses": {
+        "minute_prediction": 7.68121862411499,
+        "posterior_auxiliary": 0.7537601590156555,
+        "risk_auxiliary": 47.36095428466797,
+        "shared_kl_residual": 1.1000022888183594,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": -0.2844828956890357,
+        "posterior_auxiliary": 0.08350964774848373,
+        "risk_auxiliary": 0.9881071326277318,
+        "shared_kl_residual": 0.0,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 26.375733303130175,
+        "posterior_auxiliary": 2.2303644865817893,
+        "risk_auxiliary": 166.9032139402617,
+        "shared_kl_residual": 0.0,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 114,
+      "total_gradient_norm": 157.60106811949382,
+      "total_loss": 56.895935356616974,
+      "training_seed": 31,
+      "window_start": 3523
+    },
+    "sampling_only_102": {
+      "component_losses": {
+        "minute_prediction": 7.394847869873047,
+        "posterior_auxiliary": 0.7448350191116333,
+        "risk_auxiliary": 48.62568283081055,
+        "shared_kl_residual": 1.0999984741210938,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": 0.0006848610943612099,
+        "posterior_auxiliary": 0.1800988936892265,
+        "risk_auxiliary": 0.9851697672014293,
+        "shared_kl_residual": 0.0,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 26.33081806225084,
+        "posterior_auxiliary": 2.0257538104505857,
+        "risk_auxiliary": 149.88721637480796,
+        "shared_kl_residual": 0.0,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 43,
+      "total_gradient_norm": 148.04722303546228,
+      "total_loss": 57.86536419391632,
+      "training_seed": 31,
+      "window_start": 3523
+    },
+    "tied_102": {
+      "component_losses": {
+        "minute_prediction": 6.849629878997803,
+        "posterior_auxiliary": 0.8114718794822693,
+        "risk_auxiliary": 78.13904571533203,
+        "shared_kl_residual": 1.1000137329101562,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": 0.06468589761351408,
+        "posterior_auxiliary": 0.5281243959926784,
+        "risk_auxiliary": 0.9990878996431045,
+        "shared_kl_residual": -0.07517794224222889,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 13.376366434909226,
+        "posterior_auxiliary": 19.175143883307957,
+        "risk_auxiliary": 567.1311227397795,
+        "shared_kl_residual": 0.14233117900550352,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 114,
+      "total_gradient_norm": 577.5952656262616,
+      "total_loss": 86.90016120672226,
+      "training_seed": 102,
+      "window_start": 3523
+    },
+    "tied_31": {
+      "component_losses": {
+        "minute_prediction": 7.385508060455322,
+        "posterior_auxiliary": 0.76603764295578,
+        "risk_auxiliary": 47.80874252319336,
+        "shared_kl_residual": 1.1000328063964844,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": -0.2796782772369544,
+        "posterior_auxiliary": -0.03122533495494239,
+        "risk_auxiliary": 0.9830372873180894,
+        "shared_kl_residual": 0.03849443764998142,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 31.7760123129294,
+        "posterior_auxiliary": 2.200530005475221,
+        "risk_auxiliary": 169.26530510839848,
+        "shared_kl_residual": 0.06462679568363787,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 43,
+      "total_gradient_norm": 157.44082147534604,
+      "total_loss": 57.060321033000946,
+      "training_seed": 31,
+      "window_start": 2901
+    }
+  },
+  "component_names": [
+    "minute_prediction",
+    "posterior_auxiliary",
+    "slow_scale_auxiliary",
+    "risk_auxiliary",
+    "shared_kl_residual"
+  ],
+  "economic_claim": false,
+  "gradient_point": "terminal checkpoint evaluated on the final reported synthetic Train window",
+  "market_data_used": false,
+  "predictive_skill_claim": false,
+  "research_ledger_read": false,
+  "schema": "routeb.synthetic-e3-gradient-components.v1",
+  "source_factorial_report": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.artifacts\\world_model\\routeb-seed-stream-factorial-20261022-run07\\report.json",
+  "source_factorial_steps": 12,
+  "status": "PASS_SYNTHETIC_ENGINEERING_ONLY",
+  "validation_test_holdout_used": false
+}

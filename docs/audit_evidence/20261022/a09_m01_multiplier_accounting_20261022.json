@@ -1,0 +1,43 @@
+{
+  "schema": "rles.routeb.audit-evidence.multiplier-accounting.v1",
+  "date": "2026-10-22",
+  "finding": "M4.1 had propagated contract multipliers into planning and native instrument creation, but the historical environment still underreported position, pending-order and realized exposure. M0.1 native metrics and equity reconciliation separately rejected non-unit multipliers, excluding otherwise supported linear contracts from cost and open-equity validation.",
+  "changes": [
+    "Historical observation notional, pending-order exposure, hard-risk current notional, executed exposure, and reported base position quantity now apply the frozen multiplier; native order quantities remain contract quantities.",
+    "Research account rows now require explicit native linear-position capability and a positive multiplier, scan the whole snapshot sequence for one stable multiplier, and apply it to turnover and slippage. Linear equity reconciliation applies the multiplier to cash flows and marked unrealized PnL, records it in open rows and the report summary, and rejects inverse/unknown position types or multiplier changes."
+  ],
+  "verification": {
+    "source_selector": "tests/test_research_metrics.py tests/test_native_liquidation_facts.py tests/test_historical_factory.py tests/test_execution_contract_bridge.py tests/test_layer_invariants.py",
+    "source_result": "245 passed, 18 warnings",
+    "research_installed_wheel_selector": "tests/test_research_metrics.py tests/test_native_liquidation_facts.py",
+    "research_installed_wheel_result": "94 passed",
+    "gym_bridge_installed_wheel_selector": "tests/test_historical_factory.py tests/test_execution_contract_bridge.py tests/test_layer_invariants.py",
+    "gym_bridge_installed_wheel_result": "151 passed, 18 warnings",
+    "cross_wheel_multiplier_regressions": "3 passed with PYTHONPATH unset",
+    "ruff": "passed for all changed source/test files",
+    "mypy": "Success: no issues found in 155 package source files",
+    "dependency_check": "69 packages compatible",
+    "source_manifest": {
+      "files": 594,
+      "source_identity_sha256": "d0d500139720741e4bbd40e19668b2d6a13b8c54aa52233474e19fc92dc22e06",
+      "verified": true
+    },
+    "installed_wheels": {
+      "gym_bridge": {
+        "sha256": "ae9c34aa937a3e995e8dd724333cacb36587e2b833f996bd422d3572ca91f68a",
+        "module_sha256_matches_source": "0c9872af78964587f71613401a1923592417b05060ab42e58f546e41ddb710d4"
+      },
+      "research": {
+        "sha256": "95b55b3be0087a5bd137574210ca08e37b2c82a6e0a136b8bba91daa7102fd5d",
+        "module_sha256_matches_source": "fd93f0be152d19ce21c3c40de47034edac6a76a686707dcd7fb7be42beb3e254"
+      }
+    }
+  },
+  "source_sha256": {
+    "packages/gym_bridge/src/rles_gym_bridge/historical.py": "0c9872af78964587f71613401a1923592417b05060ab42e58f546e41ddb710d4",
+    "packages/research/src/rles_research/native_metrics.py": "fd93f0be152d19ce21c3c40de47034edac6a76a686707dcd7fb7be42beb3e254",
+    "tests/test_historical_factory.py": "d590c987ad3d038e10abfc732f120ed2dc0ee427c47c64a78cc965a4557fb703",
+    "tests/test_research_metrics.py": "e3170c5c0d5d25b30520cfb0a8fb00b37331dea4bbb6e0407c574c4bd37d6172"
+  },
+  "scope_limit": "Synthetic BTC linear contract with multiplier 2 only. Exchange specification authenticity, real cross-asset Funding/equity reconciliation, and economic performance remain unverified."
+}

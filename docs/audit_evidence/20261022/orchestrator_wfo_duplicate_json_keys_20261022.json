@@ -1,0 +1,34 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / orchestrator and WFO persisted JSON identity integrity",
+  "finding": "The orchestrator configuration loader and persisted run/checkpoint metadata readers, plus WFO bundle, protocol manifest, completion receipt, report, selection, baseline, and Holdout readers, used default JSON decoding. Duplicate object keys were silently resolved by last-value-wins semantics.",
+  "change": "Added rles_orchestrator.json_utils.loads_unique_json and routed every application.py and wfo_application.py JSON parse through it. Recursive duplicate keys now raise JSONDecodeError before parsed values can influence configuration, recovery, query receipts, or report identity.",
+  "source_files": {
+    "packages/orchestrator/src/rles_orchestrator/json_utils.py": "43b69605364418009efa5d89ed562e98e0d9b79b3be02ee0cdc9f106aaf4ea8a",
+    "packages/orchestrator/src/rles_orchestrator/application.py": "3e0788d7e5ae1a175f72a5f0d4af8947b339a1ab36a490c163a8d09b7b4b8b1d",
+    "packages/orchestrator/src/rles_orchestrator/wfo_application.py": "acb16c65afefa70a3e2daaf793d3f197715876b4100989163c9611d29a240c07"
+  },
+  "test_files": {
+    "tests/test_application_cli.py": "28e08aafe2c82d9b6aba26c647cbfa3ac82578fea5a213e49c2d13ef4e9d21b5",
+    "tests/test_research_wfo.py": "0e48ec8a0cecff062483e0974f8b37f6d4d1dfc1ec54f0fb6d02cbcba87f9bad"
+  },
+  "verification": {
+    "pytest_source": "tests/test_application_cli.py + tests/test_research_wfo.py: 78 passed against current source roots",
+    "pytest_installed_wheels": "same selectors: 78 passed with PYTHONPATH unset after installing the RouteB orchestrator wheel",
+    "pytest_combined_current_source": "tests/world_model + tests/test_application_cli.py + tests/test_research_wfo.py: 289 passed, 14 skipped (JAX-only cases skipped in app venv; exact JAX CPU workflow selector separately passed 11)",
+    "ruff": "passed on new helper, both modified modules, and both test files",
+    "mypy": "passed on the 3 orchestrator source modules with import-untyped disabled for internal wheels without py.typed",
+    "targeted_regressions": "Duplicate nested config market_path and digest-verified WFO bundle scaler mean keys are rejected. All other application and WFO persisted JSON paths use the same helper."
+  },
+  "distribution": {
+    "wheel": "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-orchestrator-wheel-final-20261022/rles_orchestrator-0.4.0.dev2-py3-none-any.whl",
+    "installed_into": "D:/Program Files/NautilusTrader_RL_ES_RouteB/.venv-win-app",
+    "dependency_check": "69 packages compatible"
+  },
+  "source_manifest": {
+    "files": 571,
+    "source_identity_sha256": "641e814dd9e8ceb2db547db19a72fc196e83819d2a0ea22cf4d9e17dd05cdce5",
+    "verified": true
+  },
+  "scope": "Only synthetic temporary config and bundle fixtures were used. No market, account, project registry, Validation, Test, or Holdout payload was accessed."
+}

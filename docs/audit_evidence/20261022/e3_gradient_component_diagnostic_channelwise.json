@@ -1,0 +1,345 @@
+{
+  "cases": {
+    "initialization_model_noise_102": {
+      "component_losses": {
+        "minute_prediction": 7.068692684173584,
+        "posterior_auxiliary": 0.8434926271438599,
+        "risk_barrier_auxiliary": 1.4026767015457153,
+        "risk_log_realized_volatility_auxiliary": 72.35304260253906,
+        "risk_log_return_auxiliary": 0.6298088431358337,
+        "risk_max_high_return_auxiliary": 0.5920082926750183,
+        "risk_min_low_return_auxiliary": 0.7196499705314636,
+        "shared_kl_residual": 1.103790283203125,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": 0.4860002207672505,
+        "posterior_auxiliary": -0.816305331955509,
+        "risk_barrier_auxiliary": 0.6647307188958723,
+        "risk_log_realized_volatility_auxiliary": 0.999473998587866,
+        "risk_log_return_auxiliary": 0.805107403102664,
+        "risk_max_high_return_auxiliary": -0.7247017090138289,
+        "risk_min_low_return_auxiliary": 0.5972294701028427,
+        "shared_kl_residual": 0.8934019772684751,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 20.527437876345708,
+        "posterior_auxiliary": 7.2610364875761935,
+        "risk_barrier_auxiliary": 7.227430358160072,
+        "risk_log_realized_volatility_auxiliary": 549.0425274085242,
+        "risk_log_return_auxiliary": 3.264131443746637,
+        "risk_max_high_return_auxiliary": 10.373575867942865,
+        "risk_min_low_return_auxiliary": 4.0637115052070145,
+        "shared_kl_residual": 1.1289918741796683,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 114,
+      "total_gradient_norm": 556.152981852489,
+      "total_loss": 84.71316200494766,
+      "training_seed": 31,
+      "window_start": 2901
+    },
+    "initialization_only_102": {
+      "component_losses": {
+        "minute_prediction": 7.009223937988281,
+        "posterior_auxiliary": 0.8342598080635071,
+        "risk_barrier_auxiliary": 1.387057900428772,
+        "risk_log_realized_volatility_auxiliary": 73.45306396484375,
+        "risk_log_return_auxiliary": 0.6286085247993469,
+        "risk_max_high_return_auxiliary": 0.5907463431358337,
+        "risk_min_low_return_auxiliary": 0.7216972708702087,
+        "shared_kl_residual": 1.103912353515625,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": 0.10237863706324607,
+        "posterior_auxiliary": -0.0793619707840365,
+        "risk_barrier_auxiliary": -0.25451005014487377,
+        "risk_log_realized_volatility_auxiliary": 0.9992560645050073,
+        "risk_log_return_auxiliary": 0.8192122124899904,
+        "risk_max_high_return_auxiliary": 0.18800909845906322,
+        "risk_min_low_return_auxiliary": -0.28076823230160164,
+        "shared_kl_residual": 0.16741487944851183,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 20.114912097132482,
+        "posterior_auxiliary": 8.845997910873743,
+        "risk_barrier_auxiliary": 5.075699114076617,
+        "risk_log_realized_volatility_auxiliary": 453.8163177443248,
+        "risk_log_return_auxiliary": 3.972458199225269,
+        "risk_max_high_return_auxiliary": 12.452973296596518,
+        "risk_min_low_return_auxiliary": 3.8733862427347954,
+        "shared_kl_residual": 1.2059648989516178,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 43,
+      "total_gradient_norm": 458.25412391151934,
+      "total_loss": 85.72857010364532,
+      "training_seed": 31,
+      "window_start": 2901
+    },
+    "initialization_sampling_102": {
+      "component_losses": {
+        "minute_prediction": 6.88187837600708,
+        "posterior_auxiliary": 0.8090128898620605,
+        "risk_barrier_auxiliary": 1.3838727474212646,
+        "risk_log_realized_volatility_auxiliary": 74.55223083496094,
+        "risk_log_return_auxiliary": 0.6228569746017456,
+        "risk_max_high_return_auxiliary": 0.593400239944458,
+        "risk_min_low_return_auxiliary": 0.7230042219161987,
+        "shared_kl_residual": 1.1018142700195312,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": 0.923844271062175,
+        "posterior_auxiliary": 0.42791394126348553,
+        "risk_barrier_auxiliary": -0.49398517083810844,
+        "risk_log_realized_volatility_auxiliary": 0.9992009942609372,
+        "risk_log_return_auxiliary": 0.940837078818749,
+        "risk_max_high_return_auxiliary": 0.9059929678528063,
+        "risk_min_low_return_auxiliary": -0.7944530164871335,
+        "shared_kl_residual": -0.252604390232403,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 69.6204233539226,
+        "posterior_auxiliary": 7.9486775237359035,
+        "risk_barrier_auxiliary": 1.78025512798526,
+        "risk_log_realized_volatility_auxiliary": 1046.0568310476438,
+        "risk_log_return_auxiliary": 6.310849684197111,
+        "risk_max_high_return_auxiliary": 29.004174681472605,
+        "risk_min_low_return_auxiliary": 2.5365807582838418,
+        "shared_kl_residual": 0.5812031700622259,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 43,
+      "total_gradient_norm": 1142.1144361683534,
+      "total_loss": 86.66807055473328,
+      "training_seed": 31,
+      "window_start": 3523
+    },
+    "model_noise_only_102": {
+      "component_losses": {
+        "minute_prediction": 7.688227653503418,
+        "posterior_auxiliary": 0.7634164690971375,
+        "risk_barrier_auxiliary": 1.3778040409088135,
+        "risk_log_realized_volatility_auxiliary": 43.53254318237305,
+        "risk_log_return_auxiliary": 0.6225743293762207,
+        "risk_max_high_return_auxiliary": 0.5991965532302856,
+        "risk_min_low_return_auxiliary": 0.6323848962783813,
+        "shared_kl_residual": 1.1000709533691406,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": -0.16575384367972776,
+        "posterior_auxiliary": -0.019117950303265626,
+        "risk_barrier_auxiliary": -0.34819004478159743,
+        "risk_log_realized_volatility_auxiliary": 0.9881863151988276,
+        "risk_log_return_auxiliary": 0.15433296934641805,
+        "risk_max_high_return_auxiliary": -0.38707382845122873,
+        "risk_min_low_return_auxiliary": 0.6352122038986351,
+        "shared_kl_residual": -0.4023442234088605,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 24.56621642051302,
+        "posterior_auxiliary": 2.123193481484524,
+        "risk_barrier_auxiliary": 2.281717595729043,
+        "risk_log_realized_volatility_auxiliary": 177.07308699100193,
+        "risk_log_return_auxiliary": 4.147880290533557,
+        "risk_max_high_return_auxiliary": 5.356515871088555,
+        "risk_min_low_return_auxiliary": 2.5782171892987282,
+        "shared_kl_residual": 0.03486844757079931,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 114,
+      "total_gradient_norm": 170.26466757968646,
+      "total_loss": 56.316218078136444,
+      "training_seed": 31,
+      "window_start": 2901
+    },
+    "sampling_model_noise_102": {
+      "component_losses": {
+        "minute_prediction": 7.68121862411499,
+        "posterior_auxiliary": 0.7537601590156555,
+        "risk_barrier_auxiliary": 1.373328447341919,
+        "risk_log_realized_volatility_auxiliary": 44.1345100402832,
+        "risk_log_return_auxiliary": 0.6197916865348816,
+        "risk_max_high_return_auxiliary": 0.6003228425979614,
+        "risk_min_low_return_auxiliary": 0.6330061554908752,
+        "shared_kl_residual": 1.0999946594238281,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": -0.2857175739547265,
+        "posterior_auxiliary": 0.08274741491796964,
+        "risk_barrier_auxiliary": -0.417656569923983,
+        "risk_log_realized_volatility_auxiliary": 0.9860959122984362,
+        "risk_log_return_auxiliary": 0.05575563812883419,
+        "risk_max_high_return_auxiliary": -0.3779168348265415,
+        "risk_min_low_return_auxiliary": 0.5624662157672937,
+        "shared_kl_residual": 0.0,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 26.375733303130175,
+        "posterior_auxiliary": 2.2303644865817893,
+        "risk_barrier_auxiliary": 1.9219787213769945,
+        "risk_log_realized_volatility_auxiliary": 168.63209921002405,
+        "risk_log_return_auxiliary": 4.1711546310673615,
+        "risk_max_high_return_auxiliary": 5.679805573547277,
+        "risk_min_low_return_auxiliary": 2.902463122208637,
+        "shared_kl_residual": 0.0,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 114,
+      "total_gradient_norm": 157.85185173017103,
+      "total_loss": 56.895932614803314,
+      "training_seed": 31,
+      "window_start": 3523
+    },
+    "sampling_only_102": {
+      "component_losses": {
+        "minute_prediction": 7.394847869873047,
+        "posterior_auxiliary": 0.7448350191116333,
+        "risk_barrier_auxiliary": 1.3903836011886597,
+        "risk_log_realized_volatility_auxiliary": 45.40272903442383,
+        "risk_log_return_auxiliary": 0.6078100800514221,
+        "risk_max_high_return_auxiliary": 0.6085212826728821,
+        "risk_min_low_return_auxiliary": 0.6162422895431519,
+        "shared_kl_residual": 1.0999946594238281,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": 0.002354268686404477,
+        "posterior_auxiliary": 0.1790433339582465,
+        "risk_barrier_auxiliary": -0.18080088077161133,
+        "risk_log_realized_volatility_auxiliary": 0.9806035798260782,
+        "risk_log_return_auxiliary": -0.18815753733554152,
+        "risk_max_high_return_auxiliary": -0.14514855543482966,
+        "risk_min_low_return_auxiliary": 0.4623525998361123,
+        "shared_kl_residual": 0.0,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 26.33081806225084,
+        "posterior_auxiliary": 2.0257538104505857,
+        "risk_barrier_auxiliary": 2.543822826836887,
+        "risk_log_realized_volatility_auxiliary": 151.30129776584118,
+        "risk_log_return_auxiliary": 3.702024923433259,
+        "risk_max_high_return_auxiliary": 5.862831564173749,
+        "risk_min_low_return_auxiliary": 2.749208018734213,
+        "shared_kl_residual": 0.0,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 43,
+      "total_gradient_norm": 148.05491440025583,
+      "total_loss": 57.86536383628845,
+      "training_seed": 31,
+      "window_start": 3523
+    },
+    "tied_102": {
+      "component_losses": {
+        "minute_prediction": 6.849629878997803,
+        "posterior_auxiliary": 0.8114718794822693,
+        "risk_barrier_auxiliary": 1.3842188119888306,
+        "risk_log_realized_volatility_auxiliary": 74.80635833740234,
+        "risk_log_return_auxiliary": 0.6320990920066833,
+        "risk_max_high_return_auxiliary": 0.5946083664894104,
+        "risk_min_low_return_auxiliary": 0.7217596173286438,
+        "shared_kl_residual": 1.1000213623046875,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": 0.064228457270684,
+        "posterior_auxiliary": 0.5296510234503263,
+        "risk_barrier_auxiliary": -0.781876052317731,
+        "risk_log_realized_volatility_auxiliary": 0.9983851559320247,
+        "risk_log_return_auxiliary": 0.36246735821593523,
+        "risk_max_high_return_auxiliary": 0.6029530940233495,
+        "risk_min_low_return_auxiliary": -0.6280969706915125,
+        "shared_kl_residual": -0.07677708874930657,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 13.376366434909226,
+        "posterior_auxiliary": 19.175143883307957,
+        "risk_barrier_auxiliary": 6.534492235305311,
+        "risk_log_realized_volatility_auxiliary": 561.8003495050957,
+        "risk_log_return_auxiliary": 3.4144765585894405,
+        "risk_max_high_return_auxiliary": 21.970294062322516,
+        "risk_min_low_return_auxiliary": 3.488431789672683,
+        "shared_kl_residual": 0.14233117900550352,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 114,
+      "total_gradient_norm": 579.081936379315,
+      "total_loss": 86.90016734600067,
+      "training_seed": 102,
+      "window_start": 3523
+    },
+    "tied_31": {
+      "component_losses": {
+        "minute_prediction": 7.385508060455322,
+        "posterior_auxiliary": 0.76603764295578,
+        "risk_barrier_auxiliary": 1.3884644508361816,
+        "risk_log_realized_volatility_auxiliary": 44.5704345703125,
+        "risk_log_return_auxiliary": 0.6153071522712708,
+        "risk_max_high_return_auxiliary": 0.6067556738853455,
+        "risk_min_low_return_auxiliary": 0.6277862787246704,
+        "shared_kl_residual": 1.1000289916992188,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_cosine_with_total": {
+        "minute_prediction": -0.2774183951826796,
+        "posterior_auxiliary": -0.030368053919650424,
+        "risk_barrier_auxiliary": -0.32455233090567603,
+        "risk_log_realized_volatility_auxiliary": 0.9797588334716306,
+        "risk_log_return_auxiliary": 0.12948900206320826,
+        "risk_max_high_return_auxiliary": -0.40468419401143435,
+        "risk_min_low_return_auxiliary": 0.616183638703015,
+        "shared_kl_residual": 0.038651134340780526,
+        "slow_scale_auxiliary": 0.0
+      },
+      "gradient_norms": {
+        "minute_prediction": 31.7760123129294,
+        "posterior_auxiliary": 2.200530005475221,
+        "risk_barrier_auxiliary": 2.8639390465278503,
+        "risk_log_realized_volatility_auxiliary": 170.76136909442008,
+        "risk_log_return_auxiliary": 4.748579932415074,
+        "risk_max_high_return_auxiliary": 6.419011349114881,
+        "risk_min_low_return_auxiliary": 2.668856316182984,
+        "shared_kl_residual": 0.06462679568363787,
+        "slow_scale_auxiliary": 0.0
+      },
+      "model_rng_seed": 43,
+      "total_gradient_norm": 157.15760547537133,
+      "total_loss": 57.06032282114029,
+      "training_seed": 31,
+      "window_start": 2901
+    }
+  },
+  "component_names": [
+    "minute_prediction",
+    "posterior_auxiliary",
+    "slow_scale_auxiliary",
+    "risk_log_return_auxiliary",
+    "risk_log_realized_volatility_auxiliary",
+    "risk_max_high_return_auxiliary",
+    "risk_min_low_return_auxiliary",
+    "risk_barrier_auxiliary",
+    "shared_kl_residual"
+  ],
+  "economic_claim": false,
+  "gradient_point": "terminal checkpoint evaluated on the final reported synthetic Train window",
+  "market_data_used": false,
+  "predictive_skill_claim": false,
+  "research_ledger_read": false,
+  "schema": "routeb.synthetic-e3-gradient-components.v1",
+  "source_factorial_report": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.artifacts\\world_model\\routeb-seed-stream-factorial-20261022-run07\\report.json",
+  "source_factorial_steps": 12,
+  "status": "PASS_SYNTHETIC_ENGINEERING_ONLY",
+  "validation_test_holdout_used": false
+}

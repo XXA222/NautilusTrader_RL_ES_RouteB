@@ -1,0 +1,36 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "finding": "Research ArtifactStore enforced duplicate-key rejection for integrity index, completion marker, and L1 manifest, but Python json parsing still accepted NaN and Infinity tokens in all three persisted artifact boundaries.",
+  "changes": [
+    "The artifact integrity index, COMPLETED marker, and L1 manifest decoders now reject non-standard JSON numeric constants in addition to duplicate keys.",
+    "Regression cases re-hash a malformed index and regenerate its marker, and re-hash a malformed L1 manifest through its index and marker, proving malformed values are rejected after integrity checks are recomputed."
+  ],
+  "source_files": [
+    {
+      "path": "packages/research/src/rles_research/artifacts.py",
+      "sha256": "824626717b628f0ceea76ea14c193ed9ced087243e6eee29351b4254ff8cb1ac"
+    },
+    {
+      "path": "tests/test_research_artifacts_json_integrity.py",
+      "sha256": "f834ca1725ac8552350362a0c44d7cc9f9fb0ca8dc90adb8568542e7ed4116d5"
+    }
+  ],
+  "verification": {
+    "source_pytest": "tests/test_research_artifacts_json_integrity.py: 3 passed; artifact_restore compatibility selector: 2 passed",
+    "installed_wheel_pytest": "tests/test_research_artifacts_json_integrity.py with PYTHONPATH unset: 3 passed; artifact_restore compatibility selector: 2 passed",
+    "ruff": "passed for changed artifact source and regression tests",
+    "mypy": "mypy packages qa --disable-error-code=import-untyped: success, 224 source files",
+    "dependency_check": "69 installed RouteB app packages compatible",
+    "distribution": {
+      "source_manifest_files": 593,
+      "source_identity_sha256": "7944048b1493902b099caeed87f27073027d807ed4030851b0a959e7cc478406",
+      "wheel_count": 12,
+      "all_wheels_match_source": true,
+      "installed_package_modules": 12,
+      "installed_entry_points": 6,
+      "wheel_manifest": "qa/reports/wheel_manifest_artifact_json_20261022.json"
+    }
+  },
+  "scope": "Temporary synthetic artifact files only. No actual research artifact, market, account, registry, Validation, Test, or Holdout payload was read.",
+  "remaining": "Hosted CI and authenticated research/economic evidence gates remain open."
+}

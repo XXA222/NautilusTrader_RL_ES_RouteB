@@ -1,0 +1,29 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A05 / registered RouteB world-model QA JSON integrity",
+  "finding": "Registered R3 consumers and synthetic world-model validation tools used default JSON decoding for forecast requests, fold reports, source preparation, CLI reports, and seed metadata. Duplicate keys could make the data identity or measured report differ from an unambiguous interpretation.",
+  "change": "R3 ablation and multi-seed ensemble now reuse the strict world-model CLI reader for forecast requests, E2 reports, and source-preparation identity. CLI worker smoke, E3 gradient diagnostic, and seed-stream factorial also use that reader for generated report/checkpoint/training metadata. R4 follow-up is recorded separately in r4_registered_controls_strict_json_20261022.json; all relevant R4 freeze/download/registered tools now use recursive duplicate-key rejection.",
+  "source_files": {
+    "qa/world_model/run_registered_r3_ablation.py": "1f362fe11919967edf8cb7c8df50e26f25b7f6a135fccb718f7c414e2a9742a5",
+    "qa/world_model/run_registered_fold_ensemble.py": "3c79d6da33d2409154c4f6c52cc9e35b18733d3b31926e4bc4bf3d4827c80542",
+    "qa/world_model/routeb_cli_worker_smoke.py": "d46a3bc9d7b8a60d0f079feca99aa6d0789e84e3bd995ceea499ec95163ae5f0",
+    "qa/world_model/routeb_e3_gradient_component_diagnostic.py": "fcc673f57e60c5d92ebd984626301e90ae32ec74e27309346c9071080777e49b",
+    "qa/world_model/routeb_seed_stream_factorial.py": "15b740cc9c867ff61ff5e04741b44a85ce51931bd69a3a08a46c91ad020d7bb7"
+  },
+  "test_files": {
+    "tests/world_model/test_routeb_registered_report_json_integrity.py": "0bc498fd300db395ace994af8ddc6b9c743ebd857a4a223c5c6ef94b619ec6d2"
+  },
+  "verification": {
+    "pytest": "registered-report integrity + CLI + randomness + R4 path-pool and baseline comparison selectors: 39 passed, 2 skipped (JAX unavailable in app venv)",
+    "ruff": "passed for all changed world-model QA readers and regression test",
+    "py_compile": "passed for all changed QA scripts",
+    "mypy": "packages qa: 224 source files, no issues; installed untyped-wheel diagnostic disabled",
+    "source_manifest": {
+      "file_count": 580,
+      "source_identity_sha256": "13e896181c83d6d6011a2270a49fb6dadaf67811b8772c30cb039b42726d22c9",
+      "verified": true
+    }
+  },
+  "remaining_direct_parsers": "qa/world_model/reconcile_routeb_research_ledger.py uses a duplicate-key hook for full documents; its remaining json.loads call decodes only escaped scalar string tokens while searching known schema markers.",
+  "scope": "Synthetic reports and temporary JSON only; no archive downloader was run and no market, registry, ledger, Validation, Test, or Holdout payload was read. QA-only changes; no package wheel rebuild required."
+}

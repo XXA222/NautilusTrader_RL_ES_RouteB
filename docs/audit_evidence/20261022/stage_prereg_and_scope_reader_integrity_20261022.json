@@ -1,0 +1,28 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A13/A14 / Train-only Stage59/60/M3.3 preregistration and Stage69 source scope integrity",
+  "finding": "The Stage59/60 and M3.3 preregistration generators permissively parsed frozen configs/reports, while the Stage69 episode-reset tool permissively parsed its preregistration, config, and source completion marker before registering and reading Train windows. Duplicate keys could change the effective scope or evidence fields despite matching raw-byte hashes.",
+  "change": "All three preregistration readers now use recursive duplicate-key rejection and require object roots. Stage69 now applies the strict parser to its frozen preregistration, config, and source marker before data registration/read. Errors fail closed under ValueError or DataError. Added temporary duplicate-field, invalid UTF-8, and wrong-root tests for all four readers.",
+  "source_files": {
+    "qa/preregister_m33_action_value.py": "5384ba3776c8d2ce2fc9022141345809d807abf45262d6f88312a45e75ddd428",
+    "qa/preregister_stage59_train_diagnostics.py": "1bd64e47d5c7d60296f3470cbbf9bc9ffddb6e8c24249b757e1bd460aa1b342b",
+    "qa/preregister_stage60_fixed_regimes.py": "150bd091bb95266cc533a4f538568ca10a4a20667c9309efc106559aeb8734cf",
+    "qa/profile_stage69_episode_reset_20261017.py": "932bc15d334d7457949b87c76dfdd94f4547395bf421619f992a767b748d31c9"
+  },
+  "test_files": {
+    "tests/test_stage_prereg_json_integrity.py": "04f57b9d8a7672ad882f9fff19281e271b0a8360c4276d215f30f2e73758d046"
+  },
+  "verification": {
+    "pytest": "stage preregistration/scope, M3/M1.3 analyzer, runner, and inventory selector: 70 passed, 1 skipped (host symlink capability)",
+    "ruff": "passed for modified preregistration and Stage69 scripts",
+    "py_compile": "passed for all modified scripts",
+    "mypy": "packages qa: 224 source files, no issues; installed untyped-wheel diagnostic disabled",
+    "source_manifest": {
+      "file_count": 584,
+      "source_identity_sha256": "f865bb5383a928035253886dc4894fbd20a02c40f64b8ae594e43f9f640c4250",
+      "verified": true
+    }
+  },
+  "data_scope": "Only synthetic JSON fixtures were read. No preregistered Stage artifacts, Train rows, ledger, Validation, Test, or Holdout were opened.",
+  "replay_boundary": "Changing preregistration or runner source hashes invalidates reuse of their previous frozen source identity; do not replay consumed Train windows."
+}

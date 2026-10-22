@@ -1,0 +1,33 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / L4 checkpoint and L0 actor JSON integrity",
+  "finding": "SB3 checkpoint verification/resume parsed manifest, episode replay, normalization, seed schedule, noise and RNG JSON with the default decoder. Frozen L0 actor loading likewise parsed its integrity ledger and actor metadata without rejecting duplicate keys.",
+  "change": "Added a recursive duplicate-key rejecting RL JSON loader and applied it to every JSON read in checkpoint.py and actor.py. Checkpoint manifest parse failures now map to ArtifactError before schema/identity use; actor integrity and metadata parse failures map to stable ArtifactError.",
+  "source_files": {
+    "packages/rl_sb3/src/rles_rl_sb3/json_utils.py": "2eab14adeef08159993beac62b3b28a089b86e26bb048a5b6e40b5e134d8bbdd",
+    "packages/rl_sb3/src/rles_rl_sb3/checkpoint.py": "8761505a829f71c73cc3f16dc311319895e6e2426b47f76ba94a64fb05461660",
+    "packages/rl_sb3/src/rles_rl_sb3/actor.py": "6088f93cc18939aa4cc92ca3d09f99738dc0661e35721510735858ffea28d86d"
+  },
+  "test_files": {
+    "tests/test_rl_sb3_json_integrity.py": "5397fe964000b113b3675c9a59373ada808fa97b47830d63db4decabbdd281e5"
+  },
+  "verification": {
+    "synthetic_integrity_tests_source": "2 passed: duplicate checkpoint manifest schema and duplicate L0 actor schema are rejected after their containing digest/integrity checks pass",
+    "resume_regression_source": "tests/test_native_training_episode.py -k native_rl_stage_restore_matches_continuous_weights: 2 passed",
+    "actor_parity_source": "test_exact_neutral_multiplier_replays_identical_perpetual_funding_ledger: 1 passed",
+    "installed_wheel": "Final RL SB3 wheel installed into RouteB .venv-win-app; synthetic + resume selector 4 passed; installed actor parity 1 passed with PYTHONPATH unset",
+    "ruff": "passed for all changed source and test files",
+    "mypy": "passed for all three changed source modules",
+    "dependency_check": "69 app packages compatible"
+  },
+  "distribution": {
+    "wheel": "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-rl-sb3-wheel-final-20261022/rles_rl_sb3-0.4.1-py3-none-any.whl",
+    "installed_into": "D:/Program Files/NautilusTrader_RL_ES_RouteB/.venv-win-app"
+  },
+  "source_manifest": {
+    "files": 573,
+    "source_identity_sha256": "4c68bdf12bf3f90ca5ce88eb818a5e352da29681735c48b4b1af0aa1640c9f67",
+    "verified": true
+  },
+  "scope": "Duplicate-key cases use temporary synthetic checkpoint and L0 artifact files; actor parity uses the existing synthetic RouteB fixture. No project account, market, Validation, Test, or Holdout payload was accessed."
+}

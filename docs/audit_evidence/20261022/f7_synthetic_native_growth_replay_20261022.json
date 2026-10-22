@@ -1,0 +1,125 @@
+{
+  "cases": [
+    {
+      "lean": {
+        "days": 1,
+        "decision_steps": 1437,
+        "elapsed_seconds": 0.9680692999390885,
+        "native_report": null,
+        "retain_report_snapshots": false,
+        "rss_end_bytes": 670777344,
+        "rss_peak_bytes": 673763328,
+        "rss_peak_delta_bytes": 4554752,
+        "rss_start_bytes": 669208576,
+        "trajectory_sha256": "b6d4426e43a2664193c1ecf8b6df2c01d84e53ea646839e8e8dc788233aab0d0"
+      },
+      "retained": {
+        "days": 1,
+        "decision_steps": 1437,
+        "elapsed_seconds": 2.715415899991058,
+        "native_report": {
+          "fill_count": 2,
+          "funding_count": 0,
+          "metrics_sha256": "c04ae8db979c9fd483494ff9a68338375fb8794281017e12eea22e6e5af3af7c",
+          "snapshot_count": 1440,
+          "terminal_flat": true
+        },
+        "retain_report_snapshots": true,
+        "rss_end_bytes": 669208576,
+        "rss_peak_bytes": 669208576,
+        "rss_peak_delta_bytes": 79085568,
+        "rss_start_bytes": 590123008,
+        "trajectory_sha256": "b6d4426e43a2664193c1ecf8b6df2c01d84e53ea646839e8e8dc788233aab0d0"
+      },
+      "trajectory_equivalent": true
+    },
+    {
+      "lean": {
+        "days": 30,
+        "decision_steps": 43197,
+        "elapsed_seconds": 25.283967000083067,
+        "native_report": null,
+        "retain_report_snapshots": false,
+        "rss_end_bytes": 799191040,
+        "rss_peak_bytes": 811794432,
+        "rss_peak_delta_bytes": 57688064,
+        "rss_start_bytes": 754106368,
+        "trajectory_sha256": "1b742e094840526937720ec51702175ee4d081990a4385562d94df4a0ec793d5"
+      },
+      "retained": {
+        "days": 30,
+        "decision_steps": 43197,
+        "elapsed_seconds": 26.564198500011116,
+        "native_report": {
+          "fill_count": 2,
+          "funding_count": 0,
+          "metrics_sha256": "a1b0bc7a8bf615d783fdb2cfe635878616a13851c4a4c67710f982801dd3a5b4",
+          "snapshot_count": 43200,
+          "terminal_flat": true
+        },
+        "retain_report_snapshots": true,
+        "rss_end_bytes": 850575360,
+        "rss_peak_bytes": 856682496,
+        "rss_peak_delta_bytes": 185901056,
+        "rss_start_bytes": 670781440,
+        "trajectory_sha256": "1b742e094840526937720ec51702175ee4d081990a4385562d94df4a0ec793d5"
+      },
+      "trajectory_equivalent": true
+    },
+    {
+      "lean": {
+        "days": 90,
+        "decision_steps": 129597,
+        "elapsed_seconds": 74.64622889994644,
+        "native_report": null,
+        "retain_report_snapshots": false,
+        "rss_end_bytes": 1052102656,
+        "rss_peak_bytes": 1100419072,
+        "rss_peak_delta_bytes": 309325824,
+        "rss_start_bytes": 791093248,
+        "trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f"
+      },
+      "retained": {
+        "days": 90,
+        "decision_steps": 129597,
+        "elapsed_seconds": 78.79722539999057,
+        "native_report": {
+          "fill_count": 2,
+          "funding_count": 0,
+          "metrics_sha256": "0c9bb2fbdbd241a24d05c4c9b6a3e864bf37db3ea5e78dc71eb9785ea9e50a45",
+          "snapshot_count": 129600,
+          "terminal_flat": true
+        },
+        "retain_report_snapshots": true,
+        "rss_end_bytes": 1214717952,
+        "rss_peak_bytes": 1236701184,
+        "rss_peak_delta_bytes": 472567808,
+        "rss_start_bytes": 764133376,
+        "trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f"
+      },
+      "trajectory_equivalent": true
+    }
+  ],
+  "market_data_used": false,
+  "measurement_note": "Process RSS peaks include synthetic factory construction, per-step execution, snapshot retention, and native_report for the retained mode.",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.14.7",
+  "research_registry_accessed": false,
+  "schema": "rles.f7-synthetic-native-growth.v1",
+  "scope": "synthetic Train-only native-engine replay; no market data or registry access",
+  "source": {
+    "event_count": 389258,
+    "generation_seconds": 14.842556299990974,
+    "rss_end_bytes": 604737536,
+    "rss_peak_bytes": 641875968,
+    "snapshot_sha256": "626685e11f28160ea015602ff1756331c2f80db2454bcc4d1ceb8d30306809e5"
+  },
+  "source_files_sha256": {
+    "packages/gym_bridge/src/rles_gym_bridge/historical.py": "0c9872af78964587f71613401a1923592417b05060ab42e58f546e41ddb710d4",
+    "packages/orchestrator/src/rles_orchestrator/application.py": "69b5d6b12b3969c45af4e0d5dbb062377f8a7b2c720dbb62eed05c7f25827441",
+    "packages/research/src/rles_research/native_metrics.py": "ff02931301a778cabd7b71002aa145aeca5b7171740f99aa5a01adbc77192ae3",
+    "qa/profile_f7_synthetic_native_growth.py": "9f3a9e194899a588d0b5605b5c9990d125be21c1cc967a86cc60439ee0dcec65"
+  },
+  "status": "PASS_SYNTHETIC_ENGINEERING_ONLY",
+  "test_data_used": false
+}

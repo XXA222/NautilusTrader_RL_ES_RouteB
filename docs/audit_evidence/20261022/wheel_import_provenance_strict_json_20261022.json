@@ -1,0 +1,26 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10/M0.2 / wheel installation provenance JSON integrity",
+  "finding": "The installed-wheel smoke verifier parsed each distribution direct_url.json with default json.loads. Duplicate dir_info.editable keys or duplicated origin fields could make the provenance check interpret the same installation as either editable or archived.",
+  "change": "The wheel smoke now rejects duplicate keys recursively, requires an object root, and validates the archive URL, archive_info, dir_info, and editable field types before confirming installed module paths.",
+  "source_files": {
+    "qa/smoke/wheel_imports.py": "0f2e90fd63016e10541d4a72108c4c9de9d8df2dee13346330aeca8f245831b9"
+  },
+  "test_files": {
+    "tests/test_wheel_manifest.py": "4297486f550e4785cd609c675d9039ae8a92b9366bb069e7f8fae6b5a6ccf895"
+  },
+  "verification": {
+    "pytest": "tests/test_wheel_manifest.py: 17 passed; 1 expected duplicate-ZIP-member fixture warning",
+    "ruff": "passed for wheel import smoke and tests/test_wheel_manifest.py",
+    "py_compile": "passed for wheel import smoke and tests/test_wheel_manifest.py",
+    "mypy": "packages qa: 224 source files, no issues; installed untyped-package diagnostic disabled",
+    "installed_wheel_smoke": "Python 3.14.7 in RouteB .venv-win-app: 12/12 distribution modules and 6/6 declared entry points resolve under the isolated venv site-packages with archive provenance.",
+    "source_manifest": {
+      "file_count": 590,
+      "source_identity_sha256": "60e1cf8cd3505790e95196ee036314d38909171db3cac755aaf7928b98625740",
+      "verified": true
+    },
+    "wheel_manifest": "Most recent RouteB wheelhouse (12 wheels): all_match=True against current package source."
+  },
+  "scope": "Installation metadata and import paths only. No market, account, ledger, or research payload was opened."
+}

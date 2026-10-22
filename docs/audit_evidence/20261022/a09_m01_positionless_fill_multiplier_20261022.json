@@ -1,0 +1,40 @@
+{
+  "changes": [
+    "Added an explicit frozen-rule contract_multiplier input to native account row, report, and equity reconciliation APIs.",
+    "When positions are available, the supplied multiplier is checked against every native position fact. When fills exist without any position multiplier, accounting now fails closed unless the frozen rule multiplier is supplied.",
+    "Production application and RouteB profile/probe report callers now pass the historical factory's frozen multiplier."
+  ],
+  "date": "2026-10-22",
+  "finding": "Native account-row metrics inferred contract_multiplier only from position snapshots and silently defaulted to 1 when fills existed but compact snapshots contained no positions. That undercounted turnover and slippage for a multiplier-2 round trip.",
+  "schema": "rles.routeb.audit-evidence.positionless-fill-multiplier.v1",
+  "scope_limit": "Synthetic multiplier-2 positionless fills only. Exchange rule authenticity, complete real account cashflows, market profitability, and hosted Linux/Windows CI are not certified.",
+  "verification": {
+    "combined_installed_wheel_selector_before_final_metadata_consistency_case": "246 passed, 18 warnings",
+    "combined_source_selector_before_final_metadata_consistency_case": "246 passed, 18 warnings",
+    "dependency_check": "69 packages compatible",
+    "final_metrics_and_liquidation_installed_wheel_selector": "96 passed",
+    "final_metrics_and_liquidation_source_selector": "96 passed",
+    "git_diff_check": "passed; only repository LF/CRLF normalization warnings",
+    "installed_modules": {
+      "rles_orchestrator.application.py": {
+        "installed_sha256": "69b5d6b12b3969c45af4e0d5dbb062377f8a7b2c720dbb62eed05c7f25827441",
+        "matches_source": true,
+        "source_sha256": "69b5d6b12b3969c45af4e0d5dbb062377f8a7b2c720dbb62eed05c7f25827441",
+        "wheel_sha256": "e17840f0549bf70feb1c6d2950252bf55d5e02074ebfd5a919f5acb35fc4729e"
+      },
+      "rles_research.native_metrics.py": {
+        "installed_sha256": "ff02931301a778cabd7b71002aa145aeca5b7171740f99aa5a01adbc77192ae3",
+        "matches_source": true,
+        "source_sha256": "ff02931301a778cabd7b71002aa145aeca5b7171740f99aa5a01adbc77192ae3",
+        "wheel_sha256": "bedc3b3a79e5f1b9fcb57f766ad3d774821396d34e31bc2d5efe9bef1241449b"
+      }
+    },
+    "mypy_packages_qa": "Success: no issues found in 224 source files",
+    "ruff_changed_files": "passed",
+    "source_manifest": {
+      "files": 594,
+      "source_identity_sha256": "0f02c4421cb6da5db27a662bc6872c545b7f7a1ff36b5b53678c650858d6b670",
+      "verified": true
+    }
+  }
+}

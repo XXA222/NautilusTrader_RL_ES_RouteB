@@ -1,0 +1,53 @@
+{
+  "schema": "rles.routeb.audit-evidence.f7-online-native-summary-stream.v1",
+  "date": "2026-10-22",
+  "status": "PASS_SYNTHETIC_ENGINEERING_ONLY",
+  "finding": "The summary-only online Native accumulator was wired into default rollout, but sourced cashflow on a repeated native timestamp could reach reconciliation before timestamp uniqueness was rejected. The streaming profile also still exercised the disk-spool prototype.",
+  "changes": [
+    "Reject a second barrier at a sourced cashflow timestamp before equity reconciliation, matching the batch report's explicit duplicate-barrier failure.",
+    "Expose the number of consumed native barriers for profiling.",
+    "Update the F7 profile to measure online summary reduction rather than disk spooling.",
+    "Add parity coverage for duplicate timestamp grouping, sourced deposits and withdrawals, duplicate cashflow barriers, and exact lower-tail metrics."
+  ],
+  "verification": {
+    "source_selector": "194 passed, 18 existing upstream warnings",
+    "installed_wheel_selector": "194 passed, 18 existing upstream warnings; PYTHONPATH unset",
+    "ruff": "passed",
+    "mypy": "Success: no issues found in native_metrics.py, profile_f7_synthetic_native_growth.py, and test_native_report_accumulator_parity.py",
+    "py_compile": "passed",
+    "source_manifest": {
+      "files": 597,
+      "source_identity_sha256": "d7771d4ad8683e5a493c9c48545aeeaf9d6108b8d47c938a964823022d12fed2",
+      "verified": true
+    },
+    "distribution": {
+      "wheels": 12,
+      "sdists": 12,
+      "wheel_manifest_all_match": true,
+      "installed_modules": 12,
+      "installed_entry_points": 6,
+      "routeb_app_dependencies_compatible": 69
+    },
+    "90_day_synthetic_profile": {
+      "decision_steps": 129597,
+      "native_barriers": 129600,
+      "trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f",
+      "lean_trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f",
+      "native_metrics_sha256": "0c9bb2fbdbd241a24d05c4c9b6a3e864bf37db3ea5e78dc71eb9785ea9e50a45",
+      "baseline_native_metrics_sha256": "0c9bb2fbdbd241a24d05c4c9b6a3e864bf37db3ea5e78dc71eb9785ea9e50a45",
+      "online_rss_peak_delta_bytes": 509599744,
+      "lean_rss_peak_delta_bytes": 510210048,
+      "online_elapsed_seconds": 83.3827784,
+      "lean_elapsed_seconds": 76.9902175,
+      "interpretation": "Single observation only. RSS was effectively similar to lean (about 0.6 MB lower); online metric reduction added about 6.4 seconds. No stable RSS reduction claim is made. The same hashes were obtained with substantially lower elapsed time than the earlier disk-spool run."
+    },
+    "profile_artifact": "docs/audit_evidence/20261022/f7_online_native_summary_stream_20261022.json"
+  },
+  "limits": [
+    "Only fixed-action synthetic OHLCV, mark, index, funding, and native-engine replay were used.",
+    "No curated market archive, account, research registry, project ledger, Validation, Test, or Holdout payload was accessed.",
+    "Exact lower-tail statistics retain a worst-return heap sized from the known return-count bound, so memory is not constant in sample count.",
+    "Account-row reports intentionally materialize rows; this work validates the summary-only path."
+  ],
+  "next": "Continue the local A01-A14 source audit from the current RouteB tree. Preserve external gates for authenticated account cashflows, market rules, independent research windows, and Hosted CI."
+}

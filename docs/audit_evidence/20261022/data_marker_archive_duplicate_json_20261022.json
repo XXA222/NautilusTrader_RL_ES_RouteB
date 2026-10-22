@@ -1,0 +1,33 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / curated data marker and Binance archive JSON integrity",
+  "finding": "Curated COMPLETE markers and Binance archive/funding source receipts or REST funding rows still used the default JSON decoder, allowing duplicate fields to be silently resolved last-key-wins before data source identity and funding facts were accepted.",
+  "change": "Added rles_data.json_utils.loads_unique_json and applied it to curated source identity, footer preflight, full/scoped curated readers, row payloads, Binance cached archive receipts, funding API rows, and cached funding API receipts. Nested duplicate keys are rejected as JSON errors and normalized to stable DataError contracts.",
+  "source_files": {
+    "packages/data/src/rles_data/json_utils.py": "0fcccbbfaa8c81ee3d494634fda8807acb0c242ecdba177b461860a0af52fa96",
+    "packages/data/src/rles_data/io.py": "9aadf07bdce2038d839baf8868d2698dac5b43c963ecc354ee81768be125d929",
+    "packages/data/src/rles_data/binance_archive.py": "d4909e332f28055bfbd8fb5b3680e9bb94f486b1a42f855b19173061db424a4b"
+  },
+  "test_files": {
+    "tests/test_curated_window_read.py": "de658f65e34c96152c71ffadb2f2c070e10df362728c00f68c31c9cc6427f704",
+    "tests/test_binance_archive_range.py": "4ff729245a2a5de441eaf1048a3253dff9203d8f766922e4054328075d2d87c3"
+  },
+  "verification": {
+    "pytest_source": "test_curated_window_read.py + test_binance_archive_range.py: 36 passed against RouteB source roots",
+    "pytest_installed_wheels": "those files plus application_cli and research_wfo: 114 passed with PYTHONPATH unset after installing the new rles-data wheel",
+    "ruff": "passed for new helper, both modified data modules, and both test files",
+    "mypy": "passed for all three data source modules",
+    "dependency_check": "69 app packages compatible",
+    "coverage": "Duplicate curated marker schema, archive receipt schema, and REST funding row symbol fields are rejected."
+  },
+  "distribution": {
+    "wheel": "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-data-wheel-final-20261022/rles_data-0.4.1-py3-none-any.whl",
+    "installed_into": "D:/Program Files/NautilusTrader_RL_ES_RouteB/.venv-win-app"
+  },
+  "source_manifest": {
+    "files": 574,
+    "source_identity_sha256": "aa24bc738e2a7db3a9cf1bd71e555910f404c6fca6e5492a608d3ec9f2cda8a5",
+    "verified": true
+  },
+  "scope": "Only synthetic curated markers, archive receipts, REST rows, and fixture archives were used. No market, account, project registry, Validation, Test, or Holdout payload was accessed."
+}

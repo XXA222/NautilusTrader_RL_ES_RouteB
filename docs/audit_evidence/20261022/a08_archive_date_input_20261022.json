@@ -1,0 +1,31 @@
+{
+  "schema": "rles.routeb.audit-evidence.archive-ingress-validation.v1",
+  "date": "2026-10-22",
+  "audit_item": "A08 / Binance archive and shared data timestamp input boundaries",
+  "finding": "Archive imports leaked low-level errors for malformed public parameters; invalid delays were rejected after fetching; the shared UTC timestamp parser silently normalized Unicode digits; and fetch_archive did not reject URL syntax or dot-segment traversal in its relative path.",
+  "change": "Both public archive imports now validate symbol/date/instrument/delay inputs before output creation or fetch. Shared UTC ISO parsing accepts ASCII digits only. fetch_archive now rejects absolute paths, dot segments, empty segments, query/fragment/percent/backslash syntax, and paths outside daily/monthly namespaces before creating cache directories or accessing network.",
+  "verification": {
+    "source_pytest": "archive ingress/date, archive range, data event/timestamp, and unsafe archive path selectors: 96 passed",
+    "installed_wheel_pytest": "same selector with PYTHONPATH unset: 96 passed",
+    "ruff": "passed",
+    "targeted_mypy": "Success: no issues found in 2 source files",
+    "py_compile": "passed",
+    "source_manifest": {
+      "files": 599,
+      "source_identity_sha256": "e41896d707a8d954efb303e755d5e76db2452b44070231fd1b7834f62d11ce0b",
+      "verified": true
+    },
+    "distribution": {
+      "wheelhouse": "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-wheels-a08-archive-path-20261022",
+      "wheels_built": 12,
+      "sdists_built": 12,
+      "source_matches_all_wheels": true,
+      "data_wheel_sha256": "16d47e4e09fdf3ecaaed4c48c29fd672233d433af28983fd3c91bbafcf98bc6f",
+      "archive_module_source_sha256": "9877a0edb0b0e77a5bf835f0c3424607a91491a1a86827d38a835d842274de60",
+      "archive_module_installed_sha256": "9877a0edb0b0e77a5bf835f0c3424607a91491a1a86827d38a835d842274de60",
+      "installed_module_matches_source": true,
+      "dependency_check": "69 packages compatible"
+    }
+  },
+  "scope_limit": "Synthetic malformed inputs only. Tests assert no network/cache-directory side effects on invalid inputs. No exchange archives or research/evaluation payloads were accessed."
+}

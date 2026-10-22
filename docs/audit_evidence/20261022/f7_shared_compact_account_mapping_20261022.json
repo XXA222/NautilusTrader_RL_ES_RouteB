@@ -1,0 +1,32 @@
+{
+  "schema": "rles.routeb.audit-evidence.f7-shared-compact-account.v1",
+  "date": "2026-10-22",
+  "finding": "Compact native report snapshots allocated a new empty account dictionary at every barrier.",
+  "change": "Compact report snapshots now share one immutable empty account mapping. Full snapshots retain their original native account mapping.",
+  "verification": {
+    "source_joint_tests": "188 passed",
+    "installed_wheel_regression": "1 passed with PYTHONPATH unset",
+    "ruff": "passed for changed source and test files",
+    "source_manifest": {
+      "files": 595,
+      "source_identity_sha256": "c01d9ebf3efa60d5a69027731fb497753c6b8361e8dd42ed1124e72687ae5ec7",
+      "verified": true
+    },
+    "wheelhouse": {
+      "wheel_count": 12,
+      "all_match": true,
+      "gym_bridge_wheel_sha256": "d60b887bbf7151bd912a5b1acf74caf512ba63e425c72da90d3a0d1642834c97",
+      "gym_bridge_source_sha256": "5584b0a695e3794962aef520e69023147b9ab938a6e5a2b431d3b7b0bee4ef98",
+      "gym_bridge_installed_sha256": "5584b0a695e3794962aef520e69023147b9ab938a6e5a2b431d3b7b0bee4ef98",
+      "dependency_check": "69 packages compatible"
+    },
+    "avoided_empty_dict_storage_estimate": {
+      "snapshot_count": 129600,
+      "bytes_per_empty_dict_object": 64,
+      "raw_object_bytes_avoided": 8294400,
+      "note": "Object-size estimate only; process RSS improvement was not measured in isolation."
+    }
+  },
+  "remaining": "F7 remains partial. Compact per-barrier snapshots still retain an O(n) sequence; include_account_rows=true still materializes output rows; long-window real-history Train RSS and trajectory evidence remain unavailable.",
+  "scope_limit": "Synthetic engineering regression only. No market archive, account, research registry, project ledger, Validation, Test, or Holdout payload was accessed."
+}

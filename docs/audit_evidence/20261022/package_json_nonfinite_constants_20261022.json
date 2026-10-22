@@ -1,0 +1,60 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "finding": "Seven RouteB package JSON utility readers rejected duplicate keys but still accepted Python json extensions NaN, Infinity, and -Infinity. That allowed non-standard persisted data to reach semantic validators.",
+  "changes": [
+    "All seven package-level unique JSON readers now reject non-standard non-finite constants by default.",
+    "The data package retains explicit parse_constant override support for callers that deliberately define a policy."
+  ],
+  "source_files": [
+    {
+      "path": "packages/compute_runtime/src/rles_compute_runtime/json_utils.py",
+      "sha256": "325c848c1f46f370b0c6bdc41fc34079ca4db716f3d2911072d6973a313694a3"
+    },
+    {
+      "path": "packages/data/src/rles_data/json_utils.py",
+      "sha256": "9e166d4b6746c5597670e2a3777587a2b1997d33e57f98c3109e33e31e92096c"
+    },
+    {
+      "path": "packages/es_evotorch/src/rles_es_evotorch/json_utils.py",
+      "sha256": "e58ce4868799af5294b0452756f218f852ab0cac709ecf2f0214207a6f1df866"
+    },
+    {
+      "path": "packages/orchestrator/src/rles_orchestrator/json_utils.py",
+      "sha256": "597c53f8ae1e353aa1da83db67bd41350916f2be7e7c66143c3f9c953d53b6c8"
+    },
+    {
+      "path": "packages/research/src/rles_research/json_utils.py",
+      "sha256": "1c82c1a527c7ff87d5ebe1c2bb2a63b575fd601395082453a65786b90038be5f"
+    },
+    {
+      "path": "packages/rl_sb3/src/rles_rl_sb3/json_utils.py",
+      "sha256": "16d403248946d06bbae806ee9632e24ee3364ccc038923212a8b5411672397a0"
+    },
+    {
+      "path": "packages/world_model/src/rles_world_model/json_utils.py",
+      "sha256": "04043e82c8f8aed66d75dc79eb41441be60ecf405d45ac82070fdeb216cb9e2f"
+    },
+    {
+      "path": "tests/test_strict_json_constants.py",
+      "sha256": "b1cc705477180cacaa63c0e35f574fc79dd6c41b8badae5193948c0fbd794209"
+    }
+  ],
+  "verification": {
+    "source_pytest": "tests/test_strict_json_constants.py plus JSON-focused persisted-state selector: 81 passed, 1 skipped (JAX absent from app venv), 238 deselected",
+    "installed_wheel_pytest": "Same selectors with PYTHONPATH unset against RouteB .venv-win-app wheels: 81 passed, 1 skipped, 238 deselected",
+    "ruff": "ruff check packages ci qa tests: passed",
+    "mypy": "mypy packages qa --disable-error-code=import-untyped: success, 224 source files",
+    "dependency_check": "69 installed RouteB app packages compatible",
+    "distribution": {
+      "source_manifest_files": 592,
+      "source_identity_sha256": "68c36f96d7175cc2865495c6db4842a45c82c64ae2d84e53af52d2111c954275",
+      "wheel_count": 12,
+      "all_wheels_match_source": true,
+      "installed_package_modules": 12,
+      "installed_entry_points": 6,
+      "wheel_manifest": "qa/reports/wheel_manifest_strict_json_20261022.json"
+    }
+  },
+  "scope": "Synthetic JSON constants and persisted-state fixtures only. No market, account, research ledger, Validation, Test, or Holdout payload was read.",
+  "remaining": "Hosted Linux/Windows CI and authenticated research/economic evidence gates remain open."
+}

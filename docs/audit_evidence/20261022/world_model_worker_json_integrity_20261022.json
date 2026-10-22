@@ -1,0 +1,35 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / RouteB world-model worker JSON integrity",
+  "finding": "Worker configuration, forecast request, prepared Train metadata sidecar, and worker subprocess JSON responses used the default parser, allowing duplicate fields to be silently resolved last-key-wins at the isolated learner boundary.",
+  "change": "Applied the recursive duplicate-key parser to worker config/request, Train NPZ provenance sidecars, worker stdout and runtime preflight. WorkerClient normalizes parse failures to WorkerFailure while preserving the diagnostic. Added duplicate config/request/sidecar/response regressions.",
+  "source_files": {
+    "packages/world_model/src/rles_world_model/routeb/sequences.py": "2d8e90397fb3c33581acbe5dccdb310d0c318199ece0edf0c5a50b76b82dbb6e",
+    "packages/world_model/src/rles_world_model/routeb/worker_cli.py": "3bc1336fe187f1465c385a3fff99d9da00336587fd0a01ceede73db5e54af964",
+    "packages/world_model/src/rles_world_model/routeb/worker_client.py": "916dffeb7fd3fde19ce13fff275e2088969fa25640e0e7763ecc1ede0a2ff8d1"
+  },
+  "test_files": {
+    "tests/world_model/test_routeb_additive.py": "ba6f6c08dc4635ad08e28f9cc26872f28c3feddd7011c75e635d709f0e5393e0",
+    "tests/world_model/test_routeb_quality_v2.py": "b14f47868462dde5fae624a3895cb1a06a488ccdf69b522e35aca28ed94f6397"
+  },
+  "verification": {
+    "pytest_source": "tests/world_model/test_routeb_additive.py + tests/world_model/test_routeb_quality_v2.py: 59 passed, 5 skipped because app venv intentionally has no JAX",
+    "pytest_current_source": "world_model + application CLI + research WFO + SB3 JSON selector: 294 passed, 14 JAX-specific app-venv skips",
+    "pytest_installed_wheel": "worker/additive selector with PYTHONPATH unset: 59 passed, 5 JAX-specific skips",
+    "ruff": "passed for 3 changed source modules and 2 test modules",
+    "mypy": "passed for 3 changed source modules",
+    "dependency_check": "uv pip check: 69 RouteB app packages compatible",
+    "installed_source_parity": "worker_cli, worker_client, sequences installed hashes match RouteB source hashes",
+    "source_manifest": {
+      "file_count": 574,
+      "source_identity_sha256": "c8195fc140a2e91e61fbc293489b7719bdd781fb1a5ad4148e0d333e6003a46e",
+      "verified": true
+    }
+  },
+  "distribution": {
+    "wheel": "C:\\Users\\QX\\Documents\\ChatGPT\\RouteB\\routeb-world-model-wheel-20261022\\rles_world_model-0.1.0.dev0-py3-none-any.whl",
+    "installed_into": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app",
+    "runtime_isolation": "Python 3.14 app runtime remains separate from the RouteB Python 3.12 JAX CPU worker environment; no package was installed outside RouteB."
+  },
+  "scope": "Only temporary synthetic requests, metadata, and mocked worker outputs; no formal market, account, Validation, Test, or Holdout payload read."
+}

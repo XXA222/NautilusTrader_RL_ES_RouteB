@@ -1,0 +1,42 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "date": "2026-10-22",
+  "topic": "M0.1 sourced cashflow decimal contract",
+  "project_root": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
+  "official_schema_reference": "https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Get-Income-History",
+  "fixes": [
+    "Require Binance USDⓈ-M TRANSFER income amounts to be exact decimal strings with no surrounding whitespace; reject JSON numeric values before Decimal conversion.",
+    "Reject float/bool amounts in generic native sourced cashflow facts to avoid binary-float precision loss.",
+    "Require cashflow source IDs to be nonempty and free of surrounding whitespace."
+  ],
+  "validation": {
+    "installed_wheel_test_files": [
+      "tests/test_binance_cashflows.py",
+      "tests/test_research_metrics.py",
+      "tests/test_native_liquidation_facts.py",
+      "tests/test_historical_factory.py"
+    ],
+    "passed": 200,
+    "failed": 0,
+    "warnings": 18,
+    "ruff": "All checks passed for changed package source and tests.",
+    "mypy": "Success: no issues found in 2 source files.",
+    "python_compile": "Passed for changed package source and tests.",
+    "wheel_count": 12,
+    "sdist_count": 12,
+    "wheels_match_package_sources": true,
+    "app_dependency_count": 69,
+    "dependency_check": "All installed packages are compatible.",
+    "import_provenance": "12 modules and 6 declared entry points resolved from RouteB .venv-win-app site-packages.",
+    "source_manifest_file_count": 569,
+    "source_manifest_identity": "727f2d7cd6da859aa99dd499bab631df9e55cb27e119eebf05350916a578a199",
+    "source_manifest_verified": true,
+    "wheelhouse": "C:\\Users\\QX\\Documents\\ChatGPT\\RouteB\\routeb-wheels-20261022-m01"
+  },
+  "boundary": [
+    "Tests used synthetic sourced cashflow facts only.",
+    "No project research ledger, market payload, or real account payload was accessed or modified.",
+    "No consumed Fold or Validation/Test/Holdout window was opened.",
+    "Exact-decimal parsing does not authenticate the source account or prove history completeness; M0.1 remains partial."
+  ]
+}

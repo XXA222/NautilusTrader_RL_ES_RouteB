@@ -1,0 +1,33 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "date": "2026-10-22",
+  "topic": "M1.3 stage report and bundle path integrity",
+  "project_root": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
+  "fixes": [
+    "Require risk_hard_interventions to be present as a non-negative integer, reject bool/float/string/missing/negative values, and require the count not to exceed decisions.",
+    "Require submit_decision_count <= decision_count, native_order_count <= submit_decision_count, and frozen starting balance to match native initial equity.",
+    "Validate that reported max_abs_residual matches the maximum absolute event-level residual before returning the summary.",
+    "Constrain preregistered mode and stage report paths to the registered reports directory; reject resolved targets outside it.",
+    "Constrain bundle, selected E1 actor artifact, and their SHA receipt paths to the bundle root; reject traversal names and resolved targets outside it."
+  ],
+  "validation": {
+    "test_file": "tests/test_m13_stage_contribution_v2.py",
+    "passed": 26,
+    "failed": 0,
+    "ruff": "All checks passed for the analyzer and focused regression file.",
+    "python_compile": "Passed for analyzer and focused regression file.",
+    "git_diff_check": "Passed; only existing LF-to-CRLF notices were emitted.",
+    "source_manifest_file_count": 569,
+    "source_manifest_identity": "c5ccc5b8a551669888a5d3544cfe1a5436904b1de29bc5df7cda611809812f8f",
+    "source_manifest_verified": true,
+    "mypy": "Success: no issues found in 1 source file.",
+    "skipped": 1,
+    "skip_reason": "Host policy denied native symlink creation; a platform-independent resolved-path escape regression passed."
+  },
+  "boundary": [
+    "Tests use synthetic report fixtures only; no market data or project research ledger was accessed.",
+    "No consumed fold was replayed and no Validation, Test, or Holdout was opened.",
+    "M1.3 economic attribution remains partial until compatible frozen E1/R1/E2 native report inputs are available.",
+    "Hosted Linux/Windows CI and other external research evidence gates remain open."
+  ]
+}

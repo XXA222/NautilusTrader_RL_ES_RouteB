@@ -1,0 +1,30 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "finding": "The L6 release attestation reader used ordinary json.loads for gate reports and trusted-producer configuration. Duplicate object keys could be silently overwritten, and non-finite JSON constants were accepted by the parser before later validation.",
+  "changes": [
+    "Gate reports and trusted-producer configuration now use one strict JSON parser that rejects duplicate keys at every nesting level and rejects NaN/Infinity constants.",
+    "Gate report files must decode to a JSON object before they enter attestation validation; parse and shape failures fail closed as GateBlocked."
+  ],
+  "source_files": [
+    {
+      "path": "ci/l6/src/l6_ci_release/attestation.py",
+      "sha256": "56def0c59000074d90bbe58fe1ae173769a28cf57f673821a743cd781986a9d7"
+    },
+    {
+      "path": "tests/test_l6_attestation_json_integrity.py",
+      "sha256": "9f851469862583732484cde54e93f7c8869d2732bded6248d2158b22580a8cfe"
+    }
+  ],
+  "verification": {
+    "pytest": "tests/test_l6_attestation_json_integrity.py: 5 passed, including valid Q0-Q9 attestation round-trip",
+    "ruff": "passed for attestation.py and its regression selector",
+    "mypy": "ci/l6/src/l6_ci_release/attestation.py: success, one source file",
+    "source_manifest": {
+      "files": 591,
+      "source_identity_sha256": "3fcf7d0605bb6b0f14fc4cc544e4f91eedd9acf7878bae02e80c1d309c1d8fee",
+      "verified": true
+    }
+  },
+  "scope": "Synthetic malformed report and configuration JSON only. No release gates were marked PASS and no external evidence, market, account, ledger, Validation, Test, or Holdout payload was read.",
+  "remaining": "This closes the local ambiguous-JSON parsing gap for L6 attestation inputs. Hosted Linux/Windows CI and upstream authenticated evidence remain separate open gates."
+}

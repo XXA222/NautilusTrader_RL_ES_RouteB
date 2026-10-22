@@ -1,0 +1,29 @@
+{
+  "schema": "rles.routeb.audit-evidence.aggtrade-ascii-decimal.v1",
+  "date": "2026-10-22",
+  "finding": "Python Decimal accepts underscore separators and Unicode decimal digits in USD-M aggTrades price/quantity strings, silently normalizing malformed archive lexemes into valid-looking values.",
+  "change": "Added a strict unsigned ASCII fixed-point parser for aggTrades price and quantity. It accepts digits with an optional fractional part and rejects underscores, Unicode digits, signs, exponents, and non-finite constants before aggregation.",
+  "verification": {
+    "regression_before_fix": "4 synthetic archive cases using underscore/Arabic-digit lexemes were accepted",
+    "source_archive_and_event_tests": "44 passed",
+    "installed_wheel_archive_and_event_tests": "44 passed with PYTHONPATH unset",
+    "ruff": "passed",
+    "targeted_mypy": "Success: no issues found in 1 source file",
+    "source_manifest": {
+      "files": 595,
+      "source_identity_sha256": "8c7b7cfa420dfbece8e2bc6828d605e1fc6d40bc157158d429204d2db2dc7d2c",
+      "verified": true
+    },
+    "distribution": {
+      "wheelhouse": "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-wheels-a08-aggtrade-ascii-decimal-20261022",
+      "wheels_built": 12,
+      "sdists_built": 12,
+      "source_matches_all_wheels": true,
+      "data_wheel_sha256": "212d56766dc639ebc5e86655eed3776ac1eb7e521d010582053bd6bc115df268",
+      "installed_data_module_sha256": "82d13a3758808d2480d75785e661ab2a1bd7774d885f3c128d5178424d300b01",
+      "installed_module_matches_source": true,
+      "dependency_check": "69 packages compatible"
+    }
+  },
+  "scope_limit": "Synthetic temporary ZIP fixtures only. No Binance archive or market/account/ledger/research payload was downloaded or read."
+}

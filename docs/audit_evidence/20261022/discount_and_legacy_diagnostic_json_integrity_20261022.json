@@ -1,0 +1,29 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A13/A14 / gamma half-life and legacy Train diagnostic JSON integrity",
+  "finding": "The frozen discount half-life training/evaluation plans, run manifests, bundles, completion receipts, and source plans were permissively parsed. The low-capacity and zero-target plan generators also permissively read their frozen baseline plan and candidate bundle. Duplicate keys could change the interpreted scope or candidate identity even when a raw-file digest matched.",
+  "change": "Added recursive duplicate-key JSON readers with stable DataError boundaries and object-root checks to both discount half-life runners and both legacy diagnostic plan generators. Their persisted input reads now use those readers. Expanded synthetic malformed JSON regressions across all six readers.",
+  "source_files": {
+    "qa/evaluate_discount_half_life_probe_20261017.py": "4952ea416a05c664d3155f947e959299d742f7aeacd6f9348975bcc39c30cf3b",
+    "qa/run_discount_half_life_probe_20261016.py": "696e3766c6a2317e5d67313313e3f227039c9feb48613cff5914b4f3d1a2c88e",
+    "qa/prepare_low_capacity_predictor_20261016.py": "fa351952b124e4d90d48857f3be378683c5cfd491b31a79d6eb56b499336bb91",
+    "qa/prepare_zero_target_exit_probe_20261016.py": "e46497fcb30119f8df02b3421487cc5c9d3f110cced2489bfe527f83e46fb3f2"
+  },
+  "test_files": {
+    "tests/test_legacy_probe_plan_json_integrity.py": "8598d91767e429e96020580b39e07c03af34673f7431f01a351f42b64bda1df6"
+  },
+  "verification": {
+    "pytest": "A01-A14 JSON integrity, isolation, R3/R4/CLI/randomness selection: 112 passed, 2 skipped (JAX unavailable in RouteB app venv)",
+    "ruff": "passed for all five changed source/test files",
+    "py_compile": "passed for all five changed source/test files",
+    "mypy": "packages qa: 224 source files, no issues; installed untyped-package diagnostic disabled",
+    "source_manifest": {
+      "file_count": 590,
+      "source_identity_sha256": "80790a907b55e068def6756ac9af7d5fef358bb1645960ccfabf98b993977264",
+      "verified": true
+    },
+    "project_pr_selector": "tests/ -m contracts or unit or micro_golden or algorithm_smoke: 782 passed, 4 skipped, 455 deselected, 46 warnings in 273.92 seconds; skips: 1 CUDA learner unavailable, 3 JAX-only tests skipped in app venv.",
+    "project_ruff": "ruff check --no-cache packages ci qa tests: passed."
+  },
+  "scope": "Synthetic temporary JSON only. No market, ledger, preregistered gamma study, candidate bundle, Train replay, Validation, Test, or Holdout payload was opened."
+}

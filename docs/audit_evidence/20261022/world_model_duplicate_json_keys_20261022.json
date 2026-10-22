@@ -1,0 +1,44 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / RouteB artifact and request JSON integrity",
+  "finding": "The world-model CLI request reader, repository base-commit marker, bundle manifest loader, JAX checkpoint sidecar loader, and research artifact index/completion/L1 manifest readers used default JSON decoding, which silently accepts duplicate object keys and keeps the last value. This made source, artifact, and request identities ambiguous at their input boundary.",
+  "change": "Added a shared recursive duplicate-key rejecting JSON loader for world-model inputs and routed CLI requests, repository marker, bundle manifests, and checkpoint sidecars through it. The research artifact verifier applies the same recursive uniqueness rule to its index, completion marker, and L1 manifest. Each public boundary preserves its stable DataError, ArtifactError, or ValueError contract.",
+  "source_files": {
+    "packages/world_model/src/rles_world_model/json_utils.py": "b653a850b78817b686d5a8dbaedeec34f092cd4b23ff9e105777cf5ea1cc2723",
+    "packages/world_model/src/rles_world_model/bundle.py": "d47ce0d69f489d17e66fb61ad7528379407a815be6a695af1504d0114ba5c87a",
+    "packages/world_model/src/rles_world_model/cli.py": "ce1517861448ea807a515b478e94a4b97d037a8b518578548f49b44b57f01fe2",
+    "packages/world_model/src/rles_world_model/routeb/checkpoint.py": "b2954e86f9c98d6101c7f7793f8559215cf2a8491bf339b8be2d7e5bd557768e",
+    "packages/research/src/rles_research/artifacts.py": "642fd98294c1498adbac992099a5577139548664e6958e107a1116600a613108"
+  },
+  "test_files": {
+    "tests/world_model/test_cli.py": "1dac3ce0670aa71bb4ae8f0ab59a2da923248b60dc2ce3517b4b176805e0712d",
+    "tests/world_model/test_routeb_additive.py": "f6bf2395829ffa07ec30724b5c2c03441304ba7a187396f6fd89f683e0869880",
+    "tests/test_layer_invariants.py": "9a7e97c3c8255844bacdae6bb72d8088ef2419a5c26bfaf78a06f97f0d00a544"
+  },
+  "verification": {
+    "pytest": "Focused CLI/additive selector: 32 passed, 2 JAX-only skipped. Full tests/world_model suite: 211 passed, 14 JAX-only skipped in RouteB .venv-win-app.",
+    "jax_cpu_ci_selector": "11 passed using packages/world_model/environment/.venv-win-cpu (Python 3.12.10, JAX/JAXLIB 0.11.2, CPU device), matching the repository JAX CPU workflow selector.",
+    "environment_split": "Attempting every world-model module in the dedicated JAX training venv stops at test_cli collection because that venv intentionally does not include app-only gymnasium. The application selector runs in .venv-win-app; JAX tests run in the locked CPU/JAX env.",
+    "ruff": "passed for all four source files and both test files",
+    "mypy": "passed for all four source files; import-untyped disabled because internal installed wheels do not publish py.typed",
+    "artifact_store_pytest": "tests/test_layer_invariants.py -k artifact: 2 passed against both source and the freshly installed rles-research wheel",
+    "coverage": "Nested duplicate CLI request keys, duplicate repository_commit marker keys, duplicate bundle schema keys, duplicate checkpoint step metadata, and duplicate research integrity-index keys were rejected before downstream artifact access."
+  },
+  "source_manifest": {
+    "files": 571,
+    "source_identity_sha256": "641e814dd9e8ceb2db547db19a72fc196e83819d2a0ea22cf4d9e17dd05cdce5",
+    "verified": true
+  },
+  "distribution": {
+    "wheels": [
+      "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-world-model-wheel-final-20261022/rles_world_model-0.1.0.dev0-py3-none-any.whl",
+      "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-research-wheel-final-20261022/rles_research-0.4.1-py3-none-any.whl"
+    ],
+    "installed_into": "D:/Program Files/NautilusTrader_RL_ES_RouteB/.venv-win-app",
+    "imported_module": "D:/Program Files/NautilusTrader_RL_ES_RouteB/.venv-win-app/Lib/site-packages/rles_world_model/json_utils.py",
+    "duplicate_key_smoke": "passed",
+    "dependency_check": "69 packages compatible"
+  },
+  "environment_note": "RouteB .venv-win-app already contains PyArrow 25.0.1; an isolated Parquet write/read roundtrip passed, so no dependency change or install was necessary. The dedicated CPU/JAX training env also resolves JAX/JAXLIB 0.11.2 and exposes CpuDevice(id=0).",
+  "scope": "Only synthetic temporary JSON and a temporary Parquet smoke artifact were used. No project registry, account, market, Validation, Test, or Holdout payload was opened. JAX remains absent from this app venv; no dependency was installed into the original project or RouteA."
+}

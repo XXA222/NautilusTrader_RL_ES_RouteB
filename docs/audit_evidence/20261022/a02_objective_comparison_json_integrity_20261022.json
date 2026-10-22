@@ -1,0 +1,24 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A02 / matched-seed fitness objective comparison JSON integrity",
+  "finding": "The A02 objective comparison reader permissively parsed the fixture manifest, base config, training bundle/run manifest, and embedded E2 fitness evidence/spec. Duplicate keys could change the protocol or candidate evidence interpretation after raw-byte checksum verification.",
+  "change": "The comparison now rejects duplicate JSON keys recursively, malformed UTF-8/JSON, and non-object roots for file and embedded-object inputs before reading candidate feasibility or fitness evidence. Added synthetic file and embedded JSON tests.",
+  "source_files": {
+    "qa/compare_es_fitness_objectives_20261017.py": "09a07b7304a0d12100fb96b3f81314c4bb6c617528cc239709bb292ac919169b"
+  },
+  "test_files": {
+    "tests/test_a02_fitness_report_json_integrity.py": "cd0acacf7e682082bd0c46ca11282e00ba05d501d816004c5dc987a905f4e239"
+  },
+  "verification": {
+    "pytest": "A02 strict comparison + ES scorer + checkpoint JSON selector: 27 passed",
+    "ruff": "passed for comparison script and regression test",
+    "py_compile": "passed for comparison script",
+    "mypy": "packages qa: 224 source files, no issues; installed untyped-wheel diagnostic disabled",
+    "source_manifest": {
+      "file_count": 588,
+      "source_identity_sha256": "6cba8db77b7871171119de6256d9b64b6699c7c86a05264fa2c6f2ee67b34285",
+      "verified": true
+    }
+  },
+  "scope": "Synthetic temporary JSON only. No A02 training run, candidate bundle, market, or registered evaluation scope was opened."
+}

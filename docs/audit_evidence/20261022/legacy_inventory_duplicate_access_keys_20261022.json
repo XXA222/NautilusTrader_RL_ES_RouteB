@@ -1,0 +1,46 @@
+{
+  "schema": "rles.routeb-audit-evidence.v1",
+  "audit_item": "A04 legacy research inventory import integrity",
+  "date": "2026-10-22",
+  "finding": {
+    "before": "The strict inventory parser and registry import accepted repeated identical access keys. Registry insertion was idempotent by key, so duplicate source rows were silently collapsed and the imported inventory no longer represented the source row count.",
+    "reproduction": "Both duplicate-key regressions failed against the previously installed RouteB wheels because the expected fail-closed exceptions were not raised."
+  },
+  "fix": {
+    "parser": "The legacy inventory parser rejects repeated access keys before registry import.",
+    "registry": "ProjectResearchRegistry.import_inventory independently rejects duplicate access keys before opening a transaction; it also validates key type/non-emptiness before constructing a uniqueness set.",
+    "atomicity": "The regression confirms duplicate input leaves both access and inventory_import tables unchanged."
+  },
+  "verification": {
+    "installed_wheel_tests": {
+      "selector": [
+        "tests/test_research_access.py",
+        "tests/test_application_cli.py",
+        "tests/test_routeb_fresh_fold_access.py",
+        "tests/test_research_wfo.py",
+        "tests/world_model/test_reconcile_routeb_research_ledger.py"
+      ],
+      "passed": 209,
+      "failed": 0
+    },
+    "ruff": "passed for changed source and test files",
+    "mypy": "passed for 2 changed source modules with RouteB workspace source paths",
+    "build": {
+      "wheels": 12,
+      "sdists": 12,
+      "wheel_source_match": true,
+      "source_identity_sha256": "b4b71e568a20e7d715e2c02693bb5755f656231d9d6d0efbe3e5b3b40d0268d4"
+    },
+    "installed_environment": {
+      "updated_routeb_wheels": ["rles-orchestrator", "rles-research"],
+      "import_provenance": "12 packages and 6 entry points resolved from RouteB isolated application venv",
+      "dependency_check": "69 packages compatible"
+    },
+    "source_manifest": {
+      "file_count": 569,
+      "identity_sha256": "b4b71e568a20e7d715e2c02693bb5755f656231d9d6d0efbe3e5b3b40d0268d4",
+      "verified": true
+    }
+  },
+  "scope_boundary": "Synthetic JSON and temporary SQLite only. No project research ledger was mutated; no market, account, Validation, Test, or Holdout payload was read. This hardens recorded inventory integrity but cannot reconstruct unregistered historical research."
+}

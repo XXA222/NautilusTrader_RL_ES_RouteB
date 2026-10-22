@@ -1,0 +1,27 @@
+{
+  "schema": "routeb.cuda-test-run.v1",
+  "status": "PASS",
+  "environment": {
+    "python": "3.12.3",
+    "jax": "0.11.2",
+    "platform": "cuda:0",
+    "requirements_lock": "packages/world_model/requirements-world-model-wsl-cuda.lock",
+    "requirements_lock_sha256": "e15b296ff2575272ad9f8e67c6a03dc74b2af57205321f363bf29b4e01c1243d"
+  },
+  "command_scope": [
+    "tests/world_model/test_routeb_additive.py",
+    "tests/world_model/test_routeb_e1.py",
+    "tests/world_model/test_routeb_quality_v2.py"
+  ],
+  "pytest": "9.1.1 (temporary test-only install; removed after run)",
+  "passed": 47,
+  "failed": 0,
+  "skipped": 0,
+  "post_test_restore": {
+    "runtime_lock_resynced": true,
+    "locked_packages_checked": 78,
+    "uv_pip_check": "PASS",
+    "jax_gpu_visible": "CudaDevice(id=0)"
+  },
+  "scope_note": "Targeted JAX-dependent RouteB checks on CUDA. The main-project cross-layer suite separately passes 207 tests with 3 JAX-only skips under Python 3.14."
+}

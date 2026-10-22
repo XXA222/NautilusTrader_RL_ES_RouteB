@@ -1,0 +1,31 @@
+{
+  "project": "D:/Program Files/NautilusTrader_RL_ES_RouteB",
+  "finding": "instrument_rule rejected negative maker/taker rebates although the native perpetual fee model intentionally preserves them.",
+  "reproduction": {
+    "test": "tests/test_data_event_guards.py::test_instrument_rule_accepts_signed_fee_rebates",
+    "before_fix": "2 parameter cases failed with DataError at unsigned fee validation."
+  },
+  "change": {
+    "source": "packages/data/src/rles_data/schemas.py",
+    "behavior": "maker_fee and taker_fee accept finite signed values; initial_margin_rate and maintenance_margin_rate remain nonnegative."
+  },
+  "verification": {
+    "focused_data_guards": "19 passed",
+    "fee_contract": "3 passed",
+    "source_selector": "167 passed, 18 upstream warnings",
+    "installed_wheel_selector": "167 passed, 18 upstream warnings",
+    "ruff": "passed",
+    "py_compile": "passed",
+    "mypy": "passed for packages/data/src/rles_data/schemas.py",
+    "build": "12 wheels and 12 sdists succeeded",
+    "wheel_content_match": "12/12",
+    "source_schema_sha256": "b3113db9ec4b2047ac2a27cf04715a68db75895d79446308d018a500a8d15cc6",
+    "installed_schema_sha256": "b3113db9ec4b2047ac2a27cf04715a68db75895d79446308d018a500a8d15cc6",
+    "source_manifest_files": 604,
+    "source_identity_sha256": "e51add80b68e69a1498b56627e984aaeca941a28098c2ff681dacccb0b3c78f1"
+  },
+  "wheelhouse": "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-wheels-a08-fee-rebate-20261022",
+  "environment": "RouteB .venv-win-app; installed from the new local rles-data wheel with no dependency changes",
+  "data_boundary": "Synthetic regression and fixture facts only. No market/account/registry or Evaluation data was read.",
+  "status": "A08 signed fee validation issue resolved and source/installed distribution parity verified."
+}

@@ -1,0 +1,24 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A11 / callable M1.3 preregistration and bundle reader integrity",
+  "finding": "The older still-callable M1.3 replay generator used default JSON decoding for bundle, fixture manifest, completion receipt, and frozen registration files. A valid SHA marker fixed the raw bytes but duplicate fields still allowed the runner to interpret an ambiguous bundle or registration using last-key-wins semantics.",
+  "change": "Added one strict object reader using rles_data.loads_unique_json and routed bundle, archive fixture manifest, COMPLETED receipt, existing preregistration, and frozen preregistration through it. Duplicate keys, invalid UTF-8/JSON/IO, and non-object roots now fail before the runner trusts those inputs. Added synthetic reader regressions.",
+  "source_files": {
+    "qa/m13_stage_contribution_20261017.py": "70ec1cf5dacf98a9aecd4e8ff86cc43f8f0a830ec4ba1cc9f34e9931eea50d4d"
+  },
+  "test_files": {
+    "tests/test_m13_runner_json_integrity.py": "f4917b3e0d67376e85a9689dcc2decfee0f1f79bf0631448d697325e1f2f289b"
+  },
+  "verification": {
+    "pytest": "M1.3 runner JSON regression + both analyzer suites: 40 passed, 1 skipped (host cannot create symlinks)",
+    "ruff": "passed for changed runner and test",
+    "mypy": "packages qa: 224 source files, no issues; installed untyped-wheel diagnostic disabled",
+    "source_manifest": {
+      "file_count": 582,
+      "source_identity_sha256": "a384d87ec586b2596fc3664e1dbf035229e1489a30f8e252e83efcee39f99521",
+      "verified": true
+    }
+  },
+  "replay_boundary": "No bundle, real fixture, registry, market, Validation, Test, or Holdout was opened. Since the runner's code SHA changed, a prior frozen registration cannot be replayed with this new runner identity; any future authorized replay requires a fresh registration frozen against the updated source.",
+  "scope": "Synthetic JSON only."
+}

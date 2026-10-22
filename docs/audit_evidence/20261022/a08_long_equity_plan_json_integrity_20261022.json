@@ -1,0 +1,24 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A08/M0.1 / long-window native-equity reconciliation plan integrity",
+  "finding": "The A08 long-window native-equity tool permissively parsed the frozen reconciliation plan, original Train plan, and candidate bundle. Duplicate keys could alter the selected window, source path, seed, or bundle identity despite the raw-file hashes matching.",
+  "change": "The reconciler now rejects duplicate JSON keys recursively, malformed UTF-8/JSON/IO, and non-object roots before it interprets window/source controls or registers the development interval. Added temporary-file regressions for duplicate keys, invalid UTF-8, and wrong root shape.",
+  "source_files": {
+    "qa/reconcile_native_equity_long_20261017.py": "5aa42d347b362c0306e8089ae499709231810f7a0bb92440597e36318874dab7"
+  },
+  "test_files": {
+    "tests/test_a08_reconciliation_json_integrity.py": "fac3c7ea2f8608484cf9877a102e6c0e76441f220d899a1b608ce40a31153c91"
+  },
+  "verification": {
+    "pytest": "A08 strict input + A07 profile isolation + M2/M3/A02 plan selector: 31 passed",
+    "ruff": "passed for reconciler and test",
+    "py_compile": "passed for reconciler",
+    "mypy": "packages qa: 224 source files, no issues; installed untyped-wheel diagnostic disabled",
+    "source_manifest": {
+      "file_count": 589,
+      "source_identity_sha256": "8500966ec203456cb3e620195be2046730db2fe426192f6e6fa4362575eb30c4",
+      "verified": true
+    }
+  },
+  "scope": "Synthetic temporary JSON only. The 90-day Train-inner equity reconciliation, market data, and registry were not opened or rerun."
+}

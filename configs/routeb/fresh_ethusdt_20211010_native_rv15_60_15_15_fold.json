@@ -1,0 +1,36 @@
+{
+  "allow_legacy_isolated_snapshot": false,
+  "config": {
+    "environment": {
+      "instrument": "ETHUSDT-PERP.BINANCE",
+      "market_path": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB/.artifacts/world_model/fresh-ethusdt-20211010-native-rv15-20261019/source/curated/market.parquet"
+    }
+  },
+  "fold": {
+    "dataset_hash": "b3480ea2fd36c3854853f872d4acfd4679a9502a3cce89222b0cb6e290e2d180",
+    "embargo_ns": 82800000000000,
+    "feature_hash": "fc7c4373d2a4e5d802f9c0663d37ecf89d900e73afc7742d2d6ea76258540890",
+    "purge_ns": 3600000000000,
+    "scaler_hash": null,
+    "schema_version": "0.4.0",
+    "test": {
+      "score_end_ns": 1641945660000000000,
+      "score_start_ns": 1640649660000000000,
+      "warmup_start_ns": 1639699260000000000
+    },
+    "train": {
+      "score_end_ns": 1639180860000000000,
+      "score_start_ns": 1633996860000000000,
+      "warmup_start_ns": 1633824060000000000
+    },
+    "validation": {
+      "score_end_ns": 1640563260000000000,
+      "score_start_ns": 1639267260000000000,
+      "warmup_start_ns": 1638230460000000000
+    }
+  },
+  "instrument": "ETHUSDT-PERP.BINANCE",
+  "label": "routeb-fold-ethusdt-binance-601515-20211010-native-rv15-v1",
+  "marker_sha256": "bd494f9939f4189fe90d7c3a4c7131628002774f5c6af62e3a420b50fbed42d1",
+  "schema_version": "rles.world_model.registered_fold_baseline.v0"
+}

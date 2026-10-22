@@ -1,0 +1,22 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A04 / M0.3 WFO per-split market payload isolation",
+  "reproduction": "WFO startup decoded the market source from data_start_ns through holdout_end before any fold query gate. The application’s default HistoricalEnvironmentFactory also used read_curated for candidate Validation, stress Validation, Test baselines, Test, and Holdout, allowing one stage’s read to materialize unrelated later scopes.",
+  "change": "WFO startup now reads only the frozen COMPLETE source identity and rules-file hash. Candidate Train and final retrain use registered Train windows; Validation and stress Validation use their fold warmup-to-end scope; Test and its baselines use the Test fold warmup-to-end scope; final Holdout uses its own warmup-to-end scope. Formal backtest consumes EvaluationAccess before opening its exact frozen scope. Bundle/report dataset identity is digest([rles.wfo-market-plus-rules-dataset.v1, market_snapshot_hash, rules_sha]); the one-shot Holdout ledger remains bound to market source identity and timestamps.",
+  "source_files": {
+    "packages/orchestrator/src/rles_orchestrator/application.py": "4faf0b093d338012992456ba99a9f712aad3587ec1d12cc7ce1c330d6038d132",
+    "packages/orchestrator/src/rles_orchestrator/wfo_application.py": "373a0ce7c42d106ae5ab55a1c9fb13f807466671d1a7ba87e9c382fdffd4a951"
+  },
+  "test_files": {
+    "tests/test_application_cli.py": "4aad1757335b92bbbf906d7f80a1a734164a5f42e2bde4eeaf1a7fc4fdeede76",
+    "tests/test_research_wfo.py": "4400f6a3543c990ac21225b571068e158f08615283327719efb59a3b9cc956f8"
+  },
+  "verification": {
+    "pytest": "tests/test_research_wfo.py + tests/test_application_cli.py + tests/test_historical_factory.py: 163 passed, 18 warnings; executed against current RouteB source roots and isolated .venv-win-app",
+    "ruff": "passed for both modified orchestrator modules and the three affected test files",
+    "mypy": "passed for both orchestrator modules with import-untyped disabled because installed internal wheels do not publish py.typed",
+    "formal_read_order": "Synthetic EvaluationAccess regression verifies consume precedes source identity lookup and payload decoding, and the decoder receives exactly the frozen [warmup_start, score_end) interval.",
+    "wfo_resume": "The WFO interrupted/resume and one-shot Holdout regressions pass after preserving the market-only Holdout ledger identity separately from the composite bundle dataset identity."
+  },
+  "scope": "Temporary synthetic fixtures and test ledgers only; no project research registry, real market/account rows, Validation/Test/Holdout payload, or production model data was accessed. This source change cannot reconstruct project access history predating registration and does not close external research certification or hosted CI gates."
+}

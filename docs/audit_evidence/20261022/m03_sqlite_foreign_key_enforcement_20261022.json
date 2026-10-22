@@ -1,0 +1,27 @@
+{
+  "schema": "rles.routeb.audit-evidence.m03-sqlite-foreign-keys.v1",
+  "date": "2026-10-22",
+  "status": "PASS_LOCAL_REGISTRY_INTEGRITY_ONLY",
+  "finding": "ProjectResearchRegistry declares foreign keys for development_result.access_key and trial_attempt_event.attempt_key, but SQLite foreign-key enforcement is per-connection and was left at its default OFF state in every registry transaction.",
+  "reproduction": "The added database-level regression failed before the fix: PRAGMA foreign_keys returned 0, so an orphan development_result insert was accepted despite the declared REFERENCES constraint.",
+  "change": "ProjectResearchRegistry._tx enables PRAGMA foreign_keys=ON immediately after opening each SQLite connection and before BEGIN IMMEDIATE.",
+  "verification": {
+    "source_registry_selector": "167 passed",
+    "installed_wheel_registry_selector": "167 passed; PYTHONPATH unset",
+    "selectors": [
+      "tests/test_research_access.py",
+      "tests/test_research_wfo.py",
+      "tests/test_routeb_fresh_fold_access.py"
+    ],
+    "current_routeb_registry_foreign_key_check": "0 violations; checked read-only with SQLite mode=ro",
+    "ruff": "passed for packages/research/src/rles_research/access.py and tests/test_research_access.py",
+    "mypy": "Success: no issues found in access.py",
+    "py_compile": "passed for source and regression test",
+    "diff_check": "passed; Git reported only its LF-to-CRLF working-copy notice",
+    "installed_artifact": "rebuilt rles-research 0.4.1 wheel installed only into RouteB .venv-win-app; installed access.py SHA matches source",
+    "wheel_manifest": "12/12 RouteB workspace wheels match package source",
+    "dependencies": "69 RouteB app packages compatible"
+  },
+  "source_identity_sha256": "9e4730fd2a0130f2c041a7a28fe50723b27b766eff5a80414b23682dbe6b181e",
+  "scope": "Registry metadata and synthetic temporary SQLite records only. Existing RouteB registry was checked read-only and had no foreign-key violations; it was not modified. No market, account, Validation, Test, or Holdout payload was read. M0.3 historical access completeness remains unresolved."
+}

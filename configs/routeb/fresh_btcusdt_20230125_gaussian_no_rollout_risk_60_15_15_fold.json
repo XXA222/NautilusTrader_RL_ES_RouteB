@@ -1,0 +1,36 @@
+{
+  "allow_legacy_isolated_snapshot": false,
+  "config": {
+    "environment": {
+      "instrument": "BTCUSDT-PERP.BINANCE",
+      "market_path": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB/.artifacts/world_model/fresh-btcusdt-20230125-gaussian-no-rollout-risk-20261020/source/curated/market.parquet"
+    }
+  },
+  "fold": {
+    "dataset_hash": "d00cd88db1b3b623ce38cde6ab6a97a8dc4f6acee08e5f7bb788f8d40ee2e95a",
+    "embargo_ns": 82800000000000,
+    "feature_hash": "fc7c4373d2a4e5d802f9c0663d37ecf89d900e73afc7742d2d6ea76258540890",
+    "purge_ns": 3600000000000,
+    "scaler_hash": null,
+    "schema_version": "0.4.0",
+    "train": {
+      "warmup_start_ns": 1674604860000000000,
+      "score_start_ns": 1674777660000000000,
+      "score_end_ns": 1679961660000000000
+    },
+    "validation": {
+      "warmup_start_ns": 1679011260000000000,
+      "score_start_ns": 1680048060000000000,
+      "score_end_ns": 1681344060000000000
+    },
+    "test": {
+      "warmup_start_ns": 1680307260000000000,
+      "score_start_ns": 1681430460000000000,
+      "score_end_ns": 1682726460000000000
+    }
+  },
+  "instrument": "BTCUSDT-PERP.BINANCE",
+  "label": "routeb-fold-btcusdt-binance-601515-20230125-gaussian-no-rollout-risk-v1",
+  "marker_sha256": "ca05a6a393cb9f9f33994e491458a2b7d147dd69789385934d474996c122c4d7",
+  "schema_version": "rles.world_model.registered_fold_baseline.v0"
+}

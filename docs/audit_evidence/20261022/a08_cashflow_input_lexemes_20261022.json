@@ -1,0 +1,26 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "finding": "Binance USD-M transfer import accepted Decimal-specific non-ASCII or underscore amount lexemes, leaked UnicodeEncodeError for unencodable text, and leaked UnicodeEncodeError while reserializing paged rows with an escaped surrogate in ignored metadata.",
+  "source_file": "packages/research/src/rles_research/binance_cashflows.py",
+  "source_sha256": "ba489ef0b9f4b0908fd9fba814be4264f6f885eb1b8a354f05ecd1c3118b326c",
+  "test_file": "tests/test_binance_cashflows.py",
+  "test_sha256": "c206b21260816a1ba73c9e6a4c53edb1a9d666e4b657e96d1f5af9e03a5e8403",
+  "verification": {
+    "pytest": {
+      "command": "python -m pytest tests/test_binance_cashflows.py -q -p no:cacheprovider --basetemp <authorized-workspace> with RouteB source on PYTHONPATH",
+      "result": "29 passed against source and rebuilt installed RouteB wheel"
+    },
+    "ruff": "passed for source and test files",
+    "mypy": "passed for binance_cashflows.py with cache redirected to authorized workspace",
+    "workspace_build": "12 wheels and 12 source distributions built with uv build --all-packages; wheel manifest all_match=true",
+    "paged_unicode_regression": "Escaped surrogate in ignored page metadata imports successfully; exact raw page SHA-256 is unchanged and returned in the page manifest"
+  },
+  "official_schema": {
+    "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/account",
+    "endpoint": "/fapi/v1/income",
+    "field": "income",
+    "documented_type": "string",
+    "documented_example": "-0.37500000"
+  },
+  "scope": "Synthetic fixtures only. No project ledger, market, account, Validation, Test, or Holdout payload was accessed. Hashes identify the submitted artifact bytes and do not authenticate Binance response origin or query completeness."
+}

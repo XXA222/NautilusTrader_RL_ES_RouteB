@@ -1,0 +1,36 @@
+{
+  "allow_legacy_isolated_snapshot": false,
+  "config": {
+    "environment": {
+      "instrument": "AVAXUSDT-PERP.BINANCE",
+      "market_path": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB/.artifacts/world_model/fresh-avaxusdt-20240101-r3-20261021/source/curated/market.parquet"
+    }
+  },
+  "fold": {
+    "dataset_hash": "69447e3adb18527a8fb18a81f31da82170fa07c4bb49e02fb6ebe920367985f4",
+    "embargo_ns": 82800000000000,
+    "feature_hash": "fc7c4373d2a4e5d802f9c0663d37ecf89d900e73afc7742d2d6ea76258540890",
+    "purge_ns": 3600000000000,
+    "scaler_hash": null,
+    "schema_version": "0.4.0",
+    "test": {
+      "score_end_ns": 1712016060000000000,
+      "score_start_ns": 1710720060000000000,
+      "warmup_start_ns": 1710720060000000000
+    },
+    "train": {
+      "score_end_ns": 1709251260000000000,
+      "score_start_ns": 1704067260000000000,
+      "warmup_start_ns": 1704067260000000000
+    },
+    "validation": {
+      "score_end_ns": 1710633660000000000,
+      "score_start_ns": 1709337660000000000,
+      "warmup_start_ns": 1709337660000000000
+    }
+  },
+  "instrument": "AVAXUSDT-PERP.BINANCE",
+  "label": "routeb-fold-avaxusdt-20240101-r3-20261021-v1",
+  "marker_sha256": "b40ec3569f56a39e675f7aa384f57f2ba7653e9240aa82b82611efe8db363e35",
+  "schema_version": "rles.world_model.registered_fold_baseline.v0"
+}

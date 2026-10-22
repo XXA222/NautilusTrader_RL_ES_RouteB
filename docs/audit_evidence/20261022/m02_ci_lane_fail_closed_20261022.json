@@ -1,0 +1,20 @@
+{
+  "schema": "rles.routeb.audit-evidence.m02-ci-lane-fail-closed.v1",
+  "date": "2026-10-22",
+  "status": "PASS_LOCAL_ENGINEERING_ONLY",
+  "finding": "The reusable GitHub Actions workflow accepted any required lane string. Its job-level conditions only matched pr/nightly/gpu/release, so a caller typo could skip every job without a failing validation job.",
+  "change": "Added a shared lane validator and an unconditional validate-lane job. Every execution job now depends on that validation. The manual workflow_dispatch options are regression-checked against the validator's supported lane set.",
+  "reproduction": "The new workflow dependency contract test failed before the workflow change because validate-lane did not exist and jobs did not require it. A direct CLI check accepted nightly and returned failure for nightlyy after the fix.",
+  "verification": {
+    "workflow_lane_tests": "12 passed",
+    "ruff": "passed for the new validator and workflow regression tests",
+    "mypy": "Success: no issues found in workflow_lane.py with imported module diagnostics suppressed",
+    "yaml": "Both ci.yml and l6-ci-reusable.yml parse successfully",
+    "workflow_contract": "Every reusable execution job depends on validate-lane; manual dispatch choices equal the validator lane set",
+    "l6_ci_release_wheel": "Built rles-l6-ci-release 0.4.1 wheel; packaged workflow_lane.py bytes equal source",
+    "workspace_wheels": "12/12 RLES workspace wheels match package source",
+    "source_manifest": "602 files; verified identity recorded below"
+  },
+  "source_identity_sha256": "73470b5f5c08dc4a744c70849320a47c61d967462f4fac2d526b8e061513c934",
+  "scope": "Workflow contract and synthetic lane values only. No market, account, registry, Validation, Test, or Holdout payload was read. No remote GitHub Actions run was triggered. Clean hosted Linux/Windows CI remains an external verification gate."
+}

@@ -1,0 +1,41 @@
+{
+  "schema_version": "rles.world_model.b0_baselines.v0",
+  "status": "COMPLETED",
+  "scope": "registered_fresh_fold_validation",
+  "models": [
+    "S0_ZERO_DRIFT",
+    "S1_CONDITIONAL_VOL",
+    "S2_BLOCK_BOOTSTRAP"
+  ],
+  "primary_score": "one_step_log_return_crps",
+  "seed": 0,
+  "ensemble_size": 96,
+  "observations": 21600,
+  "scores": [
+    {
+      "horizon_minutes": 1,
+      "mean_crps": 0.0002425850348492457,
+      "name": "S0_ZERO_DRIFT",
+      "observations": 21600
+    },
+    {
+      "horizon_minutes": 1,
+      "mean_crps": 0.00023120692350258722,
+      "name": "S1_CONDITIONAL_VOL",
+      "observations": 21600
+    },
+    {
+      "horizon_minutes": 1,
+      "mean_crps": 0.00023895781851857408,
+      "name": "S2_BLOCK_BOOTSTRAP",
+      "observations": 21600
+    }
+  ],
+  "selected_15m_path_log_rv_baseline": "E0_S0_ZERO_DRIFT_FIXED_VOL",
+  "reason": "Baseline scores are real registered Validation evidence for this fresh Fold. They support predictive comparison only and do not establish trading economics.",
+  "limitations": [
+    "S2 dependence preservation is only evaluated through the registered multi-step path score; no Test/Holdout data was read.",
+    "The E2 R2 gate failed: three-seed path log-RV CRPS confidence intervals crossed zero and Holm-adjusted p-values were not significant.",
+    "Perpetual fee, funding, and instrument-rule evidence is missing; no economic certification is available."
+  ]
+}

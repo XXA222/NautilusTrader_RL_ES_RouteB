@@ -1,0 +1,40 @@
+{
+  "schema": "rles.routeb.audit-evidence.data-json-error-boundaries.v1",
+  "date": "2026-10-22",
+  "audit_item": "A10 / curated manifest and event JSON decoder error boundary",
+  "finding": "Strict JSON readers rejected duplicate keys, non-standard constants, and invalid UTF-8, but curated marker/event and Binance archive/Funding readers leaked parser failures. Curated 0.4.1 marker SHA receipts also leaked UnicodeDecodeError when their ASCII receipt bytes were corrupt.",
+  "change": "Contextual DataError mapping now covers curated identity, time-bound preflight, full/windowed readers, event rows, archive/Funding response and receipt readers, and invalid ASCII marker receipts.",
+  "verification": {
+    "source_pytest": "curated JSON/receipt + archive/Funding response/receipt + curated window/hash + data-event + archive ingress selectors: 122 passed",
+    "installed_wheel_pytest": "same combined selector with PYTHONPATH unset: 122 passed",
+    "ruff": "passed on all changed data sources/tests",
+    "targeted_mypy": "Success: no issues found in 3 source files",
+    "py_compile": "passed",
+    "source_manifest": {
+      "files": 600,
+      "source_identity_sha256": "2c8edff0b680f3a6f3e98f1e8ed15ff800f351ce9797b91391602ff334bb8f1f",
+      "verified": true
+    },
+    "distribution": {
+      "wheelhouse": "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-wheels-a10-marker-receipt-boundary-20261022",
+      "wheels_built": 12,
+      "sdists_built": 12,
+      "source_matches_all_wheels": true,
+      "data_wheel_sha256": "e700b77d5a66c178384b403d6228ce219087baeb1561debd2ab20a3daeb37b8c",
+      "installed_modules": {
+        "io.py": {
+          "source_sha256": "4f37f227e519a6027c0d6040f5c63d06da8ccbc58cbb4f0c15e4c13cc4270b1e",
+          "installed_sha256": "4f37f227e519a6027c0d6040f5c63d06da8ccbc58cbb4f0c15e4c13cc4270b1e",
+          "matches": true
+        },
+        "binance_archive.py": {
+          "source_sha256": "a30bc43e5c7d21ce916c16af4aa7c46fe81500b25f1bcf0b1a7dded43da1a196",
+          "installed_sha256": "a30bc43e5c7d21ce916c16af4aa7c46fe81500b25f1bcf0b1a7dded43da1a196",
+          "matches": true
+        }
+      },
+      "dependency_check": "69 packages compatible"
+    }
+  },
+  "scope_limit": "Synthetic malformed markers, receipts, response bytes, and event rows only. No curated market, account, registry, or formal evaluation payload was read."
+}

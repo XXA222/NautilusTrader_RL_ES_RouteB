@@ -1,0 +1,25 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A07 / native-history and Episode Reset profile JSON integrity",
+  "finding": "The A07 native-history and Episode Reset profile tools used default JSON parsing for Train-only plans, policy bundles, completed profile cases, failure receipts, and summaries. Duplicate fields could alter window, source, resource, or completion facts after matching raw-file hash checks.",
+  "change": "Both profile tools now use recursive duplicate-key JSON parsing, normalize IO/UTF-8/JSON failures to DataError, and require object roots for persisted controls and output evidence. Added synthetic duplicate-key, invalid UTF-8, and wrong-root tests for both readers.",
+  "source_files": {
+    "qa/profile_native_history_growth_20261016.py": "6c6bb360a07086c344553d5b6fc2ecfa3e342365896dd22645ec017924cf7b54",
+    "qa/profile_episode_reset_20261017.py": "14207e3effb6b9bea2923661ef269d5311f3c2231f21985027153eb316f2503a"
+  },
+  "test_files": {
+    "tests/test_a07_profile_json_integrity.py": "284479b67f3e7cf8056ea7645986ff52ffc77f57c7a3c5b138a4550543b8abd0"
+  },
+  "verification": {
+    "pytest": "A07 strict-reader + existing project-isolation + M2/M3 baseline input selector: 28 passed",
+    "ruff": "passed for both A07 tools and test",
+    "py_compile": "passed for both A07 tools",
+    "mypy": "packages qa: 224 source files, no issues; installed untyped-wheel diagnostic disabled",
+    "source_manifest": {
+      "file_count": 587,
+      "source_identity_sha256": "a46f18270df200d56aea4cde7d98db9cf9a15017630279f531b5d2a8d0867672",
+      "verified": true
+    }
+  },
+  "scope": "Synthetic JSON only. No archived Train data, bundle, registry, market rows, or profile output was opened or rerun."
+}

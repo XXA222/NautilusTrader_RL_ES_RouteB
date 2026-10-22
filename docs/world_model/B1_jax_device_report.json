@@ -1,0 +1,13 @@
+{
+  "schema": "rles.world-model.b1-smoke.v1",
+  "status": "passed",
+  "python": "3.12.10",
+  "jax": "0.11.2",
+  "devices": [
+    "cpu:0"
+  ],
+  "upstream_commit": "e01491fad6434b2245a3b8ca201dd7faedcc458c",
+  "adapter_version": "rles-rssm-constant-zero.v1",
+  "action_independence": "passed",
+  "npz_save_resume": "exact"
+}

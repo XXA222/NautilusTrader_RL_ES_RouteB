@@ -1,0 +1,8 @@
+# Deliberately excludes the upstream CUDA 12 / JAX 0.4.33 pin and unrelated game extras.
+jax
+chex
+einops
+elements>=3.19.1
+ninjax>=3.5.1
+optax
+portal>=3.5.0

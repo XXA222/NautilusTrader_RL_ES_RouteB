@@ -1,0 +1,36 @@
+{
+  "allow_legacy_isolated_snapshot": false,
+  "config": {
+    "environment": {
+      "instrument": "TRXUSDT-PERP.BINANCE",
+      "market_path": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB/.artifacts/world_model/fresh-trxusdt-20250122-path-crps-paths32-scale3-20261020/source/curated/market.parquet"
+    }
+  },
+  "fold": {
+    "dataset_hash": "436e513c537ce7fee3a354908461cf255058caddecf2a7f3553817e885571f49",
+    "embargo_ns": 82800000000000,
+    "feature_hash": "fc7c4373d2a4e5d802f9c0663d37ecf89d900e73afc7742d2d6ea76258540890",
+    "purge_ns": 3600000000000,
+    "scaler_hash": null,
+    "schema_version": "0.4.0",
+    "test": {
+      "score_end_ns": 1745625660000000000,
+      "score_start_ns": 1744329660000000000,
+      "warmup_start_ns": 1743292860000000000
+    },
+    "train": {
+      "score_end_ns": 1742860860000000000,
+      "score_start_ns": 1737676860000000000,
+      "warmup_start_ns": 1737504060000000000
+    },
+    "validation": {
+      "score_end_ns": 1744243260000000000,
+      "score_start_ns": 1742947260000000000,
+      "warmup_start_ns": 1741910460000000000
+    }
+  },
+  "instrument": "TRXUSDT-PERP.BINANCE",
+  "label": "routeb-fold-trxusdt-binance-20250122-pathcrps-paths32-scale3-adjacent-v1",
+  "marker_sha256": "df3a5006c76d8ba99a43701f02d32048eee15f4ed25ff51d7979fe72c20f0ae5",
+  "schema_version": "rles.world_model.registered_fold_baseline.v0"
+}

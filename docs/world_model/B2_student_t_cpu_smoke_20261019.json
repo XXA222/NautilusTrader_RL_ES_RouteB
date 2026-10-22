@@ -1,0 +1,62 @@
+{
+  "status": "PASS",
+  "scope": "synthetic_mechanism_only",
+  "e1_e2_share_train_artifact": true,
+  "e1_e2_share_training_budget": true,
+  "e1_checkpoint_sha256": "0b3367c30288f14fd9101b34d88ebc8bf9fb5b61c3a77be688f936c905669dc6",
+  "e2_checkpoint_sha256": "22ea24dffc991253538043251b200f29e1ba409ff663421f4f8c438728ec95fa",
+  "train_examples": 30,
+  "window_length": 16,
+  "optimizer_steps": 2,
+  "e2_synthetic_nll_initial": 5.841406345367432,
+  "e2_synthetic_nll_final": 4.950504779815674,
+  "e2_synthetic_nll_decreased": true,
+  "e2_forecast_distribution": "student_t",
+  "e2_student_t_df": 5.0,
+  "e2_scale_semantics": "marginal_standard_deviation",
+  "synthetic_batched_forecast_shapes": {
+    "e1": [
+      2,
+      2,
+      3,
+      5
+    ],
+    "e2": [
+      2,
+      2,
+      3,
+      5
+    ]
+  },
+  "synthetic_one_shot_fold_pipeline": "COMPLETED",
+  "synthetic_one_shot_report_sha256": "7e089acd1480d08d0c3b3dea0041c16b65de9c324a3c5aaaff779e8c191dd861",
+  "prior_risk_forecast_shapes": {
+    "risk_mean": [
+      16,
+      5,
+      4
+    ],
+    "risk_scale": [
+      16,
+      5,
+      4
+    ],
+    "barrier_logits": [
+      16,
+      5,
+      2
+    ],
+    "risk_horizons": [
+      5
+    ]
+  },
+  "prior_risk_forecast_sha256": "f3e3d4a8c5a0f073f639133c47b28d2fa3258eb6530a1a32edfe8775e7e02838",
+  "real_market_validation": false,
+  "economic_claim": false,
+  "python_host": "3.14.7",
+  "python_worker": "3.12.10",
+  "jax_worker": "0.11.2",
+  "device": "cpu:0",
+  "dreamerv3_commit": "e01491fad6434b2245a3b8ca201dd7faedcc458c",
+  "e2_configuration_sha256": "6e689d26fbc581c8efa45f33ae3e586a25b6387795c8cc920407f761e87b0115"
+}

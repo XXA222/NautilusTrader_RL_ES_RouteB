@@ -1,0 +1,25 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A14/M3.3 / Train-only baseline source and plan JSON integrity",
+  "finding": "The M3.3 baseline preparation and replay tools permissively parsed the prior run registration, frozen baseline plan, bundle, and scenario rules. Duplicate fields could redirect source identity or alter the Train-only comparison controls before existing SHA checks were applied.",
+  "change": "Both baseline tools now reject duplicate JSON keys recursively, malformed UTF-8/JSON/IO, and non-object roots before reading source paths or recording Train-window access. Added temporary-file regressions through both tool readers.",
+  "source_files": {
+    "qa/train_signal_baselines.py": "a0ce24e11c647eb310a19dab20cea7ea6d64dec7090b86fedc67ce8481fe5909",
+    "qa/prepare_train_signal_baselines_20261016.py": "101d2a5d33f6a6562670a6e31ba2b78a28b7bb311a2088faeb8ba4764b7c4a5b"
+  },
+  "test_files": {
+    "tests/test_train_signal_baseline_json_integrity.py": "b9ae4e2c21658b5db3514cc199bbe1c6e65d3a32a198f2a84730e02d665767a7"
+  },
+  "verification": {
+    "pytest": "M3.3 baseline input + Stage/M3/M1.3/inventory strict-reader selector: 39 passed",
+    "ruff": "passed for both baseline tools and test",
+    "py_compile": "passed for both baseline tools",
+    "mypy": "packages qa: 224 source files, no issues; installed untyped-wheel diagnostic disabled",
+    "source_manifest": {
+      "file_count": 585,
+      "source_identity_sha256": "5c117f9ed160c76c0ab9f39004b75c3fe7461739e81d03fd77ef66ab6c2cf9b2",
+      "verified": true
+    }
+  },
+  "scope": "Only synthetic temporary JSON files were parsed. Baseline preparation/replay, old run outputs, ledgers, and market data were not opened."
+}

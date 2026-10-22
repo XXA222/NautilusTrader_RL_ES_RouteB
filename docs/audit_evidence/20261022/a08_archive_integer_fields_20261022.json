@@ -1,0 +1,30 @@
+{
+  "schema": "rles.routeb.audit-evidence.archive-integer-fields.v1",
+  "date": "2026-10-22",
+  "finding": "Malformed integer timestamp or ID fields in bookTicker, fundingRate, and kline CSV records leaked raw ValueError from archive_events instead of its DataError boundary.",
+  "change": "Added field-labeled strict integer parsing for bookTicker IDs/timestamps, Funding timestamps/intervals, and kline open/close times.",
+  "verification": {
+    "regression_before_fix": "3 synthetic ZIP cases failed with raw ValueError",
+    "source_archive_and_event_tests": "40 passed",
+    "installed_wheel_archive_and_event_tests": "40 passed with PYTHONPATH unset",
+    "ruff": "passed",
+    "py_compile": "passed",
+    "targeted_mypy": "Success: no issues found in 1 source file",
+    "source_manifest": {
+      "files": 595,
+      "source_identity_sha256": "e4355283b62ee3113b6b1eaeb8bfa4ed3807025e0a5082d94cb1197f0a73a882",
+      "verified": true
+    },
+    "distribution": {
+      "wheelhouse": "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-wheels-a08-archive-integers-20261022",
+      "wheels_built": 12,
+      "sdists_built": 12,
+      "source_matches_all_wheels": true,
+      "data_wheel_sha256": "dbded58e50dcbc17cdfe6120d330a8aba300891a5a73a816aadff62e7122fc0d",
+      "installed_data_module_sha256": "16aa3dce4c41c5be7a3d0d630d5b2d38b09443fe00ac06db1cfc54d1004c721e",
+      "installed_module_matches_source": true,
+      "dependency_check": "69 packages compatible"
+    }
+  },
+  "scope_limit": "Synthetic temporary ZIP fixtures only. No exchange archive or research payload was downloaded or read."
+}

@@ -1,0 +1,78 @@
+{
+  "status": "PASS",
+  "scope": "synthetic_mechanism_only",
+  "optimizer_updates": 4,
+  "final_step": 4,
+  "device": "cuda:0",
+  "jax_platforms": [
+    "gpu"
+  ],
+  "python": "3.12.10",
+  "jax": "0.11.2",
+  "jaxlib": "0.11.2",
+  "upstream_sha256": "e01491fad6434b2245a3b8ca201dd7faedcc458c",
+  "snapshot_sha256": "80194a587444bf4a11f06f6e273723e5754f2483",
+  "worker_lock_sha256": "16f23e3ab6c27603a2ace915f03a3f577b35639d2b52aeaabfa44dbb4ea43ce1",
+  "uninterrupted_training_seconds": 5.539279997000008,
+  "device_memory_stats_bytes": {
+    "num_allocs": 13758,
+    "bytes_in_use": 0,
+    "peak_bytes_in_use": 268638976,
+    "largest_alloc_size": 100662784,
+    "bytes_limit": 6410993664,
+    "bytes_reserved": 0,
+    "peak_bytes_reserved": 0,
+    "largest_free_block_bytes": 134217728,
+    "pool_bytes": 270532608,
+    "peak_pool_bytes": 270532608
+  },
+  "resume_parity": true,
+  "resumed_reports": 1,
+  "forecast_shape": [
+    3,
+    3,
+    5
+  ],
+  "one_step_distribution_shape": [
+    3,
+    5
+  ],
+  "one_step_return_nll_finite": true,
+  "worker_distribution_shape": [
+    1,
+    5
+  ],
+  "worker_one_step_return_nll_finite": true,
+  "worker_f1_forecast_shape": [
+    2,
+    1,
+    5
+  ],
+  "risk_training_loss_finite": true,
+  "risk_valid_targets_by_horizon": [
+    92.0,
+    92.0,
+    92.0,
+    92.0,
+    92.0
+  ],
+  "sampler_rng_resume_parity": true,
+  "prior_alignment_rows": 93,
+  "prior_alignment_valid_rows": 72,
+  "prior_alignment_sha256": "6c3e13d02b2a421459e58124a07609120c73463f34dab304059a1ea4d96ff5f3",
+  "direct_forecast_seed_repeatability": true,
+  "worker_forecast_seed_repeatability": true,
+  "worker_f1_forecast_ohlcv_valid": true,
+  "real_market_validation": false,
+  "economic_claim": false,
+  "risk_barrier_volatility_quantile": 0.75,
+  "risk_barrier_fractions": [
+    0.0005547961557462352,
+    0.0012366926341531531,
+    0.0020624550331353442,
+    0.0025794619991581663,
+    0.003543645476234901
+  ],
+  "train_sequence_schema": "routeb.train-sequences.v3",
+  "train_artifact_sha256": "dc5488ea5fb032ca9e1e775265564e3118f4373c28ede759c44b481c4fd96eef"
+}

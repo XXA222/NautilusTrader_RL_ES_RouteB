@@ -1,0 +1,23 @@
+{
+  "model": {
+    "deter": 256,
+    "hidden": 128,
+    "stoch": 16,
+    "classes": 16,
+    "blocks": 8,
+    "feature_dim": 5,
+    "dynamics_scale": 1.0,
+    "representation_scale": 0.1,
+    "reconstruction_scale": 0.2,
+    "prediction_scale": 1.0,
+    "min_scale": 0.02
+  },
+  "training": {
+    "seed": 31,
+    "steps": 100,
+    "batch_size": 8,
+    "lr": 0.0003,
+    "grad_clip": 100.0,
+    "report_interval": 25
+  }
+}
