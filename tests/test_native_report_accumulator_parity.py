@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from types import SimpleNamespace
 
 import pytest
@@ -6,6 +6,8 @@ import pytest
 from rles_research.native_metrics import (
     MetricsError,
     NativeReportAccumulator,
+    account_rows,
+    _external_cashflows_by_time,
     native_report,
 )
 
@@ -51,6 +53,115 @@ def test_batch_and_online_cashflow_paths_reject_noncanonical_amount_strings(amou
         NativeReportAccumulator(
             sample_interval_ns=10, max_return_count=4,
             contract_multiplier=Decimal(1), external_cashflows=(flow,),
+        )
+
+
+def test_batch_and_online_cashflow_paths_normalize_decimal_sum_overflow():
+    amount = Decimal("9.9E+999999")
+    cashflows = (
+        _flow("overflowing-transfer-a", 11, "DEPOSIT", amount),
+        _flow("overflowing-transfer-b", 11, "DEPOSIT", amount),
+    )
+    snapshots = (_snapshot(1, "1000"), _snapshot(11, "1100"), _snapshot(21, "1200"))
+
+    with pytest.raises(MetricsError, match="cashflow sum exceeds finite decimal range"):
+        native_report(
+            snapshots, fill_references={}, sample_interval_ns=10,
+            external_cashflows=cashflows,
+        )
+    with pytest.raises(MetricsError, match="cashflow sum exceeds finite decimal range"):
+        NativeReportAccumulator(
+            sample_interval_ns=10, max_return_count=4,
+            contract_multiplier=Decimal(1), external_cashflows=cashflows,
+        )
+
+
+def test_batch_and_online_fill_accounting_ignore_low_decimal_context_precision():
+    fill = {
+        "event_id": "precision-fill",
+        "client_order_id": "precision-order",
+        "order_side": "BUY",
+        "last_qty": "12345",
+        "last_px": "12.34",
+        "commission": "0.01 USDT",
+    }
+    snapshots = [_snapshot(1, "100000"), _snapshot(11, "100000"), _snapshot(21, "100000")]
+    snapshots[1].fills = (fill,)
+    references = {"precision-order": Decimal("12.33")}
+
+    with localcontext() as context:
+        context.prec = 3
+        rows = account_rows(
+            snapshots, fill_references=references,
+            contract_multiplier=Decimal(1),
+        )
+        online = NativeReportAccumulator(
+            sample_interval_ns=10, max_return_count=4,
+            contract_multiplier=Decimal(1),
+        )
+        for snapshot in snapshots:
+            online.add_snapshot(snapshot, references)
+        report = online.finish()
+
+    assert rows[1]["turnover_notional"] == pytest.approx(152337.3)
+    assert rows[1]["slippage_cost"] == pytest.approx(123.45)
+    assert report["metrics"]["turnover_ratio"] == pytest.approx(1.523373)
+    assert report["metrics"]["total_slippage_cost"] == pytest.approx(123.45)
+
+
+def test_cashflow_aggregation_preserves_exact_sum_in_low_precision_context():
+    cashflows = (
+        _flow("large-transfer", 11, "DEPOSIT", Decimal("1E+28")),
+        _flow("small-transfer", 11, "DEPOSIT", Decimal("1")),
+    )
+    snapshots = (_snapshot(1, "1000"), _snapshot(11, "1100"), _snapshot(21, "1200"))
+    expected = Decimal("10000000000000000000000000001")
+
+    with localcontext() as context:
+        context.prec = 3
+        batch, _ = _external_cashflows_by_time(cashflows, snapshots)
+        online = NativeReportAccumulator(
+            sample_interval_ns=10, max_return_count=4,
+            contract_multiplier=Decimal(1), external_cashflows=cashflows,
+        )
+
+    assert batch[11] == expected
+    assert online._cashflows_by_time[11] == expected
+
+
+def test_cashflow_withdrawal_sign_preserves_digits_in_low_precision_context():
+    cashflows = (_flow("large-withdrawal", 11, "WITHDRAWAL", Decimal("12345")),)
+    snapshots = (_snapshot(1, "1000"), _snapshot(11, "1100"), _snapshot(21, "1200"))
+    expected = Decimal("-12345")
+
+    with localcontext() as context:
+        context.prec = 3
+        batch, _ = _external_cashflows_by_time(cashflows, snapshots)
+        online = NativeReportAccumulator(
+            sample_interval_ns=10, max_return_count=4,
+            contract_multiplier=Decimal(1), external_cashflows=cashflows,
+        )
+
+    assert batch[11] == expected
+    assert online._cashflows_by_time[11] == expected
+
+
+def test_batch_and_online_cashflow_sum_rejects_excessive_exact_precision():
+    cashflows = (
+        _flow("wide-transfer", 11, "DEPOSIT", Decimal("1E+4095")),
+        _flow("unit-transfer", 11, "DEPOSIT", Decimal("1")),
+    )
+    snapshots = (_snapshot(1, "1000"), _snapshot(11, "1100"), _snapshot(21, "1200"))
+
+    with pytest.raises(MetricsError, match="exact decimal precision limit"):
+        native_report(
+            snapshots, fill_references={}, sample_interval_ns=10,
+            external_cashflows=cashflows,
+        )
+    with pytest.raises(MetricsError, match="exact decimal precision limit"):
+        NativeReportAccumulator(
+            sample_interval_ns=10, max_return_count=4,
+            contract_multiplier=Decimal(1), external_cashflows=cashflows,
         )
 
 

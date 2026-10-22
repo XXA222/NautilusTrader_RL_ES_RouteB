@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v1",
-  "generated_at_utc": "2026-10-22T14:35:38.826960+00:00",
-  "source_identity_sha256": "092cebb4581e871856e9b46d1621f8aa480f9a230c1770bd97fd34e70e4717b9",
+  "generated_at_utc": "2026-10-22T16:46:09.974219+00:00",
+  "source_identity_sha256": "6d723b79436a79535f10ef6e8efe326e7f300b662781d756cda1a4c35ddf5607",
   "scope": {
     "included": [
       ".gitattributes",
@@ -1592,8 +1592,8 @@
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/application.py",
-      "size_bytes": 117235,
-      "sha256": "4e38cc82903bc7d5b148cf4e6c4be35aeeef849dc5a84e2ed2b46efd41c805c0"
+      "size_bytes": 117404,
+      "sha256": "ba900ac4ea15c965c34e6165c75b4fa46a8f44e0397f4946468d1374385e63eb"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/diagnostics.py",
@@ -1697,8 +1697,8 @@
     },
     {
       "path": "packages/research/src/rles_research/native_metrics.py",
-      "size_bytes": 51943,
-      "sha256": "a4e22a273150c5712d95919f3f1d7d47d07949fd139ea872fd36be729d7decb5"
+      "size_bytes": 56637,
+      "sha256": "68ef8cd8c16cdd86a96ffdb9856074372d5ff3da35b90492e1af1a715dd15f41"
     },
     {
       "path": "packages/research/src/rles_research/numeric.py",
@@ -2807,8 +2807,8 @@
     },
     {
       "path": "tests/test_application_cli.py",
-      "size_bytes": 44955,
-      "sha256": "cdfa93df18a48309d14f3113224091899399bb9351b063170770cae3b0cacb2d"
+      "size_bytes": 45026,
+      "sha256": "ff8db2e0c9f9c74e6e383ae31a8c659772630d6bb9bd544fe72b86ad92fdc1e3"
     },
     {
       "path": "tests/test_archive_day_errors.py",
@@ -3007,8 +3007,8 @@
     },
     {
       "path": "tests/test_native_report_accumulator_parity.py",
-      "size_bytes": 6503,
-      "sha256": "7997c35208f820e0254180012a01d04b7eaf24a575eb26b7dca0d4bd9d9d511d"
+      "size_bytes": 11631,
+      "sha256": "e0f9a6ebf54007544f20b8fc3550457633926b238843fd60308f1a48f4867e18"
     },
     {
       "path": "tests/test_native_training_episode.py",
@@ -3072,8 +3072,8 @@
     },
     {
       "path": "tests/test_research_metrics.py",
-      "size_bytes": 51845,
-      "sha256": "e6184a41f9cc00f9b110d7a7d842ec6fa56ef55be84d9d645b1a22212eb3e095"
+      "size_bytes": 51844,
+      "sha256": "37cc892d186e0c3fa3860e49d4810c8e2159a7fa312cfbdee9e6ebd0a2c322d1"
     },
     {
       "path": "tests/test_research_numeric_guards.py",

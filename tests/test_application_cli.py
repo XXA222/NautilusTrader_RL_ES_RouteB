@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -629,6 +630,7 @@ def test_rollout_reports_requested_and_post_guard_action_diagnostics(
 
     class Factory:
         mode = "base"
+        contract_multiplier = Decimal("1")
         snapshots = ()
         fill_references = ()
         schema = SimpleNamespace(names=("market.feature_1", "market.feature_2"))

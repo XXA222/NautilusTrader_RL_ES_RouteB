@@ -24,7 +24,11 @@
 
 从 Binance USDⓈ-M 官方 GET /fapi/v1/exchangeInfo 保存 BTCUSDT、ETHUSDT、SOLUSDT 三项原始 symbol 规则，serverTime 为 2026-10-22T06:35:32.110Z，fixture SHA-256 4d400184cb16c8adb9987c9f12c1c3a389a682bb4ec479decbe1f452f57772a4。新增参数化原生引擎验收，从快照逐标的装载 tick/step/min-notional，执行合约数量与 Funding 结算并核对权益始终以 USDT 计价；3 个新用例通过，完整 Nautilus adapter smoke 为 36 passed。Funding 输入为机械单位检查用的合成事件、手续费设为零、乘数 1 是线性基础数量约定；这些结果不证明历史生效规则、个体手续费层级或真实账户流水。证据：docs/audit_evidence/20261022/a09_current_usdm_rules_20261022.json。M4.1 当前规格的工程验收已补；历史规则与真实经济核对仍需独立认证。
 
-最新工程续做位置：F7 摘要报告快照的临时磁盘序列已做 90 天 parity 验证，129,597 步 Native 轨迹和指标哈希与基线相同。data-only 存储峰值 RSS 511,631,360 bytes，较内存列式报告路径少约 8.2 MB，但耗时 128.88 s，较内存路径单次观测多约 42 s，因此当前仅作为显式 opt-in，不让默认摘要回放变慢。列式变化点容器基准节省 52,688,220 bytes。源码与 wheel 的 192 项完整选择器在 spool 实验前通过；最终 opt-in 改动后的源码/安装专项回归各 2 项通过；wheelhouse 12/12 匹配、依赖 69/69 兼容。证据：`docs/audit_evidence/20261022/f7_summary_snapshot_spool_20261022.json`。下一步实现在线 Native 摘要归约，消除逐屏障事实驻留与多遍磁盘解码开销，同时保持现金流对齐、线性权益对账、清算事实与精确尾部指标语义；之后继续本地 A01–A14 源码审计。真实账户流水、认证市场规则、独立研究窗口与 Hosted CI 仍须分别满足各自证据门槛。
+最新工程续做位置：F7 在线 Native 摘要累积器已接入 `rollout()` 的无账户行路径，直接接收引擎屏障快照并增量汇总指标/对账；磁盘 snapshot spool 保持显式 opt-in，因为 90 天合成轨迹虽与基线逐步相同、峰值 RSS 少约 8.2 MB，但单次耗时多约 42 秒。变化点列式容器基准节省 52,688,220 bytes。F7 仍为 PARTIAL：真实长窗 Train RSS/轨迹证据缺失，保留账户行的完整报告仍需物化。继续 A01–A14 源码审计，不把合成性能观察写成市场结论。
+
+### 2026-10-23 后续游标 — F7 rollout 工厂接口边界
+
+完整 Windows PR 标记选择器发现 `rollout()` 在普通报告路径也访问 `factory.rows`，与通用环境工厂接口不符。现在仅在无账户行、非 spool 的在线摘要路径读取该属性；测试工厂显式提供原生报告合同要求的单位 `contract_multiplier`。修后 Windows selector **855 passed、4 skipped、597 deselected**；RouteB 安装 wheel 的 CLI 与 Native accumulator selector **57 passed**。全仓 Ruff 与 MyPy（225 个源码文件）、py_compile、`git diff --check` 通过；12 wheels/12 sdists 全部构建且 all-match，12 个 RouteB wheel 安装到独立 `.venv-win-app`，12 modules/6 entry points provenance 与 69 包兼容检查通过。604-file source identity：`44ad07a1e5fac4b6deac0eb82302f391c305ae354ca715a7651a03696d542ace`。证据：`docs/audit_evidence/20261023/f7_rollout_factory_interface_20261023.json`。没有访问行情、账户、登记库或 Validation/Test/Holdout 数据。Hosted CI 和需要外部认证的研究门槛仍开放；继续 A01–A14 其余可实施工程项。
 
 ### 2026-10-22 后续游标 — Bar Base/Stress 乘数
 

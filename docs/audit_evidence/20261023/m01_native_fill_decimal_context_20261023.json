@@ -1,0 +1,17 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "M0.1 / Native batch and online fill arithmetic under Decimal context",
+  "finding": "Native batch fill rows and the online accumulator summary path could use caller-controlled Decimal precision. At precision 3, a 12.34 fill for quantity 12345 was rounded to turnover 152000.0 instead of 152337.30, and slippage 123.00 instead of 123.45.",
+  "change": "Both batch and online summary fill accounting now use bounded exact Decimal multiply/add/subtract helpers, context-independent SELL sign handling, and explicit finite/precision errors. The exact helpers retain the 4096-digit operation cap.",
+  "verification": {
+    "pytest_source": "tests/test_native_report_accumulator_parity.py with PYTHONPATH=packages/research/src: 16 passed in 0.52s.",
+    "pytest_installed_wheel": "Same 16-test selector with PYTHONPATH unset and freshly rebuilt rles-research 0.4.1 installed in RouteB .venv-win-app: 16 passed in 0.64s.",
+    "wheel": "Built RouteB rles_research-0.4.1-py3-none-any.whl into .artifacts/routeb_backup_20261023/research_wheel.",
+    "source_and_installed_module_sha256": "966287f6cc96d7b3677894acbaf2cfe9d21083db5c316fc362aa18762aadd2a2",
+    "source_manifest": {
+      "files": 604,
+      "identity_sha256": "6d723b79436a79535f10ef6e8efe326e7f300b662781d756cda1a4c35ddf5607"
+    }
+  },
+  "scope": "Synthetic unit fixtures under a precision-3 Decimal context only; no live account, market, registry, or evaluation payload was accessed. The broad Windows PR selector has not been rerun after this focused change."
+}

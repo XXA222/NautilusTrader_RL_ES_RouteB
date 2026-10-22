@@ -1,0 +1,24 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "F7 / rollout optional factory summary-path compatibility",
+  "finding": "rollout() computed len(factory.rows) unconditionally even when the caller requested the normal account-row report. The report factory interface does not require rows; generic mock/adapter factories failed before environment creation. After making the row-count read lazy, the fixture also exposed that the current native report contract requires an explicit contract_multiplier.",
+  "change": "Compute selected_steps from factory.rows only for the no-account-rows, non-spooled online summary path. Other report paths no longer access rows. The test factory now declares contract_multiplier=Decimal(\"1\") to satisfy the explicit contract used by native accounting.",
+  "verification": {
+    "full_windows_pr_selector": "tests/ -m \"contracts or unit or micro_golden or algorithm_smoke\": 855 passed, 4 skipped, 597 deselected, 46 warnings in 281.99s with all RouteB package src roots on PYTHONPATH.",
+    "installed_wheel_targeted": "With PYTHONPATH unset, tests/test_application_cli.py plus tests/test_native_report_accumulator_parity.py: 57 passed in 4.76s using RouteB-built wheels installed in .venv-win-app.",
+    "static_checks": "Full Ruff passed for packages/tests/qa/ci; full MyPy passed for packages/qa (225 source files) with RouteB package roots in MYPYPATH; targeted py_compile passed for changed modules/tests; git diff --check passed.",
+    "build": "uv build --all-packages built 12 wheels and 12 sdists; wheel_manifest reports all_match=true.",
+    "installed_provenance": "All 12 RLES wheels reinstalled from the RouteB artifact directory; wheel import smoke passed for 12 packages and 6 entry points.",
+    "dependencies": "uv pip check passed; 69 installed packages compatible.",
+    "module_sha256": {
+      "application.py": "ba900ac4ea15c965c34e6165c75b4fa46a8f44e0397f4946468d1374385e63eb",
+      "native_metrics.py": "28af40fe9d2c4e18eaaf920897ed7522f5beca8be6011e4f067ab2b8bf292acc"
+    },
+    "source_manifest": {
+      "files": 604,
+      "identity_sha256": "44ad07a1e5fac4b6deac0eb82302f391c305ae354ca715a7651a03696d542ace"
+    },
+    "build_artifacts": ".artifacts/audit_routeb_pr_fixes_20261023/wheels"
+  },
+  "scope": "Synthetic and unit integration fixtures only. No market/account/registry, Validation, Test, or Holdout payload was accessed. Hosted Linux/Windows CI remains outstanding."
+}

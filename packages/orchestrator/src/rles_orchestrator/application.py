@@ -600,7 +600,11 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
     if spool_summary_snapshots:
         env_options["spool_report_snapshots"] = True
     summary_accumulator = None
-    selected_steps = len(factory.rows) - 3 if episode_steps is None else episode_steps
+    selected_steps = episode_steps
+    if (selected_steps is None and not include_account_rows
+            and not spool_summary_snapshots):
+        rows = getattr(factory, "rows", None)
+        selected_steps = len(rows) - 3 if rows is not None else None
     if (not include_account_rows and not spool_summary_snapshots
             and type(selected_steps) is int and selected_steps >= 1):
         summary_accumulator = NativeReportAccumulator(

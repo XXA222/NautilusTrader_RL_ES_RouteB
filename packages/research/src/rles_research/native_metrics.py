@@ -1,7 +1,7 @@
 """Map detached native snapshots into regular economic metric increments."""
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, InvalidOperation, localcontext
 from collections.abc import Iterator, Sequence as SequenceABC
 from itertools import groupby
 import re
@@ -10,6 +10,8 @@ from typing import Any, Mapping, Sequence
 from .metrics import AccountFactsAccumulator, MetricsError
 
 NATIVE_LIQUIDATION_COUNTS_AVAILABLE = True
+
+_MAX_EXACT_DECIMAL_OPERATION_DIGITS = 4096
 
 _LIQUIDATION_ORDER_STATE_FIELDS = frozenset({
     "avg_px", "filled_qty", "is_canceled", "is_closed", "is_emulated", "is_expired",
@@ -44,6 +46,74 @@ def _cashflow_decimal(value: Any) -> Decimal:
                 and re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", value) is None)):
         raise MetricsError("external cashflow amount must be an exact decimal value")
     return _decimal(value, "external cashflow amount")
+
+
+def _add_decimal_exact(current: Decimal, increment: Decimal, *, label: str) -> Decimal:
+    if not current.is_finite() or not increment.is_finite():
+        raise MetricsError(f"{label} requires finite decimal values")
+    if not current:
+        return increment
+    if not increment:
+        return current
+    left = current.as_tuple()
+    right = increment.as_tuple()
+    left_exponent = left.exponent
+    right_exponent = right.exponent
+    if not isinstance(left_exponent, int) or not isinstance(right_exponent, int):
+        raise MetricsError(f"{label} requires finite decimal values")
+    min_exponent = min(left_exponent, right_exponent)
+    max_adjusted = max(
+        left_exponent + len(left.digits) - 1,
+        right_exponent + len(right.digits) - 1,
+    )
+    precision = max_adjusted - min_exponent + 2
+    if precision > _MAX_EXACT_DECIMAL_OPERATION_DIGITS:
+        raise MetricsError(f"{label} exceeds exact decimal precision limit")
+    try:
+        with localcontext() as context:
+            context.prec = precision
+            total = current + increment
+    except DecimalException as exc:
+        raise MetricsError(f"{label} exceeds finite decimal range") from exc
+    if not total.is_finite():
+        raise MetricsError(f"{label} exceeds finite decimal range")
+    return total
+
+
+def _subtract_decimal_exact(left: Decimal, right: Decimal, *, label: str) -> Decimal:
+    if not right.is_finite():
+        raise MetricsError(f"{label} requires finite decimal values")
+    return _add_decimal_exact(left, right.copy_negate(), label=label)
+
+
+def _multiply_decimal_exact(left: Decimal, right: Decimal, *, label: str) -> Decimal:
+    if not left.is_finite() or not right.is_finite():
+        raise MetricsError(f"{label} requires finite decimal values")
+    if not left or not right:
+        return Decimal(0)
+    precision = len(left.as_tuple().digits) + len(right.as_tuple().digits)
+    if precision > _MAX_EXACT_DECIMAL_OPERATION_DIGITS:
+        raise MetricsError(f"{label} exceeds exact decimal precision limit")
+    try:
+        with localcontext() as context:
+            context.prec = precision
+            product = left * right
+    except DecimalException as exc:
+        raise MetricsError(f"{label} exceeds finite decimal range") from exc
+    if not product.is_finite():
+        raise MetricsError(f"{label} exceeds finite decimal range")
+    return product
+
+
+def _add_cashflow(current: Decimal, signed_amount: Decimal) -> Decimal:
+    return _add_decimal_exact(current, signed_amount, label="external cashflow sum")
+
+
+def _sum_decimal_exact(values: Sequence[Decimal], *, label: str) -> Decimal:
+    total = Decimal(0)
+    for value in values:
+        total = _add_decimal_exact(total, value, label=label)
+    return total
 
 
 def _ordered_snapshots(snapshots: Sequence[Any]) -> Sequence[Any]:
@@ -212,8 +282,8 @@ def _external_cashflows_by_time(cashflows: Sequence[Mapping[str, Any]],
             raise MetricsError("external cashflow source SHA-256 required")
         # Identity is checked by _new_facts before semantic normalization. Store
         # the original typed fact and apply direction only in the ledger sum.
-        signed = amount if kind == "DEPOSIT" else -amount
-        by_time[timestamp] = by_time.get(timestamp, Decimal(0)) + signed
+        signed = amount if kind == "DEPOSIT" else amount.copy_negate()
+        by_time[timestamp] = _add_cashflow(by_time.get(timestamp, Decimal(0)), signed)
         unique.append(fact)
     return by_time, unique
 
@@ -305,17 +375,31 @@ def iter_account_rows(snapshots: Sequence[Any], *, fill_references: Mapping[str,
             reference = _decimal(reference, "fill reference")
             if reference <= 0:
                 raise MetricsError("native fill reference must be positive")
-            sign = 1 if fill["order_side"] == "BUY" else -1
-            cost = (price - reference) * quantity * sign * multiplier
+            cost = _multiply_decimal_exact(
+                _subtract_decimal_exact(price, reference, label="native fill slippage"),
+                quantity, label="native fill slippage",
+            )
+            if fill["order_side"] == "SELL":
+                cost = cost.copy_negate()
+            cost = _multiply_decimal_exact(cost, multiplier, label="native fill slippage")
             if cost < 0 and not allow_price_improvement:
                 raise MetricsError("conservative model produced favorable slippage")
-            slippage += cost
-            turnover += quantity * price * multiplier
-            fee += _money(fill["commission"], snapshot.currency)
+            slippage = _add_decimal_exact(slippage, cost, label="native slippage sum")
+            notional = _multiply_decimal_exact(
+                _multiply_decimal_exact(quantity, price, label="native fill notional"),
+                multiplier, label="native fill notional",
+            )
+            turnover = _add_decimal_exact(turnover, notional, label="native turnover sum")
+            fee = _add_decimal_exact(
+                fee, _money(fill["commission"], snapshot.currency), label="native fee sum",
+            )
         for adjustment in _new_facts((adjustment for item in same_time
                                      for adjustment in _snapshot_records(item, "funding", "funding")),
                                      funding_facts, "funding"):
-            funding += _money(adjustment["pnl_change"], snapshot.currency)
+            funding = _add_decimal_exact(
+                funding, _money(adjustment["pnl_change"], snapshot.currency),
+                label="native funding sum",
+            )
         yield {"ts_ns": timestamp, "equity": float(snapshot.equity),
                "external_cashflow": float(cashflows_by_time.get(timestamp, Decimal(0))),
                "turnover_notional": float(turnover), "fee": float(fee), "funding": float(funding),
@@ -635,8 +719,10 @@ class NativeReportAccumulator:
                 raise MetricsError("external cashflow source SHA-256 required")
             if not isinstance(fact.get("currency"), str):
                 raise MetricsError("external cashflow currency required")
-            signed = amount if kind == "DEPOSIT" else -amount
-            self._cashflows_by_time[timestamp] = self._cashflows_by_time.get(timestamp, Decimal(0)) + signed
+            signed = amount if kind == "DEPOSIT" else amount.copy_negate()
+            self._cashflows_by_time[timestamp] = _add_cashflow(
+                self._cashflows_by_time.get(timestamp, Decimal(0)), signed,
+            )
             self._cashflow_barrier_counts[timestamp] = 0
             self._cashflow_facts.append(dict(fact))
 
@@ -749,15 +835,35 @@ class NativeReportAccumulator:
             reference = _decimal(reference, "fill reference")
             if reference <= 0:
                 raise MetricsError("native fill reference must be positive")
-            sign = 1 if fill["order_side"] == "BUY" else -1
-            cost = (price - reference) * quantity * sign * self.contract_multiplier
+            cost = _multiply_decimal_exact(
+                _subtract_decimal_exact(price, reference, label="native fill slippage"),
+                quantity, label="native fill slippage",
+            )
+            if fill["order_side"] == "SELL":
+                cost = cost.copy_negate()
+            cost = _multiply_decimal_exact(
+                cost, self.contract_multiplier, label="native fill slippage",
+            )
             if cost < 0 and not self.allow_price_improvement:
                 raise MetricsError("conservative model produced favorable slippage")
-            self._group_slippage += cost
-            self._group_turnover += quantity * price * self.contract_multiplier
-            self._group_fee += _money(fill["commission"], currency)
+            self._group_slippage = _add_decimal_exact(
+                self._group_slippage, cost, label="native slippage sum",
+            )
+            notional = _multiply_decimal_exact(
+                _multiply_decimal_exact(quantity, price, label="native fill notional"),
+                self.contract_multiplier, label="native fill notional",
+            )
+            self._group_turnover = _add_decimal_exact(
+                self._group_turnover, notional, label="native turnover sum",
+            )
+            self._group_fee = _add_decimal_exact(
+                self._group_fee, _money(fill["commission"], currency), label="native fee sum",
+            )
         for adjustment in new_funding:
-            self._group_funding += _money(adjustment["pnl_change"], currency)
+            self._group_funding = _add_decimal_exact(
+                self._group_funding, _money(adjustment["pnl_change"], currency),
+                label="native funding sum",
+            )
 
         if self._liquidations_observed:
             if (getattr(snapshot, "liquidation_capability", False) is not True
