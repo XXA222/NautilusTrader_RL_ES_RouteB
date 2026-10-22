@@ -6,7 +6,7 @@ it neither matches orders nor computes an alternative account balance.
 """
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence as SequenceABC
 from dataclasses import dataclass
 from decimal import Decimal
 import re
@@ -137,7 +137,7 @@ class RiskActionReview:
 
 class BarrierEpisode:
     def __init__(self, *, native_session: Any, native_identity: Mapping[str, str],
-                 transition_hash: str, frames: tuple[BarrierFrame, ...], scoring_frames: int,
+                 transition_hash: str, frames: SequenceABC[BarrierFrame], scoring_frames: int,
                  plan_action: Callable[[Decimal, Any, Decimal], tuple[ExecutionPlan, Decimal] | RiskActionReview],
                  plan_terminal: Callable[[Any], ExecutionPlan],
                  executed_exposure: Callable[[Any], Decimal], reward_config: RewardConfig,
@@ -148,11 +148,24 @@ class BarrierEpisode:
             raise ValueError("complete transition fingerprint required")
         if set(native_identity) != {"dataset_hash", "fold_hash", "config_hash"}:
             raise ValueError("frozen native episode identity required")
-        if (type(frames) is not tuple or type(scoring_frames) is not int or
-                scoring_frames < 2 or len(frames) < scoring_frames + 2 or
-                any(type(f) is not BarrierFrame for f in frames) or
-                any(b.timestamp_ns <= a.timestamp_ns for a, b in zip(frames, frames[1:]))):
+        immutable_frames = (type(frames) is tuple
+                            or getattr(type(frames), "__rles_immutable__", False) is True)
+        if (not isinstance(frames, SequenceABC) or not immutable_frames
+                or type(scoring_frames) is not int or scoring_frames < 2
+                or len(frames) < scoring_frames + 2):
             raise ValueError("ordered scoring frames plus two terminal drain frames required")
+        first, last = frames[0], frames[-1]
+        scoring_last = frames[scoring_frames - 1]
+        if (type(first) is not BarrierFrame or type(scoring_last) is not BarrierFrame
+                or type(last) is not BarrierFrame
+                or not first.timestamp_ns < scoring_last.timestamp_ns < last.timestamp_ns):
+            raise ValueError("immutable frame sequence must have valid ordered endpoints")
+        if type(frames) is tuple and (
+            any(type(frame) is not BarrierFrame for frame in frames)
+            or any(right.timestamp_ns <= left.timestamp_ns
+                   for left, right in zip(frames, frames[1:]))
+        ):
+            raise ValueError("tuple frame sequence must be complete and strictly ordered")
         if not all(callable(f) for f in (plan_action, plan_terminal, executed_exposure)):
             raise TypeError("risk planner, terminal planner and native exposure reader required")
         if replay is not None and (type(replay) is not EpisodeReplay or
@@ -170,6 +183,10 @@ class BarrierEpisode:
         self._identity = dict(native_identity)
         self._transition = transition_hash
         self._frames, self._scoring_frames = frames, scoring_frames
+        # Episode metadata is emitted on every Gym step; retain scalar bounds so
+        # reporting them never forces lazy first/last frame reconstruction.
+        self._episode_start_ns = first.timestamp_ns
+        self._episode_end_ns = scoring_last.timestamp_ns
         self._plan, self._terminal_plan, self._exposure = plan_action, plan_terminal, executed_exposure
         self._reward = RewardCalculator(reward_config)
         self._replay = replay
@@ -198,8 +215,8 @@ class BarrierEpisode:
     def episode_window(self) -> dict[str, int]:
         """Return the exact causal decision segment selected for this episode."""
         return {
-            "start_ns": self._frames[0].timestamp_ns,
-            "end_ns": self._frames[self._scoring_frames - 1].timestamp_ns,
+            "start_ns": self._episode_start_ns,
+            "end_ns": self._episode_end_ns,
             "decision_steps": self._scoring_frames - 1,
             "episode_index": self._episode_index,
             "start_offset": self._episode_start_offset,
@@ -244,12 +261,18 @@ class BarrierEpisode:
             return None
         return EpisodeResumeState(self._reward.export_state(), len(self._actions), float(self._last_guard))
 
+    def _frame(self, index: int) -> BarrierFrame:
+        frame = self._frames[index]
+        if type(frame) is not BarrierFrame:
+            raise RuntimeError("immutable episode frame sequence returned an invalid frame")
+        return frame
+
     def bootstrap(self) -> Any:
         if self._state != "CREATED":
             raise RuntimeError("single bootstrap per episode")
         try:
             self._session.open(SimpleNamespace(**self._identity))
-            first = self._frames[0]
+            first = self._frame(0)
             self._snapshot = self._session.bootstrap(first.batches, decision_ts_ns=first.timestamp_ns)
             self._reward.reset(float(self._snapshot.equity))
             self._executed = self._read_exposure()
@@ -303,7 +326,9 @@ class BarrierEpisode:
         try:
             _plan, action, review = self._pending
             guard = review.total_intervention
-            next_frame = self._frames[self._index + 1]
+            next_frame = self._frame(self._index + 1)
+            if next_frame.timestamp_ns <= self._snapshot.decision_ts_ns:
+                raise RuntimeError("lazy episode frame sequence is not strictly chronological")
             self._snapshot = self._session.advance(plan, batches=next_frame.batches,
                                                    next_decision_ts_ns=next_frame.timestamp_ns)
             self._index += 1
@@ -327,7 +352,7 @@ class BarrierEpisode:
                            guard_intervention: float) -> dict:
         if snapshot is not self._snapshot:
             raise ValueError("observation must use the completed native snapshot")
-        frame = self._frames[self._index]
+        frame = self._frame(self._index)
         inputs = dict(
             decision_ts_ns=snapshot.decision_ts_ns, market=frame.market,
             account={"equity": float(snapshot.equity), "peak_equity": reward_state.peak_equity,
@@ -352,11 +377,13 @@ class BarrierEpisode:
             kwargs: dict[str, Any] = {}
             drain_index = self._index + 1
             if self._snapshot.orders:
-                cancel_frame = self._frames[drain_index]
+                cancel_frame = self._frame(drain_index)
                 kwargs.update(cancel_plan=self._terminal_plan(self._snapshot),
                               cancel_batches=cancel_frame.batches, cancel_ts_ns=cancel_frame.timestamp_ns)
                 drain_index += 1
-            frame = self._frames[drain_index]
+            frame = self._frame(drain_index)
+            if frame.timestamp_ns <= self._snapshot.decision_ts_ns:
+                raise RuntimeError("lazy terminal frame is not strictly chronological")
             self._snapshot = self._session.drain_and_close(
                 policy, flatten_plan=self._terminal_plan, drain_batches=frame.batches,
                 terminal_ts_ns=frame.timestamp_ns, **kwargs,
