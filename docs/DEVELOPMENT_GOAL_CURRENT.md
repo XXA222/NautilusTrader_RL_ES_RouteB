@@ -1,5 +1,9 @@
 # RouteB 审计整改：当前连续开发目标
 
+## 2026-10-23 最新续做：减少 Native 在线报告重复事件事实
+
+审计 F7 在线摘要发现：启用线性权益对账时，累加器把每个 unique fill/Funding 字典同时复制进报告索引和独立对账索引；liquidation 订单还另存 stable-facts 字典。现改为 fill/Funding 一次去重并共用唯一事实索引，liquidation stable-field 比对从最新订单状态即时重建；累计成交量回退检查仍保留。指标、明细和权益对账输出保持一致；unique 事件事实仍按报告合同保留，因此不声称常数内存。四个定向源码套件（Native accumulator parity、研究指标、历史工厂、liquidation）共 **209 passed，18 dependency warnings**；RouteB 独立 app venv 中的 wheel 回归 **20 passed**。离线构建 wheel 成功，安装模块与源码 SHA-256 相同；69 个依赖兼容。Ruff、MyPy 与 `git diff --check` 通过。Source manifest：604 files，identity `11936595d1a5ac6b6fd1552cbdd6c4c37a21612407dc5e4794cdf7a16da8f00d`。证据：`docs/audit_evidence/20261023/f7_native_event_fact_storage_20261023.json`。仅合成/临时测试，无行情、账户、项目账本或正式评价数据访问。继续审计 A01–A14 中其余可本地完成项；真实长窗和外部认证门槛仍按原状态处理。
+
 ## 2026-10-23 最新续做：修复 Linux wheel 下项目登记库定位
 
 Hosted CI #9 的 Ubuntu 基础测试暴露 `project_registry()` 固定取 `__file__.parents[4]`，Linux 的 `lib/pythonX/site-packages` 目录更深，导致将 `.venv` 错当仓库根。现改为从包文件祖先中查找 workspace marker，并用模拟 Linux wheel 路径和临时 cwd 验收。研究访问回归 **115 passed**，全仓 Ruff、MyPy（225 files）通过；604-file source manifest identity `0fcdb77a15f788b828df2ee7e360a2908a3fc5f8f03b18e82493751609372fe0`。证据：`docs/audit_evidence/20261023/research_registry_linux_wheel_root_20261023.json`。Hosted 修复版重跑待提交后触发。

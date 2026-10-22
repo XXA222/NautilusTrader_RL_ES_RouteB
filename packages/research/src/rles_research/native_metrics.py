@@ -201,7 +201,6 @@ def _new_facts(records: Any, seen: dict[str, dict], label: str) -> Iterator[dict
 
 
 def _update_liquidation_order(raw_order: Any, facts: dict[str, dict],
-                              identities: dict[str, dict],
                               filled_quantities: dict[str, Decimal]) -> None:
     if not isinstance(raw_order, Mapping):
         raise MetricsError("native liquidation order must be a mapping")
@@ -211,10 +210,14 @@ def _update_liquidation_order(raw_order: Any, facts: dict[str, dict],
     order = dict(raw_order)
     immutable = {key: value for key, value in order.items()
                  if key not in _LIQUIDATION_ORDER_STATE_FIELDS}
-    previous = identities.get(identity)
-    if previous is not None and previous != immutable:
-        raise MetricsError("native liquidation order identity has conflicting facts")
-    identities[identity] = immutable
+    previous = facts.get(identity)
+    if previous is not None:
+        previous_immutable = {
+            key: value for key, value in previous.items()
+            if key not in _LIQUIDATION_ORDER_STATE_FIELDS
+        }
+        if previous_immutable != immutable:
+            raise MetricsError("native liquidation order identity has conflicting facts")
     if "filled_qty" in order:
         filled_qty = _decimal(order["filled_qty"], "liquidation order filled quantity")
         if filled_qty < 0:
@@ -235,11 +238,10 @@ def _update_liquidation_order(raw_order: Any, facts: dict[str, dict],
 def _liquidation_order_facts(snapshots: Sequence[Any]) -> dict[str, dict]:
     """Collect each liquidation order once, allowing only native state updates."""
     facts: dict[str, dict] = {}
-    identities: dict[str, dict] = {}
     filled_quantities: dict[str, Decimal] = {}
     for snapshot in snapshots:
         for raw_order in _snapshot_records(snapshot, "liquidation_orders", "liquidation order"):
-            _update_liquidation_order(raw_order, facts, identities, filled_quantities)
+            _update_liquidation_order(raw_order, facts, filled_quantities)
     return facts
 
 
@@ -733,7 +735,6 @@ class NativeReportAccumulator:
         self._failure_context: str | None = None
         self._liquidations_observed = True
         self._liquidation_facts: dict[str, dict] = {}
-        self._liquidation_identities: dict[str, dict] = {}
         self._liquidation_filled: dict[str, Decimal] = {}
         self._prepare_cashflows(external_cashflows)
         self._init_reconciliation()
@@ -771,8 +772,6 @@ class NativeReportAccumulator:
             self._cashflow_facts.append(dict(fact))
 
     def _init_reconciliation(self) -> None:
-        self._recon_fills: dict[str, dict] = {}
-        self._recon_funding: dict[str, dict] = {}
         self._initial_equity = Decimal(0)
         self._quantity = Decimal(0)
         self._cash = Decimal(0)
@@ -916,12 +915,11 @@ class NativeReportAccumulator:
             else:
                 for order in liquidation_records:
                     _update_liquidation_order(
-                        order, self._liquidation_facts,
-                        self._liquidation_identities, self._liquidation_filled,
+                        order, self._liquidation_facts, self._liquidation_filled,
                     )
 
         if self.linear_equity_rounding is not None:
-            self._reconcile_snapshot(snapshot, positions, orders, fill_records, funding_records)
+            self._reconcile_snapshot(snapshot, positions, orders, new_fills, new_funding)
         self._group_snapshot = snapshot
         self._last_snapshot = snapshot
         self._last_timestamp = timestamp
@@ -948,11 +946,12 @@ class NativeReportAccumulator:
         self._group_snapshot = None
 
     def _reconcile_snapshot(self, snapshot: Any, positions: Sequence[Any], orders: Sequence[Any],
-                            fill_records: Sequence[Any], funding_records: Sequence[Any]) -> None:
+                            new_fills: Sequence[dict],
+                            new_funding: Sequence[dict]) -> None:
         rounding = self.linear_equity_rounding
         if rounding is None:
             raise MetricsError("linear equity reconciliation rounding is not configured")
-        if self._seen == 0 and (positions or orders or fill_records or funding_records):
+        if self._seen == 0 and (positions or orders or new_fills or new_funding):
             raise MetricsError("linear reconciliation requires a flat event-free initial barrier")
         for position in positions:
             if not isinstance(position, Mapping):
@@ -965,8 +964,6 @@ class NativeReportAccumulator:
             if multiplier <= 0 or multiplier != self.contract_multiplier:
                 raise MetricsError("native position multiplier is invalid or inconsistent")
 
-        new_fills = _new_facts(fill_records, self._recon_fills, "fill")
-        new_funding = _new_facts(funding_records, self._recon_funding, "funding")
         for fill in new_fills:
             size, price = _fill_values(fill)
             signed = size if fill["order_side"] == "BUY" else size.copy_negate()
@@ -1025,7 +1022,7 @@ class NativeReportAccumulator:
                 actual = _decimal(snapshot.equity, "equity")
                 residual = _subtract_decimal_exact(actual, expected, label="native equity residual")
                 tolerance = _multiply_decimal_exact(
-                    rounding, Decimal(len(self._recon_fills) + len(self._recon_funding) + 1),
+                    rounding, Decimal(len(self._fill_facts) + len(self._funding_facts) + 1),
                     label="native equity tolerance",
                 )
                 self._max_residual = max(self._max_residual, abs(residual))
@@ -1046,7 +1043,7 @@ class NativeReportAccumulator:
         actual = _decimal(snapshot.equity, "equity")
         residual = _subtract_decimal_exact(actual, expected, label="native equity residual")
         tolerance = _multiply_decimal_exact(
-            rounding, Decimal(len(self._recon_fills) + len(self._recon_funding) + 1),
+            rounding, Decimal(len(self._fill_facts) + len(self._funding_facts) + 1),
             label="native equity tolerance",
         )
         self._max_residual = max(self._max_residual, abs(residual))
@@ -1109,8 +1106,8 @@ class NativeReportAccumulator:
                 "terminal_checked": self._quantity == 0,
                 "max_abs_residual": str(self._max_residual),
                 "rounding_per_event": str(self.linear_equity_rounding),
-                "unique_fills": len(self._recon_fills),
-                "unique_funding": len(self._recon_funding),
+                "unique_fills": len(self._fill_facts),
+                "unique_funding": len(self._funding_facts),
                 "unique_external_cashflows": len(self._cashflow_facts),
                 "net_external_cashflow": str(self._external_cashflow),
             }

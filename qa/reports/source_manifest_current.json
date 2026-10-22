@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v1",
-  "generated_at_utc": "2026-10-22T19:23:36.428465+00:00",
-  "source_identity_sha256": "59a584b0864d448535e1905a39905e2099536050a9d7550fad94d272327deb73",
+  "generated_at_utc": "2026-10-22T20:18:12.900348+00:00",
+  "source_identity_sha256": "11936595d1a5ac6b6fd1552cbdd6c4c37a21612407dc5e4794cdf7a16da8f00d",
   "scope": {
     "included": [
       ".gitattributes",
@@ -249,10 +249,6 @@
       },
       {
         "name": "rles-nautilus-adapter",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rles-orchestrator",
         "version": "0.4.0.dev2"
       },
       {
@@ -1701,8 +1697,8 @@
     },
     {
       "path": "packages/research/src/rles_research/native_metrics.py",
-      "size_bytes": 60177,
-      "sha256": "a6065960c60e3757b0018f4061c9db1f60cfe9332a59808b911218c2ea8f8f6a"
+      "size_bytes": 59847,
+      "sha256": "b38d8b4c9857640065ab500f89d3edef49568b500050b9bf7974159563a81524"
     },
     {
       "path": "packages/research/src/rles_research/numeric.py",

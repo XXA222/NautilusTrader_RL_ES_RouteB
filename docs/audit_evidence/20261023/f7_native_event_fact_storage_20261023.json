@@ -1,0 +1,19 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "F7 / Native online event-history storage",
+  "finding": "With linear-equity reconciliation enabled, NativeReportAccumulator copied each unique fill and Funding fact into both report indexes and separate reconciliation indexes. Liquidation order stable facts were also copied into a separate identity index beside the latest full order facts.",
+  "change": "Deduplicate and validate fills/Funding once, pass newly observed facts to reconciliation, and reuse the report indexes for tolerance scaling and counts. Liquidation stable-identity comparison now derives immutable fields from the latest order snapshot rather than retaining a second immutable-facts dictionary; the cumulative filled-quantity regression guard remains.",
+  "verification": {
+    "source_tests": "tests/test_native_report_accumulator_parity.py, tests/test_research_metrics.py, tests/test_historical_factory.py, tests/test_native_liquidation_facts.py: 209 passed, 18 dependency warnings. PYTHONPATH explicitly resolved rles_research.native_metrics from packages/research/src.",
+    "focused_post_liquidation_change": "tests/test_native_liquidation_facts.py and tests/test_native_report_accumulator_parity.py: 20 passed.",
+    "wheel_build": "uv build --offline --wheel --out-dir .tmp/f7-wheel-check --python .venv-win-app/Scripts/python.exe packages/research succeeded.",
+    "installed_wheel_tests": "After installing the built rles-research wheel into RouteB .venv-win-app, tests/test_native_liquidation_facts.py and tests/test_native_report_accumulator_parity.py: 20 passed.",
+    "source_wheel_sha256": "packages/research/src/rles_research/native_metrics.py and .venv-win-app/Lib/site-packages/rles_research/native_metrics.py both hash to 687ce2af5956d919c36bf6281c3e560aaf9044c352d1aa88ffe57006210f88aa.",
+    "dependency_check": "RouteB .venv-win-app: 69 packages checked; all compatible.",
+    "ruff": "Changed native_metrics.py and liquidation/accumulator test modules passed.",
+    "mypy": "Changed native_metrics.py passed targeted MyPy.",
+    "diff_check": "git diff --check passed.",
+    "memory_scope": "Removes duplicate retained indexes for fills, Funding, and immutable liquidation facts. Unique event details and cumulative liquidation quantities remain retained for exact report output and validation; this is not constant-memory processing and does not close the full-history F7 gate."
+  },
+  "scope": "Synthetic tests and temporary fixtures only. No market, account, project registry, Validation, Test, or Holdout payload was accessed."
+}
