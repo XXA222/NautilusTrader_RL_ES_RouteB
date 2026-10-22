@@ -66,6 +66,21 @@
     "installed_metrics_sha256_normalized_lf": "f63ce22b1eb0976a74641955085b0c96876dc8963f0591eaddcae479c31e0b95",
     "uv_pip_check": "72 packages compatible",
     "ruff": "full packages/tests/qa/ci check passed",
-    "mypy": "226 source files passed"
+    "mypy": "226 source files passed",
+    "public_backup_file_level_reproduction": {
+      "branch_commit": "67bf9542b7a211a06e6dc0ebe6dac9ab7eb42358",
+      "metrics_tests": "107 passed",
+      "normalized_metrics_sha256_matches_backup": true,
+      "normalized_runner_sha256_matches_backup": true,
+      "rss_profile": {
+        "observations": 5000000,
+        "exact_metrics_match": true,
+        "heap_peak_rss_delta_bytes": 10203136,
+        "radix_peak_rss_delta_bytes": 3866624,
+        "radix_rss_reduction_fraction": 0.621035728623043,
+        "radix_to_heap_elapsed_ratio": 1.1631315391395056
+      },
+      "limitation": "The checkout came from the public RouteB backup, but tests reused the RouteB .venv-win-app interpreter; this is source checkout reproduction, not a clean dependency environment or a full-project F9 close."
+    }
   }
 }
