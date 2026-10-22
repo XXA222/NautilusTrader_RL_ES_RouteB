@@ -1,7 +1,8 @@
 """Map detached native snapshots into regular economic metric increments."""
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import DefaultContext, Decimal, DecimalException, Inexact, InvalidOperation, Rounded
+from decimal import MIN_EMIN, localcontext
 from collections.abc import Iterator, Sequence as SequenceABC
 from itertools import groupby
 from typing import Any, Mapping, Sequence
@@ -9,6 +10,35 @@ from typing import Any, Mapping, Sequence
 from .metrics import AccountFactsAccumulator, MetricsError
 
 NATIVE_LIQUIDATION_COUNTS_AVAILABLE = True
+
+
+def _decimal_exact(operation: str, left: Decimal, right: Decimal) -> Decimal:
+    """Perform exact Decimal arithmetic or reject values the active context cannot represent."""
+    try:
+        with localcontext(DefaultContext) as context:
+            context.Emin = MIN_EMIN
+            context.traps[Inexact] = True
+            context.traps[Rounded] = True
+            context.clear_flags()
+            if operation == "add":
+                return left + right
+            if operation == "multiply":
+                return left * right
+    except DecimalException as exc:
+        raise MetricsError("native Decimal arithmetic would round or overflow") from exc
+    raise AssertionError("unsupported exact Decimal operation")
+
+
+def _add_decimal_exact(left: Decimal, right: Decimal) -> Decimal:
+    return _decimal_exact("add", left, right)
+
+
+def _multiply_decimal_exact(left: Decimal, right: Decimal) -> Decimal:
+    return _decimal_exact("multiply", left, right)
+
+
+def _subtract_decimal_exact(left: Decimal, right: Decimal) -> Decimal:
+    return _add_decimal_exact(left, right.copy_negate())
 
 _LIQUIDATION_ORDER_STATE_FIELDS = frozenset({
     "avg_px", "filled_qty", "is_canceled", "is_closed", "is_emulated", "is_expired",
@@ -187,7 +217,7 @@ def _external_cashflows_by_time(cashflows: Sequence[Mapping[str, Any]],
         # Identity is checked by _new_facts before semantic normalization. Store
         # the original typed fact and apply direction only in the ledger sum.
         signed = amount if kind == "DEPOSIT" else -amount
-        by_time[timestamp] = by_time.get(timestamp, Decimal(0)) + signed
+        by_time[timestamp] = _add_decimal_exact(by_time.get(timestamp, Decimal(0)), signed)
         unique.append(fact)
     return by_time, unique
 
@@ -240,16 +270,19 @@ def iter_account_rows(snapshots: Sequence[Any], *, fill_references: Mapping[str,
             if reference <= 0:
                 raise MetricsError("native fill reference must be positive")
             sign = 1 if fill["order_side"] == "BUY" else -1
-            cost = (price - reference) * quantity * sign
+            cost = _multiply_decimal_exact(
+                _multiply_decimal_exact(_subtract_decimal_exact(price, reference), quantity),
+                Decimal(sign),
+            )
             if cost < 0 and not allow_price_improvement:
                 raise MetricsError("conservative model produced favorable slippage")
-            slippage += cost
-            turnover += quantity * price
-            fee += _money(fill["commission"], snapshot.currency)
+            slippage = _add_decimal_exact(slippage, cost)
+            turnover = _add_decimal_exact(turnover, _multiply_decimal_exact(quantity, price))
+            fee = _add_decimal_exact(fee, _money(fill["commission"], snapshot.currency))
         for adjustment in _new_facts((adjustment for item in same_time
                                      for adjustment in _snapshot_records(item, "funding", "funding")),
                                      funding_facts, "funding"):
-            funding += _money(adjustment["pnl_change"], snapshot.currency)
+            funding = _add_decimal_exact(funding, _money(adjustment["pnl_change"], snapshot.currency))
         yield {"ts_ns": timestamp, "equity": float(snapshot.equity),
                "external_cashflow": float(cashflows_by_time.get(timestamp, Decimal(0))),
                "turnover_notional": float(turnover), "fee": float(fee), "funding": float(funding),
@@ -306,16 +339,19 @@ def reconcile_linear_equity(snapshots: Sequence[Any], *,
     checked = open_barriers = checked_open = unchecked_open = 0
     rows = []
     for index, snapshot in enumerate(ordered):
-        external_cashflow += cashflows_by_time.get(snapshot.decision_ts_ns, Decimal(0))
+        external_cashflow = _add_decimal_exact(
+            external_cashflow,
+            cashflows_by_time.get(snapshot.decision_ts_ns, Decimal(0)),
+        )
         for fill in _new_facts(_snapshot_records(snapshot, "fills", "fill"), fills, "fill"):
             size, price = _fill_values(fill)
-            signed = size if fill["order_side"] == "BUY" else -size
-            quantity += signed
-            cash -= signed * price
-            fee += _money(fill["commission"], snapshot.currency)
+            signed = size if fill["order_side"] == "BUY" else size.copy_negate()
+            quantity = _add_decimal_exact(quantity, signed)
+            cash = _subtract_decimal_exact(cash, _multiply_decimal_exact(signed, price))
+            fee = _add_decimal_exact(fee, _money(fill["commission"], snapshot.currency))
         for adjustment in _new_facts(_snapshot_records(snapshot, "funding", "funding"),
                                      adjustments, "funding"):
-            funding += _money(adjustment["pnl_change"], snapshot.currency)
+            funding = _add_decimal_exact(funding, _money(adjustment["pnl_change"], snapshot.currency))
         if quantity != 0:
             open_barriers += 1
             # Compact intermediate snapshots may omit a full position row. Only
@@ -349,19 +385,32 @@ def reconcile_linear_equity(snapshots: Sequence[Any], *,
                 mark = _decimal(mark_value, "mark price")
                 if mark <= 0:
                     raise MetricsError("native mark price must be positive")
-                expected = initial + quantity * mark + cash - fee + funding + external_cashflow
+                marked_notional = _multiply_decimal_exact(quantity, mark)
+                expected = _add_decimal_exact(
+                    _add_decimal_exact(
+                        _subtract_decimal_exact(
+                            _add_decimal_exact(initial, _add_decimal_exact(marked_notional, cash)),
+                            fee,
+                        ),
+                        funding,
+                    ),
+                    external_cashflow,
+                )
                 actual = _decimal(snapshot.equity, "equity")
-                residual = actual - expected
-                tolerance = rounding_per_event * (len(fills) + len(adjustments) + 1)
-                max_residual = max(max_residual, abs(residual))
-                if abs(residual) > tolerance:
+                residual = _subtract_decimal_exact(actual, expected)
+                event_count = Decimal(len(fills) + len(adjustments) + 1)
+                tolerance = _multiply_decimal_exact(rounding_per_event, event_count)
+                max_residual = max(max_residual, residual.copy_abs())
+                if residual.copy_abs() > tolerance:
                     raise MetricsError(f"linear native equity mismatch at open barrier {index}: "
                                        f"residual={residual}, tolerance={tolerance}")
                 checked_open += 1
                 if include_rows:
                     rows.append({"barrier_index": index, "ts_ns": snapshot.decision_ts_ns,
                                  "native_equity": str(actual), "expected_equity": str(expected),
-                                 "price_pnl_at_mark": str(cash + quantity * mark),
+                                 "price_pnl_at_mark": str(
+                                     _add_decimal_exact(cash, marked_notional)
+                                 ),
                                  "mark_price": str(mark), "signed_quantity": str(quantity),
                                  "fee": str(fee), "funding": str(funding),
                                  "external_cashflow": str(external_cashflow),
@@ -374,12 +423,16 @@ def reconcile_linear_equity(snapshots: Sequence[Any], *,
             continue
         if _snapshot_records(snapshot, "positions", "position"):
             raise MetricsError("flat fill quantity disagrees with native positions")
-        expected = initial + cash - fee + funding + external_cashflow
+        expected = _add_decimal_exact(
+            _add_decimal_exact(_subtract_decimal_exact(initial, fee), cash),
+            _add_decimal_exact(funding, external_cashflow),
+        )
         actual = _decimal(snapshot.equity, "equity")
-        residual = actual - expected
-        tolerance = rounding_per_event * (len(fills) + len(adjustments) + 1)
-        max_residual = max(max_residual, abs(residual))
-        if abs(residual) > tolerance:
+        residual = _subtract_decimal_exact(actual, expected)
+        event_count = Decimal(len(fills) + len(adjustments) + 1)
+        tolerance = _multiply_decimal_exact(rounding_per_event, event_count)
+        max_residual = max(max_residual, residual.copy_abs())
+        if residual.copy_abs() > tolerance:
             raise MetricsError(f"linear native equity mismatch at barrier {index}: "
                                f"residual={residual}, tolerance={tolerance}")
         checked += 1
@@ -408,10 +461,12 @@ def native_report(snapshots: Sequence[Any], *, fill_references: Mapping[str, Dec
                   sample_interval_ns: int, allow_price_improvement: bool = False,
                   include_account_rows: bool = True,
                   external_cashflows: Sequence[Mapping[str, Any]] = (),
-                  linear_equity_rounding: Decimal | None = None) -> dict:
+                  linear_equity_rounding: Decimal | None = None,
+                  contract_multiplier: Decimal = Decimal(1)) -> dict:
     """Build native economic metrics without inferring external account flows."""
-    if type(include_account_rows) is not bool:
-        raise MetricsError("include_account_rows must be Boolean")
+    if (type(include_account_rows) is not bool or not isinstance(contract_multiplier, Decimal)
+            or not contract_multiplier.is_finite() or contract_multiplier != 1):
+        raise MetricsError("Boolean row option and unit finite contract multiplier required")
     ordered = _ordered_snapshots(snapshots)
     for item in ordered:
         _snapshot_records(item, "positions", "position")
@@ -466,3 +521,369 @@ def native_report(snapshots: Sequence[Any], *, fill_references: Mapping[str, Dec
             rounding_per_event=linear_equity_rounding, include_rows=include_account_rows,
         )
     return report
+
+
+class NativeReportAccumulator:
+    """Reduce native account barriers online without retaining the snapshot history.
+
+    One same-timestamp group is buffered because the batch report merges its fills
+    and funding while sampling the final equity at that timestamp. Return order
+    statistics are retained by ``AccountFactsAccumulator`` as required for exact
+    VaR/CVaR; native snapshots themselves are released after each group.
+    """
+
+    def __init__(self, *, sample_interval_ns: int, max_return_count: int,
+                 contract_multiplier: Decimal,
+                 external_cashflows: Sequence[Mapping[str, Any]] = (),
+                 linear_equity_rounding: Decimal | None = None,
+                 allow_price_improvement: bool = False) -> None:
+        if (type(max_return_count) is not int or max_return_count < 1
+                or not isinstance(contract_multiplier, Decimal)
+                or not contract_multiplier.is_finite() or contract_multiplier != 1
+                or (linear_equity_rounding is not None
+                    and (not isinstance(linear_equity_rounding, Decimal)
+                         or not linear_equity_rounding.is_finite()
+                         or linear_equity_rounding < 0))
+                or type(allow_price_improvement) is not bool):
+            raise MetricsError("invalid native report accumulator configuration")
+        self.sample_interval_ns = sample_interval_ns
+        self.max_return_count = max_return_count
+        self.contract_multiplier = contract_multiplier
+        self.linear_equity_rounding = linear_equity_rounding
+        self.allow_price_improvement = allow_price_improvement
+        self._metrics = AccountFactsAccumulator(
+            sample_interval_ns=sample_interval_ns,
+            allow_price_improvement=allow_price_improvement,
+            max_return_count=max_return_count,
+        )
+        self._currency: str | None = None
+        self._first_ts: int | None = None
+        self._last_ts = -1
+        self._last_snapshot: Any = None
+        self._group: list[Any] = []
+        self._group_refs: dict[str, Decimal] = {}
+        self._finished = False
+        self._fill_facts: dict[str, dict] = {}
+        self._funding_facts: dict[str, dict] = {}
+        self._fills: list[dict] = []
+        self._funding: list[dict] = []
+        self._references: dict[str, Decimal] = {}
+        self._cashflow_facts: list[dict] = []
+        self._cashflows_by_time: dict[int, Decimal] = {}
+        self._cashflow_seen: set[int] = set()
+        self._liquidation_observed = True
+        self._liquidation_orders: dict[str, dict] = {}
+        self._liquidation_identities: dict[str, dict] = {}
+        self._liquidation_filled: dict[str, Decimal] = {}
+        self._reconciliation: dict[str, Any] | None = None
+        self._prepare_cashflows(external_cashflows)
+
+    def _prepare_cashflows(self, external_cashflows: Sequence[Mapping[str, Any]]) -> None:
+        if (not isinstance(external_cashflows, SequenceABC)
+                or isinstance(external_cashflows, (str, bytes, bytearray))):
+            raise MetricsError("external cashflows must be a sequence")
+        seen: dict[str, dict] = {}
+        for fact in _new_facts(external_cashflows, seen, "external cashflow"):
+            timestamp = fact.get("decision_ts_ns")
+            kind = fact.get("kind")
+            source = fact.get("source_id")
+            source_hash = fact.get("source_sha256")
+            if type(timestamp) is not int or timestamp < 0:
+                raise MetricsError("external cashflow timestamp must be a nonnegative integer")
+            if not isinstance(kind, str) or kind not in {"DEPOSIT", "WITHDRAWAL"}:
+                raise MetricsError("external cashflow kind must be DEPOSIT or WITHDRAWAL")
+            if not isinstance(source, str) or not source.strip():
+                raise MetricsError("external cashflow source identity required")
+            if (not isinstance(source_hash, str) or len(source_hash) != 64
+                    or any(character not in "0123456789abcdef" for character in source_hash)):
+                raise MetricsError("external cashflow source SHA-256 required")
+            amount = _decimal(fact.get("amount"), "external cashflow amount")
+            if amount <= 0:
+                raise MetricsError("external cashflow amount must be positive")
+            if not isinstance(fact.get("currency"), str) or not fact["currency"]:
+                raise MetricsError("external cashflow currency required")
+            signed = amount if kind == "DEPOSIT" else amount.copy_negate()
+            self._cashflows_by_time[timestamp] = _add_decimal_exact(
+                self._cashflows_by_time.get(timestamp, Decimal(0)), signed,
+            )
+            self._cashflow_facts.append(fact)
+
+    def add_snapshot(self, snapshot: Any,
+                     fill_references: Mapping[str, Decimal]) -> None:
+        if self._finished:
+            raise MetricsError("native report accumulator is already finished")
+        if not isinstance(fill_references, Mapping):
+            raise MetricsError("native fill references must be a mapping")
+        _ordered_snapshots((snapshot,))
+        timestamp = snapshot.decision_ts_ns
+        for field, label in (("positions", "position"), ("orders", "order"),
+                             ("fills", "fill"), ("funding", "funding")):
+            _snapshot_records(snapshot, field, label)
+        if self._currency is None:
+            self._currency = snapshot.currency
+            self._first_ts = timestamp
+            if any(fact["currency"] != self._currency for fact in self._cashflow_facts):
+                raise MetricsError("external cashflow currency differs from native account")
+        elif snapshot.currency != self._currency:
+            raise MetricsError("native snapshots have conflicting currencies")
+        if timestamp < self._last_ts:
+            raise MetricsError("native snapshot time order invalid")
+        if self._group and timestamp != self._last_ts:
+            self._flush_group()
+        self._group.append(snapshot)
+        self._last_snapshot = snapshot
+        self._last_ts = timestamp
+        current_fill_ids = {
+            fact.get("client_order_id")
+            for fact in _snapshot_records(snapshot, "fills", "fill")
+            if isinstance(fact, Mapping) and isinstance(fact.get("client_order_id"), str)
+        }
+        for order_id in current_fill_ids:
+            if not isinstance(order_id, str) or not order_id or order_id != order_id.strip():
+                raise MetricsError("native fill reference order identity is invalid")
+            if order_id not in fill_references:
+                continue
+            raw_reference = fill_references[order_id]
+            reference = _decimal(raw_reference, "fill reference")
+            previous = self._references.get(order_id)
+            if previous is not None and previous != reference:
+                raise MetricsError("native fill reference changed for an order")
+            self._references[order_id] = reference
+            prior_group = self._group_refs.get(order_id)
+            if prior_group is not None and prior_group != reference:
+                raise MetricsError("native fill reference changed within a barrier group")
+            self._group_refs[order_id] = reference
+
+    def _update_liquidations(self, snapshot: Any) -> None:
+        if (getattr(snapshot, "liquidation_capability", False) is not True
+                or getattr(snapshot, "liquidation_orders", None) is None):
+            self._liquidation_observed = False
+            return
+        for raw_order in snapshot.liquidation_orders:
+            if not isinstance(raw_order, Mapping):
+                raise MetricsError("native liquidation order must be a mapping")
+            identity = raw_order.get("client_order_id")
+            if not isinstance(identity, str) or not identity or identity != identity.strip():
+                raise MetricsError("native liquidation order lacks identity")
+            order = dict(raw_order)
+            immutable = {key: value for key, value in order.items()
+                         if key not in _LIQUIDATION_ORDER_STATE_FIELDS}
+            previous = self._liquidation_identities.get(identity)
+            if previous is not None and previous != immutable:
+                raise MetricsError("native liquidation order identity has conflicting facts")
+            self._liquidation_identities[identity] = immutable
+            if "filled_qty" in order:
+                filled = _decimal(order["filled_qty"], "liquidation order filled quantity")
+                if filled < 0:
+                    raise MetricsError("native liquidation order filled quantity is negative")
+                if "quantity" in order:
+                    quantity = _decimal(order["quantity"], "liquidation order quantity")
+                    if quantity <= 0 or filled > quantity:
+                        raise MetricsError("native liquidation order filled quantity exceeds order quantity")
+                previous_filled = self._liquidation_filled.get(identity)
+                if previous_filled is not None and filled < previous_filled:
+                    raise MetricsError("native liquidation order cumulative fill quantity regressed")
+                self._liquidation_filled[identity] = filled
+            self._liquidation_orders[identity] = order
+
+    def _update_reconciliation(self, snapshot: Any, fills: Sequence[dict],
+                               funding: Sequence[dict], cashflow: Decimal) -> None:
+        if self.linear_equity_rounding is None:
+            return
+        state = self._reconciliation
+        if state is None:
+            if (_snapshot_records(snapshot, "positions", "position")
+                    or _snapshot_records(snapshot, "orders", "order") or fills or funding):
+                raise MetricsError("linear reconciliation requires a flat event-free initial barrier")
+            initial = _decimal(snapshot.equity, "initial equity")
+            if initial <= 0:
+                raise MetricsError("linear reconciliation requires positive initial equity")
+            state = self._reconciliation = {
+                "initial": initial, "quantity": Decimal(0), "cash": Decimal(0),
+                "fee": Decimal(0), "funding": Decimal(0), "external": Decimal(0),
+                "max_residual": Decimal(0), "checked": 0, "open": 0,
+                "checked_open": 0, "unchecked_open": 0,
+            }
+        state["external"] = _add_decimal_exact(state["external"], cashflow)
+        for fill in fills:
+            size, price = _fill_values(fill)
+            signed = size if fill["order_side"] == "BUY" else size.copy_negate()
+            state["quantity"] = _add_decimal_exact(state["quantity"], signed)
+            state["cash"] = _subtract_decimal_exact(
+                state["cash"], _multiply_decimal_exact(signed, price),
+            )
+            state["fee"] = _add_decimal_exact(
+                state["fee"], _money(fill["commission"], snapshot.currency),
+            )
+        for adjustment in funding:
+            state["funding"] = _add_decimal_exact(
+                state["funding"], _money(adjustment["pnl_change"], snapshot.currency),
+            )
+        quantity = state["quantity"]
+        if quantity != 0:
+            state["open"] += 1
+            mark_value = getattr(snapshot, "mark", getattr(snapshot, "mark_price", None))
+            positions = _snapshot_records(snapshot, "positions", "position")
+            if mark_value is None or not positions:
+                state["unchecked_open"] += 1
+                return
+            if len(positions) != 1 or not isinstance(positions[0], Mapping):
+                raise MetricsError("linear reconciliation requires one open native position")
+            position = positions[0]
+            if position.get("is_inverse") is not False:
+                raise MetricsError("inverse position capability is unknown or unsupported")
+            if _decimal(position.get("multiplier"), "position multiplier") != 1:
+                raise MetricsError("non-unit position multiplier is outside linear equity reconciliation")
+            if position.get("settlement_currency") != snapshot.currency:
+                raise MetricsError("position settlement currency differs from account currency")
+            side = position.get("side")
+            native_size = _decimal(position.get("quantity"), "position quantity")
+            if native_size <= 0 or side not in {"LONG", "SHORT"}:
+                raise MetricsError("native linear position side and quantity are invalid")
+            native_quantity = native_size if side == "LONG" else native_size.copy_negate()
+            if native_quantity != quantity:
+                raise MetricsError("native position disagrees with cumulative fill quantity")
+            mark = _decimal(mark_value, "mark price")
+            if mark <= 0:
+                raise MetricsError("native mark price must be positive")
+            marked = _multiply_decimal_exact(quantity, mark)
+            expected = _add_decimal_exact(
+                _add_decimal_exact(
+                    _subtract_decimal_exact(
+                        _add_decimal_exact(
+                            state["initial"], _add_decimal_exact(marked, state["cash"]),
+                        ), state["fee"],
+                    ), state["funding"],
+                ), state["external"],
+            )
+            state["checked_open"] += 1
+        else:
+            positions = _snapshot_records(snapshot, "positions", "position")
+            if positions:
+                raise MetricsError("flat fill quantity disagrees with native positions")
+            expected = _add_decimal_exact(
+                _add_decimal_exact(
+                    _subtract_decimal_exact(state["initial"], state["fee"]), state["cash"],
+                ), _add_decimal_exact(state["funding"], state["external"]),
+            )
+            state["checked"] += 1
+        actual = _decimal(snapshot.equity, "equity")
+        residual = _subtract_decimal_exact(actual, expected)
+        tolerance = _multiply_decimal_exact(
+            self.linear_equity_rounding,
+            Decimal(len(self._fill_facts) + len(self._funding_facts) + 1),
+        )
+        state["max_residual"] = max(state["max_residual"], residual.copy_abs())
+        if residual.copy_abs() > tolerance:
+            raise MetricsError(f"linear native equity mismatch at barrier {self._metrics.count}: "
+                               f"residual={residual}, tolerance={tolerance}")
+
+    def _flush_group(self) -> None:
+        if not self._group:
+            return
+        timestamp = self._group[0].decision_ts_ns
+        if timestamp in self._cashflows_by_time:
+            if timestamp == self._first_ts:
+                raise MetricsError("external cashflow must align after the initial barrier")
+            if len(self._group) != 1:
+                raise MetricsError("external cashflow cannot align to duplicate native barriers")
+        currency = self._currency
+        assert currency is not None
+        fee = funding_total = turnover = slippage = Decimal(0)
+        cashflow = self._cashflows_by_time.get(timestamp, Decimal(0))
+        for snapshot in self._group:
+            new_fills = tuple(_new_facts(
+                _snapshot_records(snapshot, "fills", "fill"), self._fill_facts, "fill",
+            ))
+            new_funding = tuple(_new_facts(
+                _snapshot_records(snapshot, "funding", "funding"),
+                self._funding_facts, "funding",
+            ))
+            for fill in new_fills:
+                quantity, price = _fill_values(fill)
+                order_id = fill["client_order_id"]
+                reference = self._references.get(order_id)
+                if reference is None:
+                    raise MetricsError("fill has no native simulation reference for slippage accounting")
+                if reference <= 0:
+                    raise MetricsError("native fill reference must be positive")
+                direction = Decimal(1 if fill["order_side"] == "BUY" else -1)
+                cost = _multiply_decimal_exact(
+                    _multiply_decimal_exact(_subtract_decimal_exact(price, reference), quantity),
+                    direction,
+                )
+                if cost < 0 and not self.allow_price_improvement:
+                    raise MetricsError("conservative model produced favorable slippage")
+                slippage = _add_decimal_exact(slippage, cost)
+                turnover = _add_decimal_exact(
+                    turnover, _multiply_decimal_exact(quantity, price),
+                )
+                fee = _add_decimal_exact(fee, _money(fill["commission"], currency))
+                self._fills.append(fill)
+            for adjustment in new_funding:
+                amount = _money(adjustment["pnl_change"], currency)
+                funding_total = _add_decimal_exact(funding_total, amount)
+                self._funding.append(adjustment)
+            self._update_reconciliation(snapshot, new_fills, new_funding, cashflow)
+            self._update_liquidations(snapshot)
+        if len(self._group) == 1 and timestamp in self._cashflows_by_time:
+            self._cashflow_seen.add(timestamp)
+        self._metrics.add({
+            "ts_ns": timestamp,
+            "equity": float(self._group[-1].equity),
+            "external_cashflow": float(cashflow),
+            "turnover_notional": float(turnover),
+            "fee": float(fee),
+            "funding": float(funding_total),
+            "slippage_cost": float(slippage),
+        })
+        self._group.clear()
+        self._group_refs.clear()
+
+    def finish(self) -> dict:
+        if self._finished:
+            raise MetricsError("native report accumulator is already finished")
+        if not self._group:
+            raise MetricsError("native account snapshots required")
+        self._flush_group()
+        if self._cashflow_seen != set(self._cashflows_by_time):
+            raise MetricsError("external cashflow does not align to a native sample barrier")
+        final = self._last_snapshot
+        final_positions = _snapshot_records(final, "positions", "position")
+        final_orders = _snapshot_records(final, "orders", "order")
+        if self._reconciliation is not None and self._reconciliation["quantity"] != 0 and not final_positions:
+            raise MetricsError("terminal position disagrees with native fill quantity")
+        metrics = self._metrics.result(
+            periods_per_year=365.25 * 86400 * 1e9 / self.sample_interval_ns,
+        )
+        observed = self._liquidation_observed
+        report = {
+            "metrics": metrics,
+            "fills": list(self._fills),
+            "funding": list(self._funding),
+            "terminal_flat": not final_positions and not final_orders,
+            "external_cashflows": list(self._cashflow_facts),
+            "liquidations": len(self._liquidation_orders) if observed else None,
+            "liquidations_observed": observed,
+            "liquidation_orders": list(self._liquidation_orders.values()) if observed else None,
+            "costs_already_in_native_equity": True,
+        }
+        if self._reconciliation is not None:
+            state = self._reconciliation
+            report["equity_reconciliation"] = {
+                "scope": "flat_and_marked_open_barriers_quote_settled_unit_linear_with_explicit_cashflow_sources",
+                "checked_flat_barriers": state["checked"],
+                "open_barriers": state["open"],
+                "unchecked_open_barriers": state["unchecked_open"],
+                "checked_open_barriers": state["checked_open"],
+                "terminal_checked": state["quantity"] == 0,
+                "max_abs_residual": str(state["max_residual"]),
+                "rounding_per_event": str(self.linear_equity_rounding),
+                "unique_fills": len(self._fill_facts),
+                "unique_funding": len(self._funding_facts),
+                "unique_external_cashflows": len(self._cashflow_facts),
+                "net_external_cashflow": str(state["external"]),
+            }
+        self._finished = True
+        self._group.clear()
+        return report

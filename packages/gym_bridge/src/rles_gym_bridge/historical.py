@@ -10,7 +10,7 @@ import json
 from math import gcd
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Callable, Mapping
 
 from rles_contracts.dto import DataQualityGrade, ExecutionPlan
 from rles_data.contracts import to_market_event
@@ -485,7 +485,11 @@ class HistoricalEnvironmentFactory:
 
     def make_env(self, transition_hash: str | None = None, *, replay: EpisodeReplay | None = None,
                  soft_multipliers: dict | None = None, episode_rank: int = 0,
-                 episode_count: int = 1, episode_steps: int | None = None) -> NautilusBarrierEnv:
+                 episode_count: int = 1, episode_steps: int | None = None,
+                 report_snapshot_consumer: Callable[[Any, Mapping[str, Decimal]], None] | None = None
+                 ) -> NautilusBarrierEnv:
+        if report_snapshot_consumer is not None and not callable(report_snapshot_consumer):
+            raise DataError("report snapshot consumer must be callable")
         transition = transition_hash or self.transition_hash
         pending_replay = replay
         full_steps = len(self.rows) - 3
@@ -612,7 +616,11 @@ class HistoricalEnvironmentFactory:
                     cumulative_submitted_qty=cumulative_submitted,
                     cumulative_filled_qty=cumulative_filled,
                 )
-                self.snapshots.append(compact)
+                if report_snapshot_consumer is None:
+                    self.snapshots.append(compact)
+                else:
+                    self.snapshots[:] = [compact]
+                    report_snapshot_consumer(compact, self.fill_references)
 
             def record_reference(client_id, reference):
                 previous = self.fill_references.get(client_id)

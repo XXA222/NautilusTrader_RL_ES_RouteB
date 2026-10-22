@@ -22,6 +22,7 @@ from rles_orchestrator.application import _file_hash, _verify_file, _write_verif
 from rles_orchestrator.research_access import record_development
 from rles_orchestrator.wfo_application import _scaler
 from rles_research.baselines import BaselinePolicy, BaselineSpec
+from rles_orchestrator.workspace import require_workspace_paths
 
 
 def available_memory() -> int:
@@ -49,9 +50,17 @@ def coverage_for_window(original: dict, window: dict) -> dict:
 
 
 def compare(plan_path: Path, output: Path) -> dict:
+    workspace = Path(__file__).resolve().parents[1]
+    paths = require_workspace_paths(workspace, {"plan": plan_path, "output": output})
+    plan_path, output = paths["plan"], paths["output"]
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     if plan["split"] != "train_inner" or output.exists():
         raise DataError("Train-only plan and a new immutable output directory required")
+    source = plan["source"]
+    require_workspace_paths(workspace, {
+        "bundle": plan["bundle"], "market": source["market_path"],
+        "rules": source["rules_path"],
+    })
     bundle_root = Path(plan["bundle"])
     if _verify_file(bundle_root / "bundle.json") != plan["bundle_sha256"]:
         raise DataError("preregistered bundle changed")

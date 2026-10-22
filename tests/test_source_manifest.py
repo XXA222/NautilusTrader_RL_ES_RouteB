@@ -43,6 +43,10 @@ def test_source_identity_tracks_workspace_inputs_and_ignores_generated_reports(t
     (tmp_path / "qa" / "train_signal_baselines.py").write_text(
         "VALUE = 'signal baseline runner'\n", encoding="utf-8",
     )
+    (tmp_path / "qa" / "world_model").mkdir()
+    (tmp_path / "qa" / "world_model" / "wm1_cpu_smoke.py").write_text(
+        "VALUE = 'world model cpu smoke'\n", encoding="utf-8",
+    )
     (tmp_path / "qa" / "analyze_stage58_train_coverage.py").write_text(
         "VALUE = 'train coverage'\n", encoding="utf-8",
     )
@@ -86,6 +90,7 @@ def test_source_identity_tracks_workspace_inputs_and_ignores_generated_reports(t
         "qa/preregister_stage59_train_diagnostics.py",
         "qa/preregister_stage60_fixed_regimes.py",
         "qa/research_trial_inventory.py", "qa/train_signal_baselines.py",
+        "qa/world_model/wm1_cpu_smoke.py",
         "tests/test_demo.py",
     ]
 

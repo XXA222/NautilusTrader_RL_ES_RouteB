@@ -209,6 +209,42 @@ class ProjectResearchRegistry:
         with self._tx() as c:
             return self._reserve_record(c, key, expected)
 
+    def reserve_fresh_development(self, *, key: str, owner: str, market: str, family: str,
+                                  start_ns: int, end_ns: int, identity: dict) -> str:
+        """Reserve a never-consumed development interval exactly once.
+
+        Route B uses this for frozen B0 Train/Validation evidence. Unlike ordinary
+        development reservations, any prior overlapping access or formal query intent
+        is a hard rejection; a crash after reservation does not make the scope reusable.
+        """
+        expected = self._scope(key=key, owner=owner, market=market, family=family,
+                               start_ns=start_ns, end_ns=end_ns, purpose="development",
+                               identity=identity)
+        with self._tx() as c:
+            if c.execute("SELECT 1 FROM access WHERE access_key=?", (key,)).fetchone():
+                raise ResearchLockError("fresh development reservation key was already used")
+            overlap = c.execute(
+                "SELECT access_key FROM access WHERE market=? AND family=? "
+                "AND start_ns<? AND end_ns>? LIMIT 1",
+                (market, family, end_ns, start_ns),
+            ).fetchone()
+            if overlap is not None:
+                raise ResearchLockError(
+                    f"fresh development scope overlaps previously consumed interval: {overlap[0]}"
+                )
+            intent = c.execute(
+                "SELECT intent_id FROM query_intent WHERE market=? AND family=? "
+                "AND start_ns<? AND end_ns>? LIMIT 1",
+                (market, family, end_ns, start_ns),
+            ).fetchone()
+            if intent is not None:
+                raise ResearchLockError(
+                    f"fresh development scope overlaps frozen formal query intent: {intent[0]}"
+                )
+            token = uuid.uuid4().hex
+            c.execute("INSERT INTO access VALUES(?,?,?,?,?,?,?,?,?,?,NULL)",
+                      (key, *expected, token, "recorded"))
+            return token
     def reserve_query_intent(self, *, protocol_id: str, intent_id: str, owner: str,
                              market: str, family: str, start_ns: int, end_ns: int,
                              purpose: str, identity: dict) -> None:

@@ -9,8 +9,8 @@
 
 以下原始交付说明保留为历史基线；当前运行及验收边界以 `docs/DEVELOPMENT_GOAL_CURRENT.md` 为准。
 
-**基线：** Nautilus-RLES v0.4.0 (2026-10-11)；L3 任务书 L3-001—L3-024。上传的 v0.3.1 仅作历史对照。\
-**所有权：** `rles-nautilus-adapter`、`rles-execution`、`rles-risk`、`rles-gym-bridge` 四个包。\
+**基线：** Nautilus-RLES v0.4.0 (2026-10-11)；L3 任务书 L3-001—L3-024。上传的 v0.3.1 仅作历史对照。
+**所有权：** `rles-nautilus-adapter`、`rles-execution`、`rles-risk`、`rles-gym-bridge` 四个包。
 **交付级别：** 待集成的生产模块候选；尚未获得 Q2/Q3 PASS，禁止据此启动正式市场 RL/ES 训练或宣称可实盘。
 
 ## 1. 四个包的职责与变更文件

@@ -5,15 +5,24 @@ from pathlib import Path
 import shutil
 
 from rles_orchestrator.application import _file_hash, _verify_file, _write_verified
+from rles_orchestrator.workspace import require_workspace_paths
 
 
 def prepare(root: Path) -> Path:
+    root = root.resolve()
     prior = root / ".tmp/rl-stage66-memory-bounded-full-train-replays-20261016/preregistration.json"
+    prior = require_workspace_paths(root, {"prior": prior})["prior"]
     run = json.loads(prior.read_text(encoding="utf-8"))["runs"][0]
     source_bundle = Path(run["bundle"])
+    source_bundle = require_workspace_paths(root, {"source_bundle": source_bundle})["source_bundle"]
     if _verify_file(source_bundle / "bundle.json") != run["bundle_sha256"]:
         raise ValueError("existing candidate differs from Stage66 frozen artifact")
     bundle = json.loads((source_bundle / "bundle.json").read_text(encoding="utf-8"))
+    environment = bundle["environment"]
+    market = Path(environment["market_path"])
+    rules = Path(environment["rules_path"])
+    actor = source_bundle / bundle["actor"]["path"]
+    require_workspace_paths(root, {"market": market, "rules": rules, "actor": actor})
     archive = root / ".artifacts/audit-development-20261016"
     archive.mkdir(parents=True, exist_ok=False)
     model = archive / "models/candidate-seed-102"
@@ -24,8 +33,6 @@ def prepare(root: Path) -> Path:
     shutil.copytree(source_bundle / bundle["actor"]["path"], model / bundle["actor"]["path"])
     data = archive / "data"
     data.mkdir()
-    market = Path(bundle["environment"]["market_path"])
-    rules = Path(bundle["environment"]["rules_path"])
     shutil.copy2(market, data / "market.parquet")
     shutil.copy2(market.with_name(market.name + ".COMPLETED.json"), data / "market.parquet.COMPLETED.json")
     shutil.copy2(rules, data / "scenario-rules.json")

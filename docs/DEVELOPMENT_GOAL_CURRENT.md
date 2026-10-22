@@ -21,6 +21,6 @@
 
 ## 续做位置
 
-执行记录最新条目为 **2026-10-18 CI 质量修复与归档前完整回归**。工作流从 workspace 声明动态核对 wheel 数量；wheel smoke 检查 12 个包根及其 7 个声明入口。完整 Windows 测试套件 **767 passed、5 CUDA-only skipped、53 warnings**；默认 PR selector **669 passed、1 CUDA-only skipped**；Ruff、`mypy packages qa`（148 files）、12 wheels/12 sdists 构建及 `all_match=true` wheel manifest 均通过。M0.1 真实现金流、M1.2 独立 Validation、M1.3 兼容阶段工件、M2.3 真实深度、M3.2 新授权独立市场窗口与 A09 仍有各自外部门槛；其余依赖已满足的工程项继续从任务索引核验。归档分支推送会触发 GitHub PR-lane 工作流，Hosted 结果须单独记录。
+最新执行记录为 **F7 online native summary reducer**：精确 Decimal 成交额/滑点/权益核对已补齐，summary-only `rollout()` 已接入按屏障增量的 `NativeReportAccumulator`，只保留当前时间戳组和一个终态快照；在线/保留式报告端到端对照通过。当前 366-file source manifest identity 为 `0d2d5e3ab71bc47984ddf19c07dd151a1b879709054a5888eebd860807b5e8d5`；相关联合回归 **173 passed**，Ruff 与目标 MyPy 通过。证据：`docs/audit_evidence/20261023/m01_native_decimal_exact_arithmetic_20261023.json`。准确 VaR/CVaR 仍保留收益序列；请求完整账户行时仍会生成行数组。测试通过现有主项目 `.venv` 只读执行、加载 RouteB 工作区源码；RouteB 专用 venv 不可访问，未安装或修改主项目环境中的包。此证据仅属于当前 `C:\Users\QX\Documents\ChatGPT\RouteB` 工作区；指定的 `D:\Program Files\NautilusTrader_RL_ES_RouteB` checkout 本轮不可访问，未声称已同步到该 checkout 或 GitHub。下一步继续 F7 测量及 A01–A14 代码审计；Hosted CI、真实现金流、独立 Validation、阶段工件、真实深度及新授权样本仍分别受外部门禁约束。
 
 外部门禁按执行记录保留：真实账户现金流来源与长窗对账、独立 Validation、兼容的 E1/R1/E2 阶段工件、真实历史深度、新授权独立市场窗口、干净交付 Hosted CI，以及 A09 标的/持仓/杠杆扩展。它们只限制各自依赖的验收，不得成为停止其它代码工作的理由。开始新一轮时必须复核这些状态是否变化。

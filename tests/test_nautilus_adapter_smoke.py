@@ -30,6 +30,8 @@ from rles_nautilus_adapter.session import EngineBoundaryError, EngineSession, Na
 from rles_contracts.dto import DataQualityGrade, ExecutionPlan, MarketEvent, OrderType, PendingOrderPolicy, TimeInForce
 from rles_contracts.frozen import FrozenFields
 from rles_nautilus_adapter import NativeMarketEventDecoder, NativePlanSubmitter, VisibleBatch
+from rles_nautilus_adapter.limit_submitter import NativeLimitSubmitter
+from rles_contracts.limit_execution import LimitInstrumentRules, LimitOrderIntent, OrderIntentKind
 
 pytestmark = pytest.mark.micro_golden
 
@@ -603,6 +605,72 @@ def test_native_perpetual_funding_rate_settles_once_in_account(
             assert session.snapshot().funding == ()
         else:
             assert len(settled.funding) == 1
+    finally:
+        session.close()
+
+
+def test_native_l08_pending_limit_remains_unfunded_across_perpetual_settlement() -> None:
+    from dataclasses import replace
+    from nautilus_trader.model import BarType
+
+    instrument = _perpetual_instrument()
+    rules = LimitInstrumentRules(
+        instrument_id=str(instrument.id), price_tick=Decimal("0.01"),
+        qty_step=Decimal("0.001"), min_qty=Decimal("0.001"),
+        min_notional=Decimal("10"),
+    )
+    submitter = NativeLimitSubmitter(rules=rules, quantity_unit="ETH")
+    bar_type = BarType.from_str(f"{instrument.id}-1-MINUTE-LAST-EXTERNAL")
+    decoder = NativeMarketEventDecoder(instrument=instrument, bar_type=bar_type)
+    session = EngineSession(
+        build_native=_perpetual_builder(submitter), submit_plan=lambda _engine, _plan: None,
+        decode_event=decoder,
+        facts_reader=NativeFactsReader(
+            account_id=AccountId.from_str("SIM-001"), instrument_id=instrument.id,
+            currency="USDT",
+        ),
+        contract_snapshot_factory=lambda **facts: SimpleNamespace(**facts),
+        certified_barrier_protocol=EngineSession.BARRIER_PROTOCOL,
+        submit_limit_intent=lambda engine, intent, ts: submitter(
+            engine, intent, decision_ts_ns=ts,
+        ),
+    )
+    session.open(SimpleNamespace(dataset_hash="a" * 64, fold_hash="b" * 64,
+                                 config_hash="c" * 64))
+    try:
+        initial = session.bootstrap((_perpetual_batch(1),), decision_ts_ns=60_000_000_000)
+        pending = session.advance_limit(
+            LimitOrderIntent(
+                intent_id="native-l08-order", instrument_id=str(instrument.id),
+                kind=OrderIntentKind.LIMIT, signed_qty=Decimal("1.000"),
+                decision_ts_ns=60_000_000_000, effective_ts_ns=60_000_000_001,
+                limit_price=Decimal("500.00"), pending_id="native-l08-pending",
+            ),
+            batches=(_perpetual_batch(2),), next_decision_ts_ns=120_000_000_000,
+        )
+        wait = replace(_perpetual_plan("native-l08-funding-observe", "1.000"),
+                       action="NOOP", delta_qty=Decimal(0))
+        mark = ("mark", {"instrument": str(instrument.id), "price": "1000.00"})
+        rate = ("funding_update", {"instrument": str(instrument.id), "rate": "0.001",
+                                   "interval_minutes": 480,
+                                   "next_funding_ns": 240_000_000_000})
+        session.advance(
+            wait, batches=(_perpetual_batch(3, mark, rate),),
+            next_decision_ts_ns=180_000_000_000,
+        )
+        settled = session.advance(
+            replace(wait, decision_id="native-l08-settlement", plan_id="native-l08-settlement",
+                    idempotency_key="native-l08-settlement"),
+            batches=(_perpetual_batch(4, ("funding_settlement", {
+                "instrument": str(instrument.id), "rate": "0.001",
+                "interval_minutes": 480, "settlement_ns": 240_000_000_000,
+            })),),
+            next_decision_ts_ns=240_000_000_000,
+        )
+        assert len(pending.orders) == len(settled.orders) == 1
+        assert pending.orders[0]["status"] == settled.orders[0]["status"] == "ACCEPTED"
+        assert settled.fills == settled.positions == settled.funding == ()
+        assert settled.equity == initial.equity
     finally:
         session.close()
 

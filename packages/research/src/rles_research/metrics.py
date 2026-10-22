@@ -3,12 +3,57 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Iterable, Sequence, Mapping
+import heapq
+import struct
+import tempfile
+from collections.abc import Iterable, Iterator, Sequence, Mapping
 from .numeric import finite_real
 
 
 class MetricsError(ValueError):
     pass
+
+
+class _DiskBackedFloatSequence(Sequence[float]):
+    """Replayable float sequence stored in an automatically deleted temp file."""
+
+    _FLOAT_BYTES = 8
+    _CHUNK_BYTES = 8192
+
+    def __init__(self) -> None:
+        self._file = tempfile.TemporaryFile(mode="w+b")
+        self._count = 0
+
+    def append(self, value: float) -> None:
+        self._file.seek(0, 2)
+        self._file.write(struct.pack("!d", value))
+        self._count += 1
+
+    def __len__(self) -> int:
+        return self._count
+
+    def __iter__(self) -> Iterator[float]:
+        self._file.flush()
+        self._file.seek(0)
+        while block := self._file.read(self._CHUNK_BYTES):
+            if len(block) % self._FLOAT_BYTES:
+                raise MetricsError("temporary return spool has a truncated float")
+            yield from (item[0] for item in struct.iter_unpack("!d", block))
+
+    def __getitem__(self, index: int | slice) -> float | list[float]:
+        if isinstance(index, slice):
+            return [self[position] for position in range(*index.indices(self._count))]
+        if isinstance(index, bool) or not isinstance(index, int):
+            raise TypeError("return sequence indices must be integers or slices")
+        position = index + self._count if index < 0 else index
+        if not 0 <= position < self._count:
+            raise IndexError("return sequence index out of range")
+        self._file.flush()
+        self._file.seek(position * self._FLOAT_BYTES)
+        value = self._file.read(self._FLOAT_BYTES)
+        if len(value) != self._FLOAT_BYTES:
+            raise MetricsError("temporary return spool has a truncated float")
+        return struct.unpack("!d", value)[0]
 
 
 def _number(v, name: str) -> float:
@@ -31,9 +76,16 @@ def series_metrics(returns: Sequence[float], *, periods_per_year: float,
                                           target_per_period, tail_quantile))
             or periods_per_year <= 0 or not 0 < tail_quantile < 0.5):
         raise MetricsError('at least 2 returns and valid frequency/quantile required')
-    r = [_number(x, 'return') for x in returns]
-    if any(x <= -1 for x in r):
-        raise MetricsError('returns <= -100% cannot be compounded safely')
+    if isinstance(returns, _DiskBackedFloatSequence):
+        r: Sequence[float] = returns
+        if any(not finite_real(x) for x in r):
+            raise MetricsError('return must be finite numeric')
+        if any(x <= -1 for x in r):
+            raise MetricsError('returns <= -100% cannot be compounded safely')
+    else:
+        r = [_number(x, 'return') for x in returns]
+        if any(x <= -1 for x in r):
+            raise MetricsError('returns <= -100% cannot be compounded safely')
     path = 1.0
     peak = 1.0
     dd = 0.0
@@ -43,15 +95,17 @@ def series_metrics(returns: Sequence[float], *, periods_per_year: float,
             raise MetricsError('equity compounding overflow/underflow')
         peak = max(peak, path)
         dd = max(dd, 1 - path / peak)
-    downside = [min(0, x - target_per_period) ** 2 for x in r]
-    downside_deviation = math.sqrt(statistics.fmean(downside))
-    sortino = ((statistics.fmean(r) - target_per_period) / downside_deviation
+    mean = statistics.fmean(r)
+    downside_deviation = math.sqrt(statistics.fmean(
+        min(0, x - target_per_period) ** 2 for x in r
+    ))
+    sortino = ((mean - target_per_period) / downside_deviation
                * math.sqrt(periods_per_year) if downside_deviation > 0 else None)
-    sd = statistics.stdev(r)
-    sharpe = ((statistics.fmean(r) - risk_free_per_period) / sd
+    sd = statistics.stdev(r, xbar=mean)
+    sharpe = ((mean - risk_free_per_period) / sd
               * math.sqrt(periods_per_year) if sd > 0 else None)
     count = max(1, math.ceil(len(r) * tail_quantile))
-    worst = sorted(r)[:count]
+    worst = heapq.nsmallest(count, r)
     return {
         'net_return': path - 1,
         'max_drawdown': dd,
@@ -74,14 +128,19 @@ class AccountFactsAccumulator:
                  'fee', 'funding', 'slippage_cost'}
 
     def __init__(self, *, sample_interval_ns: int,
-                 allow_price_improvement: bool = False) -> None:
+                 allow_price_improvement: bool = False,
+                 max_return_count: int | None = None) -> None:
         if type(allow_price_improvement) is not bool:
             raise MetricsError('allow_price_improvement must be Boolean')
         if (isinstance(sample_interval_ns, bool) or not isinstance(sample_interval_ns, int)
                 or sample_interval_ns < 1):
             raise MetricsError('regular account snapshots and explicit sampling interval required')
+        if (max_return_count is not None
+                and (type(max_return_count) is not int or max_return_count < 1)):
+            raise MetricsError('maximum return count must be a positive integer')
         self.sample_interval_ns = sample_interval_ns
         self.allow_price_improvement = allow_price_improvement
+        self.max_return_count = max_return_count
         self.last_ts = -1
         self.previous: dict[str, float] | None = None
         self.first_equity = 0.0
@@ -89,9 +148,9 @@ class AccountFactsAccumulator:
         self.external_cashflow = 0.0
         self.turnover = 0.0
         self.totals = {'fee': 0.0, 'funding': 0.0, 'slippage_cost': 0.0}
-        # Exact VaR/CVaR order statistics require retaining returns. Other row
-        # fields are reduced as they arrive and are not copied into a second list.
-        self.returns: list[float] = []
+        # Replay from a temporary spool to preserve exact multi-pass statistics
+        # without keeping every return in Python heap memory.
+        self.returns = _DiskBackedFloatSequence()
         self.count = 0
 
     def add(self, fact: Mapping[str, object]) -> None:
@@ -112,6 +171,9 @@ class AccountFactsAccumulator:
             adjusted = (row['equity'] - row['external_cashflow']) / self.previous['equity'] - 1
             if not math.isfinite(adjusted):
                 raise MetricsError('cashflow-adjusted period return nonfinite')
+            if (self.max_return_count is not None
+                    and len(self.returns) >= self.max_return_count):
+                raise MetricsError('account facts exceed configured maximum return count')
             self.returns.append(adjusted)
             self.turnover += row['turnover_notional'] / self.previous['equity']
             for field in self.totals:

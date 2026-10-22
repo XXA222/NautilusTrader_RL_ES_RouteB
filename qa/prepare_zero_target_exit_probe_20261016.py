@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from rles_orchestrator.application import _file_hash, _verify_file, _write_verified
+from rles_orchestrator.workspace import require_workspace_paths
 
 
 def stamp(value: datetime) -> int:
@@ -13,9 +14,15 @@ def stamp(value: datetime) -> int:
 
 
 def prepare(root: Path) -> Path:
+    root = root.resolve()
     baseline_path = root / "configs/train_signal_baselines_20261016.json"
+    baseline_path = require_workspace_paths(root, {"baseline_plan": baseline_path})["baseline_plan"]
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     bundle_root = Path(baseline["bundle"])
+    source = baseline["source"]
+    require_workspace_paths(root, {
+        "bundle": bundle_root, "market": source["market_path"], "rules": source["rules_path"],
+    })
     if _verify_file(bundle_root / "bundle.json") != baseline["bundle_sha256"]:
         raise ValueError("frozen bundle checksum changed")
     bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))

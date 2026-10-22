@@ -61,6 +61,5 @@ markers = [
 exclude = "(?x)(^|[\\\\/])build[\\\\/]"
 
 [[tool.mypy.overrides]]
-module = ["nautilus_trader.*", "evotorch.*", "psutil", "pyarrow.*", "cloudpickle",
-          "jax", "jax.*", "elements", "ninjax", "dreamerv3.*"]
+module = ["nautilus_trader.*", "evotorch.*", "psutil", "pyarrow.*", "cloudpickle"]
 ignore_missing_imports = true

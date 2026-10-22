@@ -13,6 +13,7 @@ from rles_data.core import CuratedStore, DataError
 from rles_data.io import read_curated
 from rles_gym_bridge.historical import HistoricalEnvironmentFactory, load_rules
 from rles_orchestrator.application import _file_hash, _verify_file, _write_verified
+from rles_orchestrator.workspace import require_workspace_paths
 from rles_orchestrator.research_access import record_development
 from rles_orchestrator.wfo_application import _scaler
 from rles_research.native_metrics import native_report
@@ -107,9 +108,17 @@ def one_run(plan: dict, store: CuratedStore, bundle: dict, scaler, *, policy: st
 
 
 def run(plan_path: Path, output: Path) -> dict:
+    workspace = Path(__file__).resolve().parents[1]
+    paths = require_workspace_paths(workspace, {"plan": plan_path, "output": output})
+    plan_path, output = paths["plan"], paths["output"]
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     if plan.get("split") != "train_inner" or output.exists():
         raise DataError("Train-inner preregistration and a new output directory are required")
+    source = plan["source"]
+    require_workspace_paths(workspace, {
+        "bundle": plan["bundle"], "market": source["market_path"],
+        "rules": source["rules_path"],
+    })
     marker = plan_path.with_name(plan_path.name + ".sha256")
     if not marker.is_file() or marker.read_text(encoding="ascii").strip() != _file_hash(plan_path):
         raise DataError("zero-target probe plan checksum mismatch")
@@ -120,14 +129,14 @@ def run(plan_path: Path, output: Path) -> dict:
     if plan["window"]["end_ns"] > bundle["training_end_ns"] or available_memory() < 10 * 1024**3:
         raise MemoryError("probe exceeds frozen Train or start memory boundary")
     for name in ("market", "rules"):
-        if _file_hash(Path(plan["source"][name + "_path"])) != plan["source"][name + "_sha256"]:
+        if _file_hash(Path(source[name + "_path"])) != source[name + "_sha256"]:
             raise DataError(f"frozen {name} source checksum changed")
     output.mkdir(parents=True)
     _write_verified(output / "preregistration.json", {
         "plan_path": str(plan_path.resolve()), "plan_sha256": _file_hash(plan_path), "plan": plan})
     try:
-        rules = load_rules(plan["source"]["rules_path"])
-        store = CuratedStore((*read_curated(plan["source"]["market_path"]).events, *rules))
+        rules = load_rules(source["rules_path"])
+        store = CuratedStore((*read_curated(source["market_path"]).events, *rules))
         if store.snapshot_hash != plan["dataset_sha256"]:
             raise DataError("source snapshot does not match frozen bundle")
         record_development({"environment": bundle["environment"], "output": str(output), "seed": 0},

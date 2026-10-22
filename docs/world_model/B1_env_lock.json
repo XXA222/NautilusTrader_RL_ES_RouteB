@@ -16,6 +16,6 @@
   "patches": [],
   "wsl_cuda": {
     "status": "BLOCKED",
-    "detail": "Host returned Wsl/Service/E_ACCESSDENIED; no WSL command or JAX device probe ran."
+    "detail": "The initial environment-lock attempt returned Wsl/Service/E_ACCESSDENIED. Later B1_jax_device_report.json and B1_wsl_cuda_probe.json record a successful JAX 0.11.2 CUDA JIT probe. In the current checkout WSL is reachable, but its default Python 3.12.3 has no JAX, so that separate probe is not reproduced here; no DreamerV3 GPU training is evidenced."
   }
 }

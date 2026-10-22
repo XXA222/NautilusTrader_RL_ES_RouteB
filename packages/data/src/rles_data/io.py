@@ -75,6 +75,49 @@ def curated_source_identity(path: str | Path) -> dict[str, Any]:
             "events": metadata["events"]}
 
 
+def curated_event_time_bounds(path: str | Path, *,
+                              expected_marker_sha256: str | None = None) -> dict[str, int]:
+    """Verify frozen row-group timestamp bounds from the 0.4.1 footer only.
+
+    No Parquet row payload is decoded. This is suitable for checking that a
+    preregistered Fold has source-time coverage beyond its sealed Test boundary.
+    """
+    target = Path(path)
+    identity = curated_source_identity(target)
+    if (expected_marker_sha256 is not None
+            and identity["marker_sha256"] != require_hash(expected_marker_sha256)):
+        raise DataError("curated COMPLETE marker differs from expected time-bound identity")
+    if identity["schema_version"] != "0.4.1":
+        raise DataError("time-bound preflight requires a row-group indexed 0.4.1 snapshot")
+    try:
+        import pyarrow.parquet as pq
+    except ImportError as exc:
+        raise DataError("pyarrow required for curated footer inspection") from exc
+    metadata = json.loads(target.with_name(target.name + ".COMPLETED.json").read_text(encoding="utf-8"))
+    manifest_groups = metadata["row_groups"]
+    parquet = pq.ParquetFile(target)
+    if (not isinstance(manifest_groups, list) or not manifest_groups
+            or len(manifest_groups) != parquet.metadata.num_row_groups):
+        raise DataError("curated row group manifest mismatch during time-bound preflight")
+    columns = {name: index for index, name in enumerate(parquet.schema_arrow.names)}
+    if "ts_event_ns" not in columns:
+        raise DataError("curated event-time column missing during time-bound preflight")
+    minima: list[int] = []
+    maxima: list[int] = []
+    for index, entry in enumerate(manifest_groups):
+        stats = parquet.metadata.row_group(index).column(columns["ts_event_ns"]).statistics
+        if (not isinstance(entry, dict) or entry.get("index") != index or stats is None
+                or not stats.has_min_max or stats.null_count != 0):
+            raise DataError(f"curated row group lacks verified event-time bounds: {index}")
+        minimum, maximum = int(stats.min), int(stats.max)
+        if (entry.get("min_ts_event_ns") != minimum
+                or entry.get("max_ts_event_ns") != maximum):
+            raise DataError(f"curated row group time bounds differ from manifest: {index}")
+        minima.append(minimum)
+        maxima.append(maximum)
+    return {"min_ts_event_ns": min(minima), "max_ts_event_ns": max(maxima)}
+
+
 def _event_from_row(row: dict[str, Any]) -> Event:
     payload = json.loads(row["payload_json"])
     # Event.__post_init__ performs the strict payload validation after freezing.

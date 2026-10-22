@@ -105,3 +105,11 @@ def test_market_imagination_adapter_zeroes_policy_action_before_upstream_call():
     )[1]["market_dummy"] for action in (-1.0, 0.0, 1.0)]
     assert all(np.array_equal(outputs[0], output) for output in outputs[1:])
     assert not np.any(outputs[0])
+
+
+def test_baseline_scoring_rejects_a_replay_from_another_dataset():
+    frames = tuple(_frame(index) for index in range(1, 150))
+    replay = MarketReplay(frames, "c" * 64)
+    with pytest.raises(DataError, match="dataset hash differs"):
+        score_baselines(replay, _fold(), seed=19, ensemble_size=64,
+                        volatility_lookback=10, bootstrap_block=8)

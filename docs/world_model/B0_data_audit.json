@@ -11,6 +11,6 @@
   "market_model_eligible": null,
   "perpetual_economics_eligible": false,
   "reason": "This work did not use a Route B Train/Validation access reservation, source identity, or FoldManifest. This report does not decode market payloads or reuse existing Test/Holdout windows.",
-  "engineering_test_result": "11 passed",
-  "next_action": "Select and reserve an eligible Train window plus an authorized Validation window; record curated marker, dataset hash, FeatureSpec hash, availability policy, and FoldManifest before payload reads."
+  "engineering_test_result": "105 passed (world-model + research-access + curated-window-read)",
+  "next_action": "Prepare a new row-group-scoped 0.4.1 curated source and frozen approved 60/15/15 or 360/15/15 Fold over never-consumed intervals; register with --registered-fold-config before payload reads."
 }

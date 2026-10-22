@@ -33,7 +33,7 @@ from rles_execution import resolve_scenario
 from rles_gym_bridge.historical import HistoricalEnvironmentFactory, load_rules
 from rles_research.ledger import ResearchLedger, SelectionLedger
 from rles_research.access import EvaluationAccess
-from rles_research.native_metrics import native_report
+from rles_research.native_metrics import NativeReportAccumulator, native_report
 from rles_rl_sb3.actor import InferenceActor
 from rles_rl_sb3.config import PolicySpec, RLConfig, SeedSpec, TransitionFingerprint
 
@@ -548,7 +548,6 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
     if episode_rank != 0 or episode_count != 1 or episode_steps is not None:
         env_options.update(episode_rank=episode_rank, episode_count=episode_count,
                            episode_steps=episode_steps)
-    env = factory.make_env(**env_options)
     observations = []
     requested_actions = []
     soft_targets = []
@@ -569,7 +568,29 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
     schema_names = tuple(getattr(factory.schema, "names", ()))
     market_indices = tuple(i for i, name in enumerate(schema_names) if name.startswith("market."))
     action_feature_response = _ActionFeatureResponse(tuple(schema_names[i] for i in market_indices))
+    summary_accumulator = None
+    report_snapshot_consumer = None
+    original_compact_report_snapshots = factory.compact_report_snapshots
+    if not include_account_rows:
+        summary_accumulator = NativeReportAccumulator(
+            sample_interval_ns=MINUTE_NS,
+            max_return_count=max(1, len(factory.rows) + 1),
+            contract_multiplier=Decimal(1),
+            linear_equity_rounding=Decimal("0.00000001"),
+            allow_price_improvement=(
+                factory.execution.fill(factory.mode).data_granularity == "quote"
+            ),
+        )
+        report_snapshot_consumer = summary_accumulator.add_snapshot
+        # The compact serializer is behavior preserving and prevents detached
+        # native history rows from being copied before the reducer consumes them.
+        factory.compact_report_snapshots = True
+    env = None
     try:
+        env = factory.make_env(
+            **env_options,
+            report_snapshot_consumer=report_snapshot_consumer,
+        )
         reset_result = (env.reset(seed=seed) if reset_options is None
                         else env.reset(seed=seed, options=reset_options))
         observation, reset_info = reset_result
@@ -699,13 +720,16 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
             total_adjustment += float(info["risk_guard_intervention"])
             if terminated or truncated:
                 break
-        report = native_report(
-            factory.snapshots, fill_references=factory.fill_references,
-            sample_interval_ns=MINUTE_NS,
-            allow_price_improvement=factory.execution.fill(factory.mode).data_granularity == "quote",
-            include_account_rows=include_account_rows,
-            linear_equity_rounding=Decimal("0.00000001"),
-        )
+        if summary_accumulator is None:
+            report = native_report(
+                factory.snapshots, fill_references=factory.fill_references,
+                sample_interval_ns=MINUTE_NS,
+                allow_price_improvement=factory.execution.fill(factory.mode).data_granularity == "quote",
+                include_account_rows=include_account_rows,
+                linear_equity_rounding=Decimal("0.00000001"),
+            )
+        else:
+            report = summary_accumulator.finish()
         native_orders: dict[str, dict] = {}
         final_snapshot = factory.snapshots[-1] if factory.snapshots else None
         native_orders = _index_native_orders(getattr(final_snapshot, "all_orders", ()))
@@ -871,7 +895,9 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
         return report, (np.stack(observations) if collect_observations
                         else np.empty((0, observation.size), dtype=np.float32))
     finally:
-        env.close()
+        if env is not None:
+            env.close()
+        factory.compact_report_snapshots = original_compact_report_snapshots
 
 
 def _fixed_observation_corpus(factory: HistoricalEnvironmentFactory, predict, *, seed: int,

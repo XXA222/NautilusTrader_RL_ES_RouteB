@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import Any
 
 
-_SOURCE_ROOTS = ("packages", "tests", "configs", "ci", "packaging", "requirements", "qa/smoke")
+_SOURCE_ROOTS = ("packages", "tests", "configs", "ci", "packaging", "requirements",
+                 "qa/smoke", "qa/world_model")
 _ROOT_FILES = (
     ".gitattributes",
     ".python-version",

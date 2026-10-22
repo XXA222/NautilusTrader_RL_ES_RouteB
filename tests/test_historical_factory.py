@@ -734,6 +734,27 @@ def test_rollout_execution_trace_joins_decisions_to_native_orders_and_fills(tmp_
         factory, lambda _batch: np.asarray([[0.5]], dtype=np.float32), seed=31,
         collect_observations=False, include_account_rows=False, include_execution_trace=True,
     )
+    assert len(factory.snapshots) == 1
+    retained_report, _ = rollout(
+        factory, lambda _batch: np.asarray([[0.5]], dtype=np.float32), seed=31,
+        collect_observations=False, include_account_rows=True, include_execution_trace=True,
+    )
+    for field in ("metrics", "funding", "terminal_flat", "liquidations",
+                  "liquidations_observed", "liquidation_orders"):
+        assert report[field] == retained_report[field]
+    transient_fill_fields = {"event_id", "trade_id"}
+    assert [
+        {key: value for key, value in fill.items() if key not in transient_fill_fields}
+        for fill in report["fills"]
+    ] == [
+        {key: value for key, value in fill.items() if key not in transient_fill_fields}
+        for fill in retained_report["fills"]
+    ]
+    online_reconciliation = dict(report["equity_reconciliation"])
+    retained_reconciliation = dict(retained_report["equity_reconciliation"])
+    online_reconciliation.pop("rows", None)
+    retained_reconciliation.pop("rows", None)
+    assert online_reconciliation == retained_reconciliation
     summary = report["execution_decision_diagnostics"]
     trace = report["execution_decision_trace"]
     terminal_trace = report["terminal_settlement_trace"]

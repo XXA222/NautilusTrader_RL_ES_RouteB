@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 import sys
 import traceback
-from typing import Any
 
 
 def main() -> int:
@@ -19,7 +18,7 @@ def main() -> int:
     project_package = Path(__file__).resolve().parents[2] / "packages" / "world_model" / "src"
     sys.path.insert(0, str(project_package))
     output = Path(args.output)
-    result: dict[str, Any] = {
+    result: dict[str, object] = {
         "status": "FAILED", "upstream_commit": None, "jax_version": None,
         "devices": [], "rssm_import": False, "action_independence": False,
         "checkpoint_resume": False, "detail": None,

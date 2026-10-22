@@ -1,0 +1,28 @@
+{
+  "schema": "rles.world-model.jax-device-probe.v1",
+  "status": "passed",
+  "environment": {
+    "distribution": "Ubuntu 24.04 via WSL2",
+    "python": "3.12.3",
+    "jax": "0.11.2",
+    "jaxlib": "0.11.2",
+    "cuda_plugin": "jax-cuda13-plugin 0.11.2",
+    "lockfile": "packages/world_model/requirements-world-model-wsl-cuda.lock"
+  },
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 5070 Laptop GPU",
+    "driver": "582.05",
+    "reported_cuda": "13.0",
+    "total_memory_mib": 8151,
+    "observed_memory_used_mib": 1695
+  },
+  "device": "CudaDevice(id=0)",
+  "compiled_operation": "jax.jit(sin(x).sum()) on 1024 float32 elements",
+  "output": 0.09084147,
+  "allocator": "XLA_PYTHON_CLIENT_PREALLOCATE=false",
+  "limits": [
+    "This is an installation, device, and minimal JIT probe only.",
+    "DreamerV3 RSSM on WSL2 GPU and model training have not been run.",
+    "The platform remains experimental for JAX GPU according to current JAX documentation."
+  ]
+}
