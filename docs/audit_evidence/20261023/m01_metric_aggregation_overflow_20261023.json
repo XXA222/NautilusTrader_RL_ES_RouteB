@@ -1,0 +1,18 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "M0.1 / finite-input aggregate overflow",
+  "finding": "Individually finite account-row fees, funding, slippage, external cashflows, or turnover increments could overflow their running float totals. Realized trade PnL aggregation and annualized Sharpe/Sortino could also emit non-finite outputs from finite inputs.",
+  "change": "Validate every account aggregate increment and resulting total before committing it; use math.fsum with overflow handling for gross-return and closed-trade PnL aggregates; reject non-finite profit factor and annualized Sharpe/Sortino. Ingestion failures use the existing fail-closed accumulator state.",
+  "regressions": "Added finite 1e308 fee rows whose total overflows and finite realized trade PnLs whose positive sum overflows; both are rejected, and account accumulation refuses later report generation after the ingestion failure.",
+  "verification": {
+    "source_tests": "tests/test_native_report_accumulator_parity.py, tests/test_research_metrics.py, tests/test_historical_factory.py, tests/test_native_liquidation_facts.py: 212 passed, 18 dependency warnings.",
+    "installed_wheel_tests": "tests/test_research_metrics.py and tests/test_native_report_accumulator_parity.py against RouteB .venv-win-app installed wheel with PYTHONPATH unset: 116 passed.",
+    "wheel_build": "Offline rles-research 0.4.1 wheel build and isolated app-venv installation succeeded.",
+    "installed_provenance": "RouteB .venv-win-app imports from Lib/site-packages; installed/source metrics.py SHA-256 both equal a124b4c5c4896646933e375342539303930cebf9aaadb808a7c9031d081e60bf.",
+    "ruff": "Full packages/tests/qa/ci Ruff check passed.",
+    "mypy": "Full packages/qa MyPy check passed for 225 source files.",
+    "manifest": "Source manifest verified 604 files with identity 2ba0e7a63a5e99fb527b863ec2d2f783c581f2bf09ca8b381f9f1595401dd569.",
+    "compile_and_diff": "Changed Python sources compile in memory and git diff --check passes."
+  },
+  "scope": "Synthetic finite numerical values only. No market, account, project registry, Validation, Test, or Holdout payload was accessed."
+}

@@ -24,6 +24,15 @@ def _number(v, name: str) -> float:
     return result
 
 
+def _finite_sum(current: float, increment: float, label: str) -> float:
+    if not math.isfinite(increment):
+        raise MetricsError(f"{label} increment overflow")
+    total = current + increment
+    if not math.isfinite(total):
+        raise MetricsError(f"{label} accumulation overflow")
+    return total
+
+
 class _StreamingSeriesMetrics:
     """Incremental exact economic metrics with a bounded lower-tail heap."""
 
@@ -110,6 +119,8 @@ class _StreamingSeriesMetrics:
                    * math.sqrt(periods_per_year) if downside_deviation > 0 else None)
         sharpe = ((self.mean - self.risk_free_per_period) / sd
                   * math.sqrt(periods_per_year) if sd > 0 else None)
+        if any(value is not None and not math.isfinite(value) for value in (sortino, sharpe)):
+            raise MetricsError("annualized return metric overflow")
         return {
             "net_return": self.path - 1,
             "max_drawdown": self.drawdown,
@@ -211,15 +222,23 @@ class AccountFactsAccumulator:
             adjusted = (row['equity'] - row['external_cashflow']) / self.previous['equity'] - 1
             if not math.isfinite(adjusted):
                 raise MetricsError('cashflow-adjusted period return nonfinite')
+            turnover_increment = row['turnover_notional'] / self.previous['equity']
+            next_turnover = _finite_sum(self.turnover, turnover_increment, "turnover ratio")
+            next_totals = {
+                field: _finite_sum(self.totals[field], row[field], f"total {field}")
+                for field in self.totals
+            }
+            next_external_cashflow = _finite_sum(
+                self.external_cashflow, row['external_cashflow'], "external cashflow",
+            )
             if self._return_metrics is None:
                 assert self.returns is not None
                 self.returns.append(adjusted)
             else:
                 self._return_metrics.add(adjusted)
-            self.turnover += row['turnover_notional'] / self.previous['equity']
-            for field in self.totals:
-                self.totals[field] += row[field]
-            self.external_cashflow += row['external_cashflow']
+            self.turnover = next_turnover
+            self.totals.update(next_totals)
+            self.external_cashflow = next_external_cashflow
         self.previous = row
         self.last_equity = row['equity']
         self.last_ts = ts
@@ -239,15 +258,27 @@ class AccountFactsAccumulator:
         result['turnover_ratio'] = self.turnover
         for field, value in self.totals.items():
             result[f'total_{field}'] = value
-        result['gross_return_before_reported_costs'] = (
-            self.last_equity - self.first_equity - self.external_cashflow
-            + self.totals['fee'] + self.totals['slippage_cost'] - self.totals['funding']
-        ) / self.first_equity
+        try:
+            gross_return = math.fsum((
+                self.last_equity, -self.first_equity, -self.external_cashflow,
+                self.totals['fee'], self.totals['slippage_cost'], -self.totals['funding'],
+            )) / self.first_equity
+        except OverflowError as exc:
+            raise MetricsError('gross return aggregation overflow') from exc
+        if not math.isfinite(gross_return):
+            raise MetricsError('gross return aggregation overflow')
+        result['gross_return_before_reported_costs'] = gross_return
         if realized_trade_pnls is not None:
             pnl = [_number(x, 'realized_pnl') for x in realized_trade_pnls]
-            gross_profit = sum(x for x in pnl if x > 0)
-            gross_loss = -sum(x for x in pnl if x < 0)
-            result['trade_profit_factor'] = gross_profit / gross_loss if gross_loss > 0 else None
+            try:
+                gross_profit = math.fsum(x for x in pnl if x > 0)
+                gross_loss = -math.fsum(x for x in pnl if x < 0)
+            except OverflowError as exc:
+                raise MetricsError('realized trade PnL aggregation overflow') from exc
+            profit_factor = gross_profit / gross_loss if gross_loss > 0 else None
+            if profit_factor is not None and not math.isfinite(profit_factor):
+                raise MetricsError('trade profit factor overflow')
+            result['trade_profit_factor'] = profit_factor
             result['closed_trade_count'] = len(pnl)
         return result
 

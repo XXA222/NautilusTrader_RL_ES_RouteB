@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v1",
-  "generated_at_utc": "2026-10-22T20:29:53.345162+00:00",
-  "source_identity_sha256": "23ea1b77fc5b12a2b191b3bad175bc752a91958c63aa04cf2abbfe12fff92673",
+  "generated_at_utc": "2026-10-22T20:35:15.639715+00:00",
+  "source_identity_sha256": "2ba0e7a63a5e99fb527b863ec2d2f783c581f2bf09ca8b381f9f1595401dd569",
   "scope": {
     "included": [
       ".gitattributes",
@@ -1692,8 +1692,8 @@
     },
     {
       "path": "packages/research/src/rles_research/metrics.py",
-      "size_bytes": 13296,
-      "sha256": "64f74d0ff82bc6be045fd284bece6d28d9db7abcf6edbca266eaaf67246683a6"
+      "size_bytes": 14837,
+      "sha256": "419b4b390d2a271307c67340f3befa1342e7e2edc6b1a3004d7ac53aceda078f"
     },
     {
       "path": "packages/research/src/rles_research/native_metrics.py",
@@ -3072,8 +3072,8 @@
     },
     {
       "path": "tests/test_research_metrics.py",
-      "size_bytes": 52899,
-      "sha256": "08c4ad5f12d6d46b547f0a4eaca08da6e1bb946caad6b07eb49c469ac56b5676"
+      "size_bytes": 54137,
+      "sha256": "309f5c388afdbf3e3af237274b90e91da957e115e10b06ae4323b27443cef7c9"
     },
     {
       "path": "tests/test_research_numeric_guards.py",

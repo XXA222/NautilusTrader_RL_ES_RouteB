@@ -1,5 +1,9 @@
 # RouteB 审计整改：当前连续开发目标
 
+## 2026-10-23 最新续做：有限输入的累计指标溢出保护
+
+继续 M0.1 数值审计发现，单行手续费、Funding、滑点、现金流或换手率增量都有限，跨行累计仍可能溢出为 `inf`；已实现交易 PnL 的求和以及年化 Sharpe/Sortino 也存在有限输入产生非有限输出的路径。现对每次累计增量和累计值做有限性校验，用 `math.fsum` 并捕获溢出计算总毛收益与闭合交易 PnL，且拒绝非有限 profit factor/年化比率。新增高量级有限费用与盈亏累加回归。四个源码回归套件 **212 passed、18 warnings**；RouteB 独立 wheel 两套件 **116 passed**，wheel 与源码哈希一致；全仓 Ruff、MyPy 225 文件通过；604 文件 source manifest 已验证。证据：`docs/audit_evidence/20261023/m01_metric_aggregation_overflow_20261023.json`。仅合成数值；无市场、账户、登记库或正式评价数据访问。继续其余可本地完成的 A01–A14；外部现金流真实性、历史登记覆盖、Validation、新授权样本和真实盘口深度仍保持各自独立门槛。
+
 ## 2026-10-23 最新续做：AccountFactsAccumulator 增量失败关闭
 
 审计发现 M0.1 账户指标累加器可能在流式指标部分更新后才遇到复利溢出，原实现允许调用方捕获异常后继续使用该对象，可能产出部分状态的报告。现在累加器保存首次摄入失败，并拒绝后续 `add()` 与 `result()`，错误保留原始异常链；成功的中间 `result()` 仍可继续累积。新增有限权益按 2 倍增长至路径溢出的回归，确认失败后不可恢复使用。四个 Native/metrics/历史工厂源码选择器 **210 passed、18 warnings**；RouteB 独立 wheel 下指标与 Native parity 选择器 **114 passed**。离线研究 wheel 构建并安装成功，源码与隔离 venv 模块 SHA-256 相同；Ruff、目标 MyPy、语法编译和 `git diff --check` 通过。证据：`docs/audit_evidence/20261023/m01_account_metrics_fail_closed_20261023.json`。仅合成数值；没有访问行情、账户、项目登记库或 Validation/Test/Holdout。继续其余可本地实施审计项；外部现金流真实性、登记前历史覆盖、独立 Validation、新授权样本及真实盘口深度仍是各自独立门槛。
