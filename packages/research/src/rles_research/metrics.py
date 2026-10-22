@@ -20,21 +20,30 @@ class _DiskBackedFloatSequence(Sequence[float]):
 
     _FLOAT_BYTES = 8
     _CHUNK_BYTES = 8192
+    _WRITE_BUFFER_BYTES = 64 * 1024
 
     def __init__(self) -> None:
         self._file = tempfile.TemporaryFile(mode="w+b")
+        self._write_buffer = bytearray()
         self._count = 0
 
     def append(self, value: float) -> None:
-        self._file.seek(0, 2)
-        self._file.write(struct.pack("!d", value))
+        self._write_buffer.extend(struct.pack("!d", value))
         self._count += 1
+        if len(self._write_buffer) >= self._WRITE_BUFFER_BYTES:
+            self._flush_pending()
+
+    def _flush_pending(self) -> None:
+        if self._write_buffer:
+            self._file.seek(0, 2)
+            self._file.write(self._write_buffer)
+            self._write_buffer.clear()
 
     def __len__(self) -> int:
         return self._count
 
     def __iter__(self) -> Iterator[float]:
-        self._file.flush()
+        self._flush_pending()
         self._file.seek(0)
         while block := self._file.read(self._CHUNK_BYTES):
             if len(block) % self._FLOAT_BYTES:
@@ -55,7 +64,7 @@ class _DiskBackedFloatSequence(Sequence[float]):
         position = index + self._count if index < 0 else index
         if not 0 <= position < self._count:
             raise IndexError("return sequence index out of range")
-        self._file.flush()
+        self._flush_pending()
         self._file.seek(position * self._FLOAT_BYTES)
         value = self._file.read(self._FLOAT_BYTES)
         if len(value) != self._FLOAT_BYTES:

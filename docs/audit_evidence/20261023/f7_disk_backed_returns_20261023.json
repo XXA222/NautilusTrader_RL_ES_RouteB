@@ -7,8 +7,8 @@
   "changes": [
     {
       "path": "packages/research/src/rles_research/metrics.py",
-      "sha256": "e9b6101ad297f0f9c506177cc48597e8959f7dd2319557381b51e1282dc54c96",
-      "summary": "AccountFactsAccumulator replays return floats from an auto-deleted temporary file, preserving multi-pass exact metrics while removing the O(n) Python float list. Optional max_return_count rejects before accumulator state advances."
+      "sha256": "91e21da42226cadbc4527ea12a7a9bd2642f5f58b07d47490bb79e84396aeb0a",
+      "summary": "AccountFactsAccumulator replays return floats from an auto-deleted temporary file in 64 KiB buffered writes, preserving multi-pass exact metrics while removing the O(n) Python float list. Optional max_return_count rejects before accumulator state advances."
     },
     {
       "path": "tests/test_research_metrics.py",
@@ -18,15 +18,26 @@
   ],
   "verification": {
     "pytest_command": "python -m pytest -q tests/test_historical_factory.py tests/test_native_report_accumulator_parity.py tests/test_native_decimal_arithmetic.py tests/test_research_metrics.py tests/test_native_liquidation_facts.py --basetemp .tmp_backup_final_pytest_20261023",
-    "pytest_result": "175 passed, 18 warnings in 105.08s",
+    "pytest_result": "175 passed, 18 warnings in 106.36s",
     "ruff_command": "python -m ruff check packages/research/src/rles_research/metrics.py tests/test_research_metrics.py",
     "ruff_result": "All checks passed",
     "mypy_command": "python -m mypy --platform win32 --ignore-missing-imports --follow-imports=silent packages/research/src/rles_research/metrics.py packages/research/src/rles_research/native_metrics.py packages/orchestrator/src/rles_orchestrator/application.py",
     "mypy_result": "Success: no issues found in 3 source files",
-    "source_manifest_identity_sha256": "ba347c9f8047525e970902f5117c462e546a8d09059d092206234f7b208da461",
+    "source_manifest_identity_sha256": "5fc001946596b337cb666de41826924f00460e4d02edec852e17a7506766c08a",
     "source_manifest_file_count": 366
+  },
+  "storage_microbenchmark": {
+    "observations": 200000,
+    "list_peak_python_bytes": 6424384,
+    "disk_sequence_peak_python_bytes": 217154,
+    "disk_file_bytes": 1600000,
+    "list_append_seconds": 0.09398,
+    "disk_sequence_append_seconds": 0.221906,
+    "python_peak_memory_reduction_percent": 96.62,
+    "append_slowdown_ratio": 2.36,
+    "method": "Synthetic sine-wave floats, Python tracemalloc, isolated list construction versus buffered disk-sequence append. This measures return storage only, not full account-row processing or final metric replay."
   },
   "environment_boundary": "Python 3.14.7 and tooling were invoked from the main project's existing .venv without installing or changing packages. RouteB source was loaded via PYTHONPATH and MYPYPATH. This is not a RouteB-isolated environment verification.",
   "data_boundary": "Synthetic account equity rows only; no market, Validation, Test, or Holdout payload was read.",
-  "remaining_f7_limits": "Full account rows remain materialized when explicitly requested. Tail risk uses a bounded-to-configured-horizon heap at report time; this is not constant-memory independent of the configured maximum return count. Real-history Train profile and clean Hosted Linux/Windows CI remain incomplete."
+  "remaining_f7_limits": "Full account rows remain materialized when explicitly requested. Tail risk uses a heap proportional to the configured tail fraction at report time; this is not constant-memory independent of the configured maximum return count. The measured storage tradeoff spends about 2.36x append time for about 96.6% lower Python peak memory on this synthetic 200,000-return case. Real-history Train profile and clean Hosted Linux/Windows CI remain incomplete."
 }
