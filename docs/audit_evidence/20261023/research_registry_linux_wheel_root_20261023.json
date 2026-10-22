@@ -12,7 +12,7 @@
     "mypy": "Full project MyPy check (packages qa) passed with 225 source files.",
     "source_manifest": "604 files verified; source_identity_sha256 59a584b0864d448535e1905a39905e2099536050a9d7550fad94d272327deb73.",
     "inventory_byte_stability": "Tracked inventory raw LF bytes hash to 2950db3e0c309efc6d081f6fecfa5df25e756920ab3149ed28e455559de0606c, exactly matching the marker. Both files are now protected from autocrlf conversion.",
-    "hosted_rerun": "Run 39837931130 validated the first path fix but failed the same test on inventory LF/CRLF digest mismatch. Byte-stability and related fixed-depth source-root corrections passed local focused suites; hosted verification of the combined fix remains pending.",
+    "hosted_rerun": "Hosted run 39839975757 on commit adf44ad58a5d7fe70d880673f6ae81b0a44ab230 passed the Linux CPU, Windows CPU, and world-model JAX CPU jobs. Both clean platforms passed the inventory checksum and registry-path test; the full world-model suite, wheel build/source match, provenance, MyPy, PR contract/unit tests, and Ruff completed successfully.",
     "scope": "Temporary working directory and mocked registry only; no project research registry, market, account, Validation, Test, or Holdout data was accessed."
   }
 }
