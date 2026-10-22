@@ -10,6 +10,10 @@ Hosted CI #10 已越过路径发现，但发现历史 inventory 的 marker 只�
 
 复核发现另外两个同类固定深度根路径：WFO source-tree hash 与 world-model CLI repository identity。它们现共用 workspace marker 的祖先查找逻辑。研究访问 + world-model CLI **131 passed**，WFO **36 passed**；全仓 Ruff、MyPy（225 files）通过；当前 604-file source manifest identity `59a584b0864d448535e1905a39905e2099536050a9d7550fad94d272327deb73`。三个入口及 inventory byte-stability 一并等待远端验证。
 
+### M0.2 Hosted gate 已通过（2026-10-23）
+
+Hosted Actions run [#11](https://github.com/XXA222/NautilusTrader_RL_ES_RouteB/actions/runs/39839975757)，commit `adf44ad58a5d7fe70d880673f6ae81b0a44ab230`：Linux CPU、Windows CPU、world-model JAX CPU 全部通过。两平台的锁定安装、604-file source manifest、12-wheel/sdist build/source match、installed provenance、MyPy、PR contract/unit、world-model suite、Ruff 全绿；JAX 专项单测与因果性/checkpoint-resume smoke 通过。M0.2 CI 代码门禁已闭环，继续 A01–A14 其它依赖已满足的源码审计。其它数据与研究认证门槛仍按任务索引独立处理。
+
 ## 2026-10-23 最新续做：修复 Hosted CI worker 字段诊断
 
 读取 GitHub Actions #8 作业日志发现 Windows/Linux 的 world-model selector 因 `anchor_close=NaN` 报通用 JSON 错误而失败（219 passed、14 skipped、1 failed；JAX CPU 作业通过）。现保留 JSON 默认严格解析和重复键保护，仅让 worker request 在非标准数值进入字段校验前做安全的唯一键解析；递归拒绝其它非有限字段，anchor_close 返回字段专用拒绝。修改后 app venv 的完整 `tests/world_model` 回归 **228 passed、14 个 JAX-only skipped**，全仓 Ruff、MyPy（225 files）通过；604-file source manifest identity `c0bbd1ed76eab14292776aceb96b86478274b2494f59a2e6e89dfe7fc70637ab`。Hosted 修复版重跑仍待确认。证据：`docs/audit_evidence/20261023/worker_cli_anchor_nonfinite_validation_20261023.json`。此前 A04 legacy R4 损坏账目拒绝修复亦已完成。

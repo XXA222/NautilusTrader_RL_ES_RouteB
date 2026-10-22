@@ -11,6 +11,6 @@
     "mypy": "Full project MyPy check (packages qa) passed with 225 source files.",
     "source_manifest": "604 files verified; source_identity_sha256 c0bbd1ed76eab14292776aceb96b86478274b2494f59a2e6e89dfe7fc70637ab.",
     "scope": "Synthetic temporary worker requests and contexts only. No market, account, project ledger, Validation, Test, or Holdout data was accessed.",
-    "hosted_rerun": "Pending on the repaired commit; the observed failure belongs to earlier commit d1defb7298314ce6231178842dac204f23c75619."
+    "hosted_rerun": "Hosted run 39839975757 on commit adf44ad58a5d7fe70d880673f6ae81b0a44ab230 passed Windows and Linux CPU world-model suites and the dedicated JAX CPU unit/smoke job. The earlier failure belongs to commit d1defb7298314ce6231178842dac204f23c75619."
   }
 }

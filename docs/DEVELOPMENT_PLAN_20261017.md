@@ -2008,6 +2008,12 @@ Expanded exact Decimal helpers below the default Emin while retaining the defaul
 
 **Next cursor:** rerun Hosted PR CI on the corrected revision, then continue the dependency-satisfied A01–A14 source audit. Keep the external evidence gates unchanged.
 
+### 2026-10-23 M0.2 Hosted CI closure
+
+Hosted PR run `39839975757` on `adf44ad58a5d7fe70d880673f6ae81b0a44ab230` passed end to end: Linux CPU, Windows CPU, and dedicated world-model JAX CPU jobs. Both OS jobs passed clean locked install, source manifest, all distribution builds, wheel/source match, installed-wheel provenance, MyPy, PR contracts/unit, the complete Route B world-model suite, and Ruff. The JAX lane passed JAX-specific unit tests and prior-causality/checkpoint-resume smokes. This closes M0.2 Hosted CI for that revision; evidence is recorded in `docs/audit_evidence/20261023/research_registry_linux_wheel_root_20261023.json` and `docs/audit_evidence/20261023/worker_cli_anchor_nonfinite_validation_20261023.json`.
+
+**Next cursor:** continue the dependency-satisfied A01–A14 source audit. M0.1 authenticated cashflows, M0.3 historical pre-registration coverage, independent Validation/market authorization, authentic depth, matching E1/R1/E2 artifacts, historical trial completeness, and M4.2 remain separate evidence or input gates.
+
 ### 2026-10-23 M0.2 follow-up — canonical inventory checksum bytes
 
 Hosted run `39837931130` confirmed the Linux wheel root fix, then failed when reaching the inventory: the Git blob was LF (`2950db3e…`), while its marker matched only Windows CRLF working-copy bytes (`9fb401e…`). Added exact-byte `-text` attributes for both inventory and marker, normalized the tracked file to LF, and rebound the marker to the LF SHA-256. A further package-root audit found the same fixed-depth assumption in WFO source hashing and world-model CLI code identity; both now discover the workspace marker through package-file ancestors. The research-access + world-model CLI suites pass **131 tests**, WFO passes **36**, full Ruff/MyPy (**225 source files**) pass, and the 604-file source identity is `59a584b0864d448535e1905a39905e2099536050a9d7550fad94d272327deb73`. Updated evidence: `docs/audit_evidence/20261023/research_registry_linux_wheel_root_20261023.json`. Hosted verification of the combined fixes remains pending.
