@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import sqlite3
 
 import pytest
 
@@ -184,6 +185,54 @@ def test_report_discovery_keeps_r4_failure_when_either_receipt_is_damaged(tmp_pa
         json.dumps({"schema": "legacy.registration.v1"}), encoding="utf-8")
 
     assert _report_paths(source) == sorted((missing_registration, damaged_failure))
+
+
+def test_report_discovery_surfaces_unreadable_failure_receipt(tmp_path, monkeypatch):
+    source = tmp_path / "reports"
+    failure = source / "run" / "failure_receipt.json"
+    failure.parent.mkdir(parents=True)
+    failure.write_text('{"schema":"legacy.failure.v1"}', encoding="utf-8")
+    original_read_text = type(failure).read_text
+
+    def deny_failure_read(path, *args, **kwargs):
+        if path == failure:
+            raise PermissionError(13, "permission denied", str(failure))
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(type(failure), "read_text", deny_failure_read)
+
+    assert _report_paths(source) == [failure]
+    result = reconcile(source, tmp_path / "research.sqlite", apply=False)
+    assert result["reports_discovered"] == 1
+    assert result["reports_accepted"] == 0
+    assert result["reports_rejected"] == 1
+    with pytest.raises(ValueError, match="refusing partial reconciliation"):
+        reconcile(source, tmp_path / "research.sqlite", apply=True)
+
+
+def test_report_discovery_surfaces_unreadable_registration_receipt(tmp_path, monkeypatch):
+    source = tmp_path / "reports"
+    failure = source / "run" / "failure_receipt.json"
+    registration = failure.with_name("registration_receipt.json")
+    failure.parent.mkdir(parents=True)
+    failure.write_text('{"schema":"legacy.failure.v1"}', encoding="utf-8")
+    registration.write_text('{"schema":"legacy.registration.v1"}', encoding="utf-8")
+    original_read_text = type(failure).read_text
+
+    def deny_registration_read(path, *args, **kwargs):
+        if path == registration:
+            raise PermissionError(13, "permission denied", str(registration))
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(type(failure), "read_text", deny_registration_read)
+
+    assert _report_paths(source) == [failure]
+    result = reconcile(source, tmp_path / "research.sqlite", apply=False)
+    assert result["reports_discovered"] == 1
+    assert result["reports_accepted"] == 0
+    assert result["reports_rejected"] == 1
+    with pytest.raises(ValueError, match="refusing partial reconciliation"):
+        reconcile(source, tmp_path / "research.sqlite", apply=True)
 
 
 def test_report_discovery_fails_closed_when_subdirectory_cannot_be_scanned(
@@ -706,6 +755,26 @@ def test_unresolved_r4_access_audit_is_read_only_and_never_releases_scope(tmp_pa
         "last_status": "started", "last_event_key": "started",
     }]
     assert registry.trial_attempt_events(key) == before
+
+
+def test_unresolved_r4_access_fails_closed_on_corrupt_development_identity(tmp_path):
+    registry_path = tmp_path / "research.sqlite"
+    registry = ProjectResearchRegistry(registry_path)
+    label = "routeb-fold-solusdt-r4-corrupt-identity-v1"
+    key = digest(["test", label])
+    registry.reserve_fresh_development(
+        key=key, owner=digest(["owner", label]), market="SOLUSDT",
+        family="perpetual-market-v1", start_ns=100, end_ns=200,
+        identity={"label": label, "fold_sha256": "a" * 64},
+    )
+    with sqlite3.connect(registry_path) as connection:
+        # Simulate persisted corruption outside the registry's immutable-write API.
+        connection.execute("DROP TRIGGER access_identity_immutable")
+        connection.execute("UPDATE access SET identity=? WHERE access_key=?",
+                           ("{malformed", key))
+
+    with pytest.raises(ValueError, match="invalid development access identity"):
+        _unresolved_r4_accesses(registry_path)
 
 
 def test_unresolved_r4_access_marks_unparseable_attempt_identity_ambiguous(tmp_path, monkeypatch):

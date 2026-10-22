@@ -483,4 +483,4 @@ Extended the exact Decimal fix to representable low-exponent sums and products, 
 
 ## 2026-10-23 最新续做游标 — A04 reconciler 扫描失败隔离
 
-`qa/world_model/reconcile_routeb_research_ledger.py` 的递归扫描现使用确定顺序且不跟随目录符号链接的 `os.walk`；任一子目录扫描错误或将被跳过的符号链接目录，均在读取报告/账本前明确失败关闭。权限错误与 symlink 注入回归确认 dry-run 和 apply 都拒绝不完整扫描；reconciler 全文件 **21 passed**，Ruff 通过，项目 MyPy **225 files clean**。604-file source manifest identity：`02983eb7d9bc0478aefe88bcb6e71e00a25b963599373bdd16ef9bd827ae990e`。证据：`docs/audit_evidence/20261023/reconcile_directory_scan_fail_closed_20261023.json`。继续 A01–A14 其余本地可实施问题；外部认证门槛保持独立。
+`qa/world_model/reconcile_routeb_research_ledger.py` 的递归扫描现使用确定顺序且不跟随目录符号链接的 `os.walk`；任一子目录扫描错误、将被跳过的符号链接目录或不可读/无效 failure、registration receipt，均会被显式拒绝。恢复摘要对损坏的 development access identity JSON 也改为失败关闭，不再静默漏掉该行。reconciler 全文件 **24 passed**，Ruff 通过，项目 MyPy **225 files clean**。604-file source manifest identity：`0d7dabdf7da81aeeadfe5119562d84c313de9eb34c43f1a02a2a288983ec7e24`。证据：`docs/audit_evidence/20261023/reconcile_directory_scan_fail_closed_20261023.json`。继续 A01–A14 其余本地可实施问题；外部认证门槛保持独立。

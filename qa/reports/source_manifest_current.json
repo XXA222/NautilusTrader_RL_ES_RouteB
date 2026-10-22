@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v1",
-  "generated_at_utc": "2026-10-22T18:42:23.687424+00:00",
-  "source_identity_sha256": "02983eb7d9bc0478aefe88bcb6e71e00a25b963599373bdd16ef9bd827ae990e",
+  "generated_at_utc": "2026-10-22T18:46:50.561990+00:00",
+  "source_identity_sha256": "0d7dabdf7da81aeeadfe5119562d84c313de9eb34c43f1a02a2a288983ec7e24",
   "scope": {
     "included": [
       ".gitattributes",
@@ -2356,8 +2356,8 @@
     },
     {
       "path": "qa/world_model/reconcile_routeb_research_ledger.py",
-      "size_bytes": 58568,
-      "sha256": "af09f591d51ef5344ddae812061b2bce90784fea0a671a31f155df1d2a9e8952"
+      "size_bytes": 59180,
+      "sha256": "8879d0dcf6997a0eeb0c38b2e416d172f4bb1139ab7bf710ab2a782f393ddd3a"
     },
     {
       "path": "qa/world_model/routeb_b2_cpu_smoke.py",
@@ -3216,8 +3216,8 @@
     },
     {
       "path": "tests/world_model/test_reconcile_routeb_research_ledger.py",
-      "size_bytes": 40903,
-      "sha256": "d1dfca5ae68d38547d705a936da5ce743b28b7632c7b469faa42c9290caab216"
+      "size_bytes": 44110,
+      "sha256": "1c1098b37263c61def10a6e8f5d7ae1914887dfb8d0b592db72dfaf8070cc12d"
     },
     {
       "path": "tests/world_model/test_recursive_forecast.py",

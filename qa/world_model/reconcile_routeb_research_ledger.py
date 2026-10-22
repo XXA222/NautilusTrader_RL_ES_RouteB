@@ -948,11 +948,18 @@ def _report_paths(source: Path) -> list[Path]:
             failure = _strict_json_loads(failure_text)
         except (OSError, UnicodeError, json.JSONDecodeError):
             failure = None
+        if failure is None:
+            # The receipt's protocol cannot be identified; surface it for rejection.
+            paths.add(failure_path)
+            continue
         registration_path = failure_path.with_name("registration_receipt.json")
         try:
             resolved_registration = registration_path.resolve(strict=True)
-        except (OSError, RuntimeError):
+        except FileNotFoundError:
             resolved_registration = None
+        except (OSError, RuntimeError):
+            paths.add(failure_path)
+            continue
         if (resolved_registration is not None
                 and not resolved_registration.is_relative_to(source_root)):
             paths.add(failure_path)
@@ -965,7 +972,8 @@ def _report_paths(source: Path) -> list[Path]:
                 registration_text = resolved_registration.read_text(encoding="utf-8")
                 registration = _strict_json_loads(registration_text)
         except (OSError, UnicodeError, json.JSONDecodeError):
-            registration = None
+            paths.add(failure_path)
+            continue
         r4_marker_in_damaged_receipt = any(
             text is not None and _contains_r4_receipt_schema(text)
             for text in (failure_text, registration_text)
@@ -996,10 +1004,18 @@ def _unresolved_r4_accesses(registry_path: str | Path) -> list[dict[str, Any]]:
             for access_key, start_ns, end_ns, state, encoded in rows:
                 try:
                     identity = _strict_json_loads(encoded)
-                except (TypeError, json.JSONDecodeError):
-                    continue
-                label = identity.get("label") if isinstance(identity, dict) else None
-                fold_sha = identity.get("fold_sha256") if isinstance(identity, dict) else None
+                except (TypeError, json.JSONDecodeError) as exc:
+                    raise ValueError(
+                        "cannot inspect R4 recovery status: "
+                        "invalid development access identity"
+                    ) from exc
+                if not isinstance(identity, dict):
+                    raise ValueError(
+                        "cannot inspect R4 recovery status: "
+                        "invalid development access identity"
+                    )
+                label = identity.get("label")
+                fold_sha = identity.get("fold_sha256")
                 if (access_key in completed or not isinstance(label, str)
                         or "-r4-" not in label.lower()):
                     continue

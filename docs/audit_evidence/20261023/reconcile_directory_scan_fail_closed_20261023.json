@@ -1,16 +1,19 @@
 {
   "schema": "rles.routeb.audit-evidence.v1",
-  "audit_item": "A04 / research-ledger reconciler directory scan isolation",
-  "finding": "Recursive report discovery did not install an explicit traversal error handler. A directory access failure could escape as an unstructured OS error, leaving callers without an explicit signal that the selected report set might be incomplete.",
-  "change": "Replaced implicit Path.rglob traversal with deterministic os.walk using followlinks=false and an error callback. Any traversal error or symlink directory that would be skipped now raises a path-qualified ValueError before report parsing or ledger access, for both dry-run and apply.",
+  "audit_item": "A04 / research-ledger reconciler scan and recovery-summary integrity",
+  "finding": "Recursive report discovery had no explicit traversal error handling, silently omitted symlink directories, and dropped unreadable failure or registration receipts whose protocol could not be identified. The unresolved R4 recovery summary also skipped malformed access identity JSON, which could make a damaged development reservation disappear from the summary.",
+  "change": "Replaced implicit Path.rglob traversal with deterministic os.walk using followlinks=false and an error callback. Any traversal error or symlink directory that would be skipped raises a path-qualified ValueError before report parsing or ledger access. Unreadable/invalid failure or registration receipts are surfaced for rejection. The recovery summary raises a stable ValueError on malformed or non-object development access identity instead of silently skipping it.",
   "verification": {
-    "reconciler_regression_suite": "tests/world_model/test_reconcile_routeb_research_ledger.py: 21 passed.",
+    "reconciler_regression_suite": "tests/world_model/test_reconcile_routeb_research_ledger.py: 24 passed.",
     "scan_failure_regression": "Injected a subdirectory PermissionError and a directory symlink omitted by non-following traversal; dry-run and apply both fail closed before ledger access.",
+    "receipt_read_regression": "Injected PermissionError when reading failure_receipt.json; discovery includes it, dry-run reports it as rejected, and apply refuses partial reconciliation.",
+    "registration_read_regression": "Injected PermissionError when reading registration_receipt.json beside an otherwise unrelated failure receipt; discovery includes it, dry-run rejects it, and apply refuses partial reconciliation.",
+    "recovery_identity_regression": "Injected malformed access.identity JSON after disabling the test database immutability trigger; unresolved-scope summary now rejects the damaged ledger instead of returning an empty result.",
     "ruff": "qa/world_model/reconcile_routeb_research_ledger.py and tests/world_model/test_reconcile_routeb_research_ledger.py passed.",
     "mypy": "mypy packages qa --follow-imports=silent: success, 225 source files.",
     "source_manifest": {
       "files": 604,
-      "identity_sha256": "02983eb7d9bc0478aefe88bcb6e71e00a25b963599373bdd16ef9bd827ae990e"
+      "identity_sha256": "0d7dabdf7da81aeeadfe5119562d84c313de9eb34c43f1a02a2a288983ec7e24"
     },
     "scope": "Synthetic temporary report directory and temporary SQLite path only. No project registry, market archive, account data, Validation, Test, or Holdout payload was accessed."
   }
