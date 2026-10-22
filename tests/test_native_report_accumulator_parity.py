@@ -42,6 +42,32 @@ def _flow(event_id: str, timestamp: int, kind: str, amount: str):
     }
 
 
+@pytest.mark.parametrize("path", ["batch", "online"])
+def test_linear_reconciliation_rejects_liquidation_order_on_initial_barrier(path: str) -> None:
+    liquidation = {
+        "client_order_id": "LIQUIDATION-BASELINE",
+        "quantity": "1",
+        "filled_qty": "0",
+        "status": "SUBMITTED",
+    }
+    initial = SimpleNamespace(**{
+        **vars(_snapshot(1, "1000")), "liquidation_orders": (liquidation,),
+    })
+    snapshots = (initial, _snapshot(11, "1000"), _snapshot(21, "1000"))
+
+    with pytest.raises(MetricsError, match="flat event-free initial barrier"):
+        if path == "batch":
+            reconcile_linear_equity(snapshots, contract_multiplier=Decimal(1))
+        else:
+            accumulator = NativeReportAccumulator(
+                sample_interval_ns=10,
+                max_return_count=len(snapshots) - 1,
+                contract_multiplier=Decimal(1),
+                linear_equity_rounding=Decimal(0),
+            )
+            accumulator.add_snapshot(initial, {})
+
+
 @pytest.mark.parametrize("amount", ["1_000", "١٢٣", "+100", " 100 ", "1e2"])
 def test_batch_and_online_cashflow_paths_reject_noncanonical_amount_strings(amount: str):
     flow = _flow("malformed-transfer", 11, "DEPOSIT", amount)

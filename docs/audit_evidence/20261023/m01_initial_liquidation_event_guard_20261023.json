@@ -1,0 +1,18 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "M0.1 / event-free initial native equity barrier",
+  "finding": "Both batch reconcile_linear_equity() and NativeReportAccumulator's online reconciliation checked initial positions, regular orders, fills, and Funding but omitted liquidation_orders. A pre-existing liquidation order could therefore be accepted as the flat, event-free starting barrier.",
+  "change": "Batch reconciliation now rejects visible liquidation orders on the initial barrier and validates that a provided liquidation-order history is a sequence. Online reconciliation includes the already validated initial liquidation records in its flat/event-free guard.",
+  "regression": "The same synthetic baseline with a submitted liquidation order and zero filled quantity is rejected by both batch and online reconciliation paths.",
+  "verification": {
+    "source_tests": "tests/test_native_report_accumulator_parity.py, tests/test_research_metrics.py, tests/test_historical_factory.py, tests/test_native_liquidation_facts.py: 214 passed, 18 dependency warnings.",
+    "installed_wheel_tests": "tests/test_native_report_accumulator_parity.py and tests/test_research_metrics.py against RouteB .venv-win-app installed wheel with PYTHONPATH unset: 118 passed.",
+    "wheel_build": "Offline rles-research 0.4.1 wheel build and isolated app-venv installation succeeded.",
+    "installed_provenance": "RouteB .venv-win-app imports rles_research.native_metrics from Lib/site-packages; installed/source native_metrics.py SHA-256 both equal bf72b60d7141c72b01981933cb706e77458422ec0aa7cfed440b47ee2c03d53c.",
+    "ruff": "Changed source and test passed Ruff.",
+    "mypy": "Targeted MyPy for native_metrics.py passed.",
+    "compile_and_manifest": "Changed Python sources compile in memory; the 604-file source manifest verifies identity 137a3fee290d06711a0bf487521a79933ca0ba718461364647182b30835687f1.",
+    "diff_check": "git diff --check passed."
+  },
+  "scope": "Synthetic snapshots only. No market, account, project registry, Validation, Test, or Holdout payload was accessed."
+}
