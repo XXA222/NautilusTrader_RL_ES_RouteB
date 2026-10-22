@@ -834,7 +834,15 @@ class NativeReportAccumulator:
         orders = _snapshot_records(snapshot, "orders", "order")
         fill_records = _snapshot_records(snapshot, "fills", "fill")
         funding_records = _snapshot_records(snapshot, "funding", "funding")
-        liquidation_records = _snapshot_records(snapshot, "liquidation_orders", "liquidation order")
+        liquidation_capability = getattr(snapshot, "liquidation_capability", False) is True
+        raw_liquidation_records = getattr(snapshot, "liquidation_orders", None)
+        if (not liquidation_capability or raw_liquidation_records is None):
+            self._liquidations_observed = False
+            liquidation_records: Sequence[Any] = ()
+        else:
+            liquidation_records = _snapshot_records(
+                snapshot, "liquidation_orders", "liquidation order",
+            )
         for position in positions:
             if not isinstance(position, Mapping):
                 raise MetricsError("native position history fact must be a mapping")
@@ -916,14 +924,10 @@ class NativeReportAccumulator:
             )
 
         if self._liquidations_observed:
-            if (getattr(snapshot, "liquidation_capability", False) is not True
-                    or getattr(snapshot, "liquidation_orders", None) is None):
-                self._liquidations_observed = False
-            else:
-                for order in liquidation_records:
-                    _update_liquidation_order(
-                        order, self._liquidation_facts, self._liquidation_filled,
-                    )
+            for order in liquidation_records:
+                _update_liquidation_order(
+                    order, self._liquidation_facts, self._liquidation_filled,
+                )
 
         if self.linear_equity_rounding is not None:
             self._reconcile_snapshot(snapshot, positions, orders, new_fills, new_funding)

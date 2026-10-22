@@ -1,15 +1,13 @@
 """Economic-only metrics rebuilt from native account/fill facts; never from shaped reward."""
 from __future__ import annotations
 
-import math
-import statistics
 import heapq
-from itertools import islice
-from pathlib import Path
+import math
+import numpy as np
+from array import array
+from collections.abc import Iterable, Iterator, Sequence, Mapping
 import struct
 import tempfile
-from collections.abc import Generator, Iterable, Iterator, Sequence, Mapping
-from typing import overload
 from .numeric import finite_real
 
 
@@ -17,8 +15,8 @@ class MetricsError(ValueError):
     pass
 
 
-class _DiskBackedFloatSequence(Sequence[float]):
-    """Replayable float sequence stored in an automatically deleted temp file."""
+class _DiskBackedFloatSequence:
+    """Replayable finite-double sequence stored in an automatically deleted temp file."""
 
     _FLOAT_BYTES = 8
     _CHUNK_BYTES = 8192
@@ -30,7 +28,7 @@ class _DiskBackedFloatSequence(Sequence[float]):
         self._count = 0
 
     def append(self, value: float) -> None:
-        self._write_buffer.extend(struct.pack("!d", value))
+        self._write_buffer.extend(struct.pack("=d", value))
         self._count += 1
         if len(self._write_buffer) >= self._WRITE_BUFFER_BYTES:
             self._flush_pending()
@@ -53,28 +51,7 @@ class _DiskBackedFloatSequence(Sequence[float]):
         while block := self._file.read(self._CHUNK_BYTES):
             if len(block) % self._FLOAT_BYTES:
                 raise MetricsError("temporary return spool has a truncated float")
-            yield from (item[0] for item in struct.iter_unpack("!d", block))
-
-    @overload
-    def __getitem__(self, index: int) -> float: ...
-
-    @overload
-    def __getitem__(self, index: slice) -> Sequence[float]: ...
-
-    def __getitem__(self, index: int | slice) -> float | Sequence[float]:
-        if isinstance(index, slice):
-            return [self[position] for position in range(*index.indices(self._count))]
-        if isinstance(index, bool) or not isinstance(index, int):
-            raise TypeError("return sequence indices must be integers or slices")
-        position = index + self._count if index < 0 else index
-        if not 0 <= position < self._count:
-            raise IndexError("return sequence index out of range")
-        self._flush_pending()
-        self._file.seek(position * self._FLOAT_BYTES)
-        value = self._file.read(self._FLOAT_BYTES)
-        if len(value) != self._FLOAT_BYTES:
-            raise MetricsError("temporary return spool has a truncated float")
-        return struct.unpack("!d", value)[0]
+            yield from (item[0] for item in struct.iter_unpack("=d", block))
 
 
 def _number(v, name: str) -> float:
@@ -89,189 +66,175 @@ def _number(v, name: str) -> float:
     return result
 
 
-_TAIL_SORT_CHUNK = 8_192
-_TAIL_MERGE_FAN_IN = 32
+def _finite_sum(current: float, increment: float, label: str) -> float:
+    if not math.isfinite(increment):
+        raise MetricsError(f"{label} increment overflow")
+    total = current + increment
+    if not math.isfinite(total):
+        raise MetricsError(f"{label} accumulation overflow")
+    return total
 
 
-def _iter_float_file(path: Path) -> Generator[float, None, None]:
-    with path.open("rb") as source:
-        while block := source.read(_DiskBackedFloatSequence._CHUNK_BYTES):
-            if len(block) % _DiskBackedFloatSequence._FLOAT_BYTES:
-                raise MetricsError("temporary return run has a truncated float")
-            yield from (item[0] for item in struct.iter_unpack("!d", block))
+_TAIL_HEAP_MAX = 8_192
 
 
-def _write_float_block(target, values: Sequence[float]) -> None:
-    if values:
-        target.write(struct.pack(f"!{len(values)}d", *values))
-
-
-def _write_sorted_run(path: Path, values: list[float], limit: int) -> int:
-    values.sort()
-    selected = values[:limit]
-    with path.open("wb") as target:
-        _write_float_block(target, selected)
-    return len(selected)
-
-
-def _merge_float_runs(runs: Sequence[tuple[Path, int]], output: Path,
-                      limit: int) -> int:
-    ordered = sorted(runs, key=lambda run: run[1])
-    iterators = [_iter_float_file(path) for path, _ in ordered]
-    written = 0
-    block: list[float] = []
+def _disk_backed_tail(returns: _DiskBackedFloatSequence,
+                      count: int) -> tuple[float, float]:
+    """Select exact VaR/CVaR by partitioning the disk-backed return spool in place."""
+    if count < 1 or count > len(returns):
+        raise MetricsError("return tail count is outside the available series")
+    returns._flush_pending()
+    returns._file.flush()
+    mapped = np.memmap(
+        returns._file, dtype=np.float64, mode="r+", shape=(len(returns),),
+    )
     try:
-        merged = heapq.merge(*iterators)
-        with output.open("wb") as target:
-            for value in islice(merged, limit):
-                block.append(value)
-                written += 1
-                if len(block) == _TAIL_SORT_CHUNK:
-                    _write_float_block(target, block)
-                    block.clear()
-            _write_float_block(target, block)
+        mapped.partition(count - 1)
+        threshold = float(mapped[count - 1])
+        tail_mean = math.fsum(float(value) for value in mapped[:count]) / count
+        mapped.flush()
+        return threshold, tail_mean
     finally:
-        for iterator in iterators:
-            iterator.close()
-    return written
+        del mapped
 
 
-def _disk_backed_tail(returns: _DiskBackedFloatSequence, count: int) -> tuple[float, float]:
-    """Select exact VaR/CVaR with fixed-size sorted runs and bounded fan-in."""
-    with tempfile.TemporaryDirectory(prefix="rles-vartail-") as directory:
-        root = Path(directory)
-        levels: list[list[tuple[Path, int]]] = []
-        next_run = 0
+class _StreamingSeriesMetrics:
+    """Incremental economic metrics with a fixed tail-heap cap."""
 
-        def new_path() -> Path:
-            nonlocal next_run
-            path = root / f"run-{next_run:08d}.bin"
-            next_run += 1
-            return path
+    def __init__(self, *, max_count: int, risk_free_per_period: float,
+                 target_per_period: float, tail_quantile: float) -> None:
+        if (type(max_count) is not int or max_count < 0
+                or any(not finite_real(v) for v in (
+                    risk_free_per_period, target_per_period, tail_quantile,
+                ))
+                or not 0 < tail_quantile < 0.5):
+            raise MetricsError("invalid streaming series metric bounds")
+        self.max_count = max_count
+        self.risk_free_per_period = _number(risk_free_per_period, "risk-free return")
+        self.target_per_period = _number(target_per_period, "target return")
+        self.tail_quantile = _number(tail_quantile, "tail quantile")
+        self.tail_capacity = math.ceil(max_count * self.tail_quantile)
+        self.worst_heap: list[float] | None = (
+            None if self.tail_capacity > _TAIL_HEAP_MAX else []
+        )
+        self.returns = (
+            _DiskBackedFloatSequence() if self.worst_heap is None else None
+        )
+        self.path = 1.0
+        self.peak = 1.0
+        self.drawdown = 0.0
+        self.mean = 0.0
+        self.m2_scale, self.m2_ssq = 0.0, 1.0
+        self.downside_scale, self.downside_ssq = 0.0, 1.0
+        self.count = 0
 
-        def add_run(path: Path, start: int) -> None:
-            level = 0
-            run = (path, start)
-            while True:
-                if level == len(levels):
-                    levels.append([])
-                levels[level].append(run)
-                if len(levels[level]) < _TAIL_MERGE_FAN_IN:
-                    return
-                group = levels[level]
-                merged_path = new_path()
-                _merge_float_runs(group, merged_path, count)
-                for old_path, _ in group:
-                    old_path.unlink()
-                run = (merged_path, group[0][1])
-                levels[level] = []
-                level += 1
+    def add(self, value: float) -> None:
+        if self.count >= self.max_count:
+            raise MetricsError("return sequence exceeds declared maximum length")
+        x = _number(value, "return")
+        if x <= -1:
+            raise MetricsError("returns <= -100% cannot be compounded safely")
+        index = self.count + 1
+        delta = x - self.mean
+        self.mean += delta / index
+        variance_term = math.sqrt(abs(delta)) * math.sqrt(abs(x - self.mean))
+        if variance_term:
+            if self.m2_scale < variance_term:
+                self.m2_ssq = 1 + self.m2_ssq * (self.m2_scale / variance_term) ** 2
+                self.m2_scale = variance_term
+            else:
+                self.m2_ssq += (variance_term / self.m2_scale) ** 2
+        shortfall = self.target_per_period - x
+        if not math.isfinite(shortfall):
+            raise MetricsError("downside deviation overflow")
+        downside = max(0.0, shortfall)
+        if downside:
+            if self.downside_scale < downside:
+                self.downside_ssq = 1 + self.downside_ssq * (self.downside_scale / downside) ** 2
+                self.downside_scale = downside
+            else:
+                self.downside_ssq += (downside / self.downside_scale) ** 2
+        if self.returns is not None:
+            self.returns.append(x)
+        else:
+            assert self.worst_heap is not None
+            if len(self.worst_heap) < self.tail_capacity:
+                heapq.heappush(self.worst_heap, -x)
+            elif self.worst_heap and x < -self.worst_heap[0]:
+                heapq.heapreplace(self.worst_heap, -x)
+        self.path *= 1 + x
+        if not math.isfinite(self.path) or self.path <= 0:
+            raise MetricsError("equity compounding overflow/underflow")
+        self.peak = max(self.peak, self.path)
+        self.drawdown = max(self.drawdown, 1 - self.path / self.peak)
+        self.count = index
 
-        chunk: list[float] = []
-        chunk_start = 0
-        position = 0
-        for value in returns:
-            if not chunk:
-                chunk_start = position
-            chunk.append(value)
-            position += 1
-            if len(chunk) == _TAIL_SORT_CHUNK:
-                add_run(_write_chunk(new_path(), chunk, count), chunk_start)
-                chunk = []
-        if chunk:
-            add_run(_write_chunk(new_path(), chunk, count), chunk_start)
-
-        runs = sorted((run for level in levels for run in level), key=lambda run: run[1])
-        while len(runs) > 1:
-            merged_runs: list[tuple[Path, int]] = []
-            for start in range(0, len(runs), _TAIL_MERGE_FAN_IN):
-                group = runs[start:start + _TAIL_MERGE_FAN_IN]
-                if len(group) == 1:
-                    merged_runs.append(group[0])
-                    continue
-                output = new_path()
-                _merge_float_runs(group, output, count)
-                for old_path, _ in group:
-                    old_path.unlink()
-                merged_runs.append((output, group[0][1]))
-            runs = merged_runs
-
-        final_path, _ = runs[0]
-        last: float | None = None
-
-        def selected_values() -> Iterator[float]:
-            nonlocal last
-            for value in _iter_float_file(final_path):
-                last = value
-                yield value
-
-        tail_mean = statistics.fmean(selected_values())
-        if last is None or position < count:
-            raise MetricsError("return tail selection produced an incomplete tail")
-        return last, tail_mean
-
-
-def _write_chunk(path: Path, values: list[float], limit: int) -> Path:
-    _write_sorted_run(path, values, limit)
-    return path
+    def result(self, *, periods_per_year: float,
+               require_exact_count: bool = False) -> dict[str, object]:
+        count = self.count
+        if (count < 2 or not finite_real(periods_per_year)
+                or periods_per_year <= 0
+                or (require_exact_count and count != self.max_count)):
+            raise MetricsError("at least 2 returns and valid frequency/quantile required")
+        tail_count = max(1, math.ceil(count * self.tail_quantile))
+        if self.returns is not None:
+            if len(self.returns) != count:
+                raise MetricsError("return spool count disagrees with streaming metrics")
+            threshold, tail_mean = _disk_backed_tail(self.returns, tail_count)
+            value_at_risk = -threshold
+            conditional_value_at_risk = -tail_mean
+        else:
+            assert self.worst_heap is not None
+            if len(self.worst_heap) < tail_count:
+                raise MetricsError("return tail does not cover the requested quantile")
+            tail = list(self.worst_heap)
+            while len(tail) > tail_count:
+                heapq.heappop(tail)
+            value_at_risk = tail[0]
+            conditional_value_at_risk = math.fsum(tail) / len(tail)
+        sd = self.m2_scale * math.sqrt(self.m2_ssq / (count - 1))
+        downside_deviation = self.downside_scale * math.sqrt(self.downside_ssq / count)
+        if not math.isfinite(sd) or not math.isfinite(downside_deviation):
+            raise MetricsError("return dispersion overflow")
+        sortino = ((self.mean - self.target_per_period) / downside_deviation
+                   * math.sqrt(periods_per_year) if downside_deviation > 0 else None)
+        sharpe = ((self.mean - self.risk_free_per_period) / sd
+                  * math.sqrt(periods_per_year) if sd > 0 else None)
+        if any(value is not None and not math.isfinite(value) for value in (sortino, sharpe)):
+            raise MetricsError("annualized return metric overflow")
+        return {
+            "net_return": self.path - 1,
+            "max_drawdown": self.drawdown,
+            "sharpe": sharpe,
+            "sortino": sortino,
+            "mean_period_return": self.mean,
+            "std_period_return": sd,
+            "undefined_metrics": [metric for metric, val in (("sharpe", sharpe), ("sortino", sortino))
+                                  if val is None],
+            "value_at_risk": value_at_risk,
+            "conditional_value_at_risk": conditional_value_at_risk,
+            "observations": count,
+        }
 
 
 def series_metrics(returns: Sequence[float], *, periods_per_year: float,
                    risk_free_per_period: float = 0.0, target_per_period: float = 0.0,
                    tail_quantile: float = 0.05) -> dict[str, object]:
-    if (len(returns) < 2 or any(not finite_real(v)
-                                for v in (periods_per_year, risk_free_per_period,
-                                          target_per_period, tail_quantile))
+    count = len(returns)
+    if (count < 2 or any(not finite_real(v)
+                         for v in (periods_per_year, risk_free_per_period,
+                                   target_per_period, tail_quantile))
             or periods_per_year <= 0 or not 0 < tail_quantile < 0.5):
-        raise MetricsError('at least 2 returns and valid frequency/quantile required')
-    if isinstance(returns, _DiskBackedFloatSequence):
-        r: Sequence[float] = returns
-        if any(not finite_real(x) for x in r):
-            raise MetricsError('return must be finite numeric')
-        if any(x <= -1 for x in r):
-            raise MetricsError('returns <= -100% cannot be compounded safely')
-    else:
-        r = [_number(x, 'return') for x in returns]
-        if any(x <= -1 for x in r):
-            raise MetricsError('returns <= -100% cannot be compounded safely')
-    path = 1.0
-    peak = 1.0
-    dd = 0.0
-    for x in r:
-        path *= 1 + x
-        if not math.isfinite(path) or path <= 0:
-            raise MetricsError('equity compounding overflow/underflow')
-        peak = max(peak, path)
-        dd = max(dd, 1 - path / peak)
-    mean = statistics.fmean(r)
-    downside_deviation = math.sqrt(statistics.fmean(
-        min(0, x - target_per_period) ** 2 for x in r
-    ))
-    sortino = ((mean - target_per_period) / downside_deviation
-               * math.sqrt(periods_per_year) if downside_deviation > 0 else None)
-    sd = statistics.stdev(r, xbar=mean)
-    sharpe = ((mean - risk_free_per_period) / sd
-              * math.sqrt(periods_per_year) if sd > 0 else None)
-    count = max(1, math.ceil(len(r) * tail_quantile))
-    if isinstance(r, _DiskBackedFloatSequence):
-        threshold, tail_mean = _disk_backed_tail(r, count)
-    else:
-        worst = heapq.nsmallest(count, r)
-        threshold = worst[-1]
-        tail_mean = statistics.fmean(worst)
-    return {
-        'net_return': path - 1,
-        'max_drawdown': dd,
-        'sharpe': sharpe,
-        'sortino': sortino,
-        'mean_period_return': statistics.fmean(r),
-        'std_period_return': sd,
-        'undefined_metrics': [metric for metric, val in (('sharpe', sharpe), ('sortino', sortino))
-                              if val is None],
-        'value_at_risk': -threshold,
-        'conditional_value_at_risk': -tail_mean,
-        'observations': len(r),
-    }
+        raise MetricsError("at least 2 returns and valid frequency/quantile required")
+    accumulator = _StreamingSeriesMetrics(
+        max_count=count,
+        risk_free_per_period=risk_free_per_period,
+        target_per_period=target_per_period,
+        tail_quantile=tail_quantile,
+    )
+    for value in returns:
+        accumulator.add(value)
+    return accumulator.result(periods_per_year=periods_per_year, require_exact_count=True)
 
 
 class AccountFactsAccumulator:
@@ -288,12 +251,8 @@ class AccountFactsAccumulator:
         if (isinstance(sample_interval_ns, bool) or not isinstance(sample_interval_ns, int)
                 or sample_interval_ns < 1):
             raise MetricsError('regular account snapshots and explicit sampling interval required')
-        if (max_return_count is not None
-                and (type(max_return_count) is not int or max_return_count < 1)):
-            raise MetricsError('maximum return count must be a positive integer')
         self.sample_interval_ns = sample_interval_ns
         self.allow_price_improvement = allow_price_improvement
-        self.max_return_count = max_return_count
         self.last_ts = -1
         self.previous: dict[str, float] | None = None
         self.first_equity = 0.0
@@ -301,12 +260,32 @@ class AccountFactsAccumulator:
         self.external_cashflow = 0.0
         self.turnover = 0.0
         self.totals = {'fee': 0.0, 'funding': 0.0, 'slippage_cost': 0.0}
-        # Replay from a temporary spool to preserve exact multi-pass statistics
-        # without keeping every return in Python heap memory.
-        self.returns = _DiskBackedFloatSequence()
+        if max_return_count is not None and (type(max_return_count) is not int
+                                             or max_return_count < 0):
+            raise MetricsError('maximum account return count must be a nonnegative integer')
+        self._return_metrics = (_StreamingSeriesMetrics(
+            max_count=max_return_count, risk_free_per_period=0.0,
+            target_per_period=0.0, tail_quantile=0.05,
+        ) if max_return_count is not None else None)
+        self.returns: array[float] | None = (
+            None if self._return_metrics is not None else array('d')
+        )
         self.count = 0
+        self._failure: Exception | None = None
 
     def add(self, fact: Mapping[str, object]) -> None:
+        if self._failure is not None:
+            raise MetricsError("cannot continue after a failed account fact") from self._failure
+        try:
+            self._add(fact)
+        except Exception as exc:
+            # Return metrics and the disk-backed sequence are not generally
+            # reversible after a failed update. Refuse reuse so a caller cannot
+            # publish a report assembled from partially committed state.
+            self._failure = exc
+            raise
+
+    def _add(self, fact: Mapping[str, object]) -> None:
         if not self._REQUIRED.issubset(fact):
             raise MetricsError('account facts missing required fields')
         ts = fact['ts_ns']
@@ -315,7 +294,8 @@ class AccountFactsAccumulator:
         if self.last_ts != -1 and ts - self.last_ts != self.sample_interval_ns:
             raise MetricsError('irregular account sampling; annualization would be invalid')
         row = {key: _number(fact[key], key) for key in self._REQUIRED if key != 'ts_ns'}
-        if (row['equity'] <= 0 or row['turnover_notional'] < 0 or row['fee'] < 0
+        # Native commission is signed: negative values represent exchange rebates.
+        if (row['equity'] <= 0 or row['turnover_notional'] < 0
                 or (row['slippage_cost'] < 0 and not self.allow_price_improvement)):
             raise MetricsError('invalid account values / exhausted equity')
         if self.previous is None:
@@ -324,14 +304,23 @@ class AccountFactsAccumulator:
             adjusted = (row['equity'] - row['external_cashflow']) / self.previous['equity'] - 1
             if not math.isfinite(adjusted):
                 raise MetricsError('cashflow-adjusted period return nonfinite')
-            if (self.max_return_count is not None
-                    and len(self.returns) >= self.max_return_count):
-                raise MetricsError('account facts exceed configured maximum return count')
-            self.returns.append(adjusted)
-            self.turnover += row['turnover_notional'] / self.previous['equity']
-            for field in self.totals:
-                self.totals[field] += row[field]
-            self.external_cashflow += row['external_cashflow']
+            turnover_increment = row['turnover_notional'] / self.previous['equity']
+            next_turnover = _finite_sum(self.turnover, turnover_increment, "turnover ratio")
+            next_totals = {
+                field: _finite_sum(self.totals[field], row[field], f"total {field}")
+                for field in self.totals
+            }
+            next_external_cashflow = _finite_sum(
+                self.external_cashflow, row['external_cashflow'], "external cashflow",
+            )
+            if self._return_metrics is None:
+                assert self.returns is not None
+                self.returns.append(adjusted)
+            else:
+                self._return_metrics.add(adjusted)
+            self.turnover = next_turnover
+            self.totals.update(next_totals)
+            self.external_cashflow = next_external_cashflow
         self.previous = row
         self.last_equity = row['equity']
         self.last_ts = ts
@@ -339,21 +328,39 @@ class AccountFactsAccumulator:
 
     def result(self, *, periods_per_year: float,
                realized_trade_pnls: Sequence[float] | None = None) -> dict:
+        if self._failure is not None:
+            raise MetricsError("cannot report after a failed account fact") from self._failure
         if self.count < 3:
             raise MetricsError('regular account snapshots and explicit sampling interval required')
-        result: dict[str, object] = series_metrics(self.returns, periods_per_year=periods_per_year)
+        if self._return_metrics is None:
+            assert self.returns is not None
+            result = series_metrics(self.returns, periods_per_year=periods_per_year)
+        else:
+            result = self._return_metrics.result(periods_per_year=periods_per_year)
         result['turnover_ratio'] = self.turnover
         for field, value in self.totals.items():
             result[f'total_{field}'] = value
-        result['gross_return_before_reported_costs'] = (
-            self.last_equity - self.first_equity - self.external_cashflow
-            + self.totals['fee'] + self.totals['slippage_cost'] - self.totals['funding']
-        ) / self.first_equity
+        try:
+            gross_return = math.fsum((
+                self.last_equity, -self.first_equity, -self.external_cashflow,
+                self.totals['fee'], self.totals['slippage_cost'], -self.totals['funding'],
+            )) / self.first_equity
+        except OverflowError as exc:
+            raise MetricsError('gross return aggregation overflow') from exc
+        if not math.isfinite(gross_return):
+            raise MetricsError('gross return aggregation overflow')
+        result['gross_return_before_reported_costs'] = gross_return
         if realized_trade_pnls is not None:
             pnl = [_number(x, 'realized_pnl') for x in realized_trade_pnls]
-            gross_profit = sum(x for x in pnl if x > 0)
-            gross_loss = -sum(x for x in pnl if x < 0)
-            result['trade_profit_factor'] = gross_profit / gross_loss if gross_loss > 0 else None
+            try:
+                gross_profit = math.fsum(x for x in pnl if x > 0)
+                gross_loss = -math.fsum(x for x in pnl if x < 0)
+            except OverflowError as exc:
+                raise MetricsError('realized trade PnL aggregation overflow') from exc
+            profit_factor = gross_profit / gross_loss if gross_loss > 0 else None
+            if profit_factor is not None and not math.isfinite(profit_factor):
+                raise MetricsError('trade profit factor overflow')
+            result['trade_profit_factor'] = profit_factor
             result['closed_trade_count'] = len(pnl)
         return result
 
