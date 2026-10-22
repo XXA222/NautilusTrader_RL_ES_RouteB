@@ -53,5 +53,19 @@
     }
   },
   "schema": "rles.f7-tail-process-rss.v1",
-  "synthetic_only": true
+  "synthetic_only": true,
+  "source_manifest": {
+    "files": 605,
+    "identity_sha256": "b4de9caf25b22b4f129204440fde237f700c7dbe9a207e6a107f8f54feb636cf"
+  },
+  "verification": {
+    "source_selector": "224 passed, 18 dependency warnings",
+    "installed_wheel_selector_without_PYTHONPATH": "224 passed, 18 dependency warnings",
+    "wheel": "rles_research-0.4.1-py3-none-any.whl built offline with the isolated RouteB venv build backend",
+    "source_metrics_sha256": "8a65d7c62fca4bd84025b27817795abe188736e541c9f8b5558d28d7f284a8cb",
+    "installed_metrics_sha256": "8a65d7c62fca4bd84025b27817795abe188736e541c9f8b5558d28d7f284a8cb",
+    "uv_pip_check": "72 packages compatible",
+    "ruff": "full packages/tests/qa/ci check passed",
+    "mypy": "226 source files passed"
+  }
 }
