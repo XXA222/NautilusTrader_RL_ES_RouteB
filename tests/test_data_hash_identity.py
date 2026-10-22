@@ -46,6 +46,10 @@ def test_feature_spec_and_feature_row_hashes_fail_closed_after_mutation():
 
     row = FeatureRow("b" * 64, 120_000_000_000, 119_000_000_000,
                      "BTC/USD", (0.01,))
+    assert not hasattr(row, "__dict__")
+    import pickle
+    restored = pickle.loads(pickle.dumps(row))
+    assert restored.hash == row.hash
     object.__setattr__(row, "values", (0.02,))
     with pytest.raises(DataError, match="feature row mutated after construction"):
         _ = row.hash
