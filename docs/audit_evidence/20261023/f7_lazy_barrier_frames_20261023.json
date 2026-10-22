@@ -4,21 +4,21 @@
       "lean_execution": {
         "days": 90,
         "decision_steps": 129597,
-        "elapsed_seconds": 78.77074469998479,
+        "elapsed_seconds": 79.12622989993542,
         "mode": "lean_execution",
         "native_report": null,
         "report_snapshot_sequence_retained": false,
         "report_snapshot_sink_enabled": false,
-        "rss_end_bytes": 741478400,
-        "rss_peak_bytes": 787394560,
-        "rss_peak_delta_bytes": 197705728,
-        "rss_start_bytes": 589688832,
+        "rss_end_bytes": 735416320,
+        "rss_peak_bytes": 782336000,
+        "rss_peak_delta_bytes": 194117632,
+        "rss_start_bytes": 588218368,
         "trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f"
       },
       "online_summary": {
         "days": 90,
         "decision_steps": 129597,
-        "elapsed_seconds": 88.8546124000568,
+        "elapsed_seconds": 88.73830369999632,
         "mode": "online_summary_sink",
         "native_report": {
           "fill_count": 2,
@@ -29,10 +29,10 @@
         },
         "report_snapshot_sequence_retained": false,
         "report_snapshot_sink_enabled": true,
-        "rss_end_bytes": 750530560,
-        "rss_peak_bytes": 791183360,
-        "rss_peak_delta_bytes": 203612160,
-        "rss_start_bytes": 587571200,
+        "rss_end_bytes": 740847616,
+        "rss_peak_bytes": 783568896,
+        "rss_peak_delta_bytes": 192876544,
+        "rss_start_bytes": 590692352,
         "trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f"
       },
       "trajectory_equivalent": true
@@ -47,17 +47,20 @@
   "scope": "synthetic Train-only native-engine replay; no market data or registry access",
   "source": {
     "event_count": 389258,
-    "generation_seconds": 14.745766500011086,
-    "rss_end_bytes": 600256512,
-    "rss_peak_bytes": 640151552,
+    "generation_seconds": 14.962935699964873,
+    "rss_end_bytes": 592838656,
+    "rss_peak_bytes": 639193088,
     "snapshot_sha256": "626685e11f28160ea015602ff1756331c2f80db2454bcc4d1ceb8d30306809e5"
   },
   "source_files_sha256": {
+    "packages/data/src/rles_data/core.py": "9911b3f90d91d459bca700f1a6d017ad6daba676a6d744ff5070c369eb4149d9",
+    "packages/data/src/rles_data/features.py": "883a96e7c1d6b9081cdeff73834aade4532a17fc05f02f64d8dc7dc8dda73709",
+    "packages/gym_bridge/src/rles_gym_bridge/episode.py": "2946e08ece0230cb712571f28608774a10ca58092dced55550118f3fc13be253",
     "packages/gym_bridge/src/rles_gym_bridge/historical.py": "4817a38191d7cc4f0eea6a95b5b5400ac3e87ad157a8b2cb33170b5ba62df791",
     "packages/orchestrator/src/rles_orchestrator/application.py": "ba900ac4ea15c965c34e6165c75b4fa46a8f44e0397f4946468d1374385e63eb",
     "packages/research/src/rles_research/metrics.py": "8a65d7c62fca4bd84025b27817795abe188736e541c9f8b5558d28d7f284a8cb",
     "packages/research/src/rles_research/native_metrics.py": "c4803aded29ba501e3226ca4227482db1193245e726fd14837837479d527ecf3",
-    "qa/profile_f7_synthetic_native_growth.py": "572f8a7afe91fdb659a208a85835ba5bc39c80d8144ed14641b7811f50ae2efe"
+    "qa/profile_f7_synthetic_native_growth.py": "46daa4a0cd659ffad88293e26f9cad1c5ee6c1c5765b8df88261c8ee1a5c6302"
   },
   "status": "PASS_SYNTHETIC_ENGINEERING_ONLY",
   "test_data_used": false
