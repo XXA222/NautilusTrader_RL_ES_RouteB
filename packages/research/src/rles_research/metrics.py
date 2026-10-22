@@ -179,8 +179,21 @@ class AccountFactsAccumulator:
             None if self._return_metrics is not None else array('d')
         )
         self.count = 0
+        self._failure: Exception | None = None
 
     def add(self, fact: Mapping[str, object]) -> None:
+        if self._failure is not None:
+            raise MetricsError("cannot continue after a failed account fact") from self._failure
+        try:
+            self._add(fact)
+        except Exception as exc:
+            # Return metrics and the disk-backed sequence are not generally
+            # reversible after a failed update. Refuse reuse so a caller cannot
+            # publish a report assembled from partially committed state.
+            self._failure = exc
+            raise
+
+    def _add(self, fact: Mapping[str, object]) -> None:
         if not self._REQUIRED.issubset(fact):
             raise MetricsError('account facts missing required fields')
         ts = fact['ts_ns']
@@ -214,6 +227,8 @@ class AccountFactsAccumulator:
 
     def result(self, *, periods_per_year: float,
                realized_trade_pnls: Sequence[float] | None = None) -> dict:
+        if self._failure is not None:
+            raise MetricsError("cannot report after a failed account fact") from self._failure
         if self.count < 3:
             raise MetricsError('regular account snapshots and explicit sampling interval required')
         if self._return_metrics is None:

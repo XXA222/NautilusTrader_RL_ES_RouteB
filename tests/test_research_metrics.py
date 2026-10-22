@@ -175,6 +175,35 @@ def test_streaming_account_accumulator_matches_exact_quantiles_without_return_bu
     assert len(streamed._return_metrics.worst_heap) == 5
 
 
+def test_account_accumulator_fails_closed_after_partially_applied_metric_error() -> None:
+    accumulator = AccountFactsAccumulator(sample_interval_ns=1, max_return_count=1_100)
+    equity = 1e-100
+
+    def add(index: int, value: float) -> None:
+        accumulator.add({
+            "ts_ns": index, "equity": value, "external_cashflow": 0.0,
+            "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+            "slippage_cost": 0.0,
+        })
+
+    add(0, equity)
+    failure_index = None
+    for index in range(1, 1_101):
+        equity *= 2.0
+        try:
+            add(index, equity)
+        except MetricsError as exc:
+            assert "compounding overflow/underflow" in str(exc)
+            failure_index = index
+            break
+
+    assert failure_index is not None
+    with pytest.raises(MetricsError, match="cannot continue after a failed account fact"):
+        add(failure_index, equity)
+    with pytest.raises(MetricsError, match="cannot report after a failed account fact"):
+        accumulator.result(periods_per_year=1.0)
+
+
 def test_account_metrics_reject_irregular_sampling() -> None:
     facts = tuple(
         {"ts_ns": timestamp, "equity": 1_000.0, "external_cashflow": 0.0,

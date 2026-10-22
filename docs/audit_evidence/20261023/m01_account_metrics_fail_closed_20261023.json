@@ -1,0 +1,17 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "M0.1 / AccountFactsAccumulator failed-update consistency",
+  "finding": "AccountFactsAccumulator.add() could mutate streaming return statistics before a later calculation raised. The same accumulator remained callable after that failed update, allowing partially applied statistics to be continued or reported.",
+  "change": "Record the first account-fact ingestion exception and reject subsequent add() and result() calls, chained to the original cause. Successful result() calls remain non-finalizing, so valid incremental accumulation behavior is preserved.",
+  "regression": "A deterministic finite-equity sequence doubles from 1e-100 until compounded path overflow occurs after the streaming statistics have begun updating. The regression confirms the original overflow, then confirms both reuse and report finalization fail closed.",
+  "verification": {
+    "source_tests": "tests/test_native_report_accumulator_parity.py, tests/test_research_metrics.py, tests/test_historical_factory.py, tests/test_native_liquidation_facts.py: 210 passed, 18 dependency warnings.",
+    "installed_wheel_tests": "tests/test_research_metrics.py and tests/test_native_report_accumulator_parity.py against RouteB .venv-win-app installed wheel with PYTHONPATH unset: 114 passed.",
+    "wheel_build": "Offline rles-research 0.4.1 wheel build succeeded.",
+    "installed_provenance": "RouteB .venv-win-app imports rles_research.metrics from Lib/site-packages; installed and source metrics.py SHA-256 both equal 944dfa3b521dadcbe7b371958080fd02f08eba0043d1223ecd01854e94fb6b17.",
+    "ruff": "Changed source and test passed.",
+    "mypy": "Targeted MyPy for changed metrics.py passed.",
+    "compile_and_diff": "In-memory Python compile and git diff --check passed."
+  },
+  "scope": "Synthetic numerical sequence only. No market, account, project registry, Validation, Test, or Holdout payload was accessed."
+}
