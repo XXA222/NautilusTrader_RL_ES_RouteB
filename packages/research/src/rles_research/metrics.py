@@ -78,24 +78,98 @@ def _finite_sum(current: float, increment: float, label: str) -> float:
 _TAIL_HEAP_MAX = 8_192
 
 
+_TAIL_RADIX_CHUNK_FLOATS = 65_536
+_UINT64_SIGN_BIT = np.uint64(1 << 63)
+_UINT64_MAX = np.uint64((1 << 64) - 1)
+
+
+def _ordered_float_keys(values: np.ndarray) -> np.ndarray:
+    """Map finite float64 values to unsigned keys in numeric sort order."""
+    bits = values.view(np.uint64)
+    negative = (bits & _UINT64_SIGN_BIT) != 0
+    keys = np.where(negative, bits ^ _UINT64_MAX, bits ^ _UINT64_SIGN_BIT)
+    # Python considers both signed zeros equal. Keep their common stable-input
+    # tie group together so radix selection agrees with the in-memory heap.
+    keys[values == 0.0] = _UINT64_SIGN_BIT
+    return keys
+
+
 def _disk_backed_tail(returns: _DiskBackedFloatSequence,
                       count: int) -> tuple[float, float]:
-    """Select exact VaR/CVaR by partitioning the disk-backed return spool in place."""
+    """Select exact VaR/CVaR with fixed-size radix scans over the disk spool."""
     if count < 1 or count > len(returns):
         raise MetricsError("return tail count is outside the available series")
     returns._flush_pending()
     returns._file.flush()
-    mapped = np.memmap(
-        returns._file, dtype=np.float64, mode="r+", shape=(len(returns),),
-    )
-    try:
-        mapped.partition(count - 1)
-        threshold = float(mapped[count - 1])
-        tail_mean = math.fsum(float(value) for value in mapped[:count]) / count
-        mapped.flush()
-        return threshold, tail_mean
-    finally:
-        del mapped
+
+    # Eight most-significant-byte passes identify the exact (count - 1)th
+    # ordered float key. Each pass retains only one bounded NumPy chunk and a
+    # 256-entry histogram, rather than mapping/touching the full history in RAM.
+    target_rank = count - 1
+    selected_before = 0
+    prefix = 0
+    prefix_mask = 0
+    for shift in range(56, -1, -8):
+        histogram = np.zeros(256, dtype=np.int64)
+        returns._file.seek(0)
+        remaining = len(returns)
+        while remaining:
+            size = min(_TAIL_RADIX_CHUNK_FLOATS, remaining)
+            values = np.fromfile(returns._file, dtype=np.float64, count=size)
+            if values.size != size:
+                raise MetricsError("temporary return spool has a truncated float")
+            keys = _ordered_float_keys(values)
+            candidates = (keys & np.uint64(prefix_mask)) == np.uint64(prefix)
+            byte = ((keys[candidates] >> np.uint64(shift)) & np.uint64(0xFF)).astype(
+                np.uint8, copy=False,
+            )
+            histogram += np.bincount(byte, minlength=256)
+            remaining -= size
+
+        cumulative = np.cumsum(histogram, dtype=np.int64)
+        bucket = int(np.searchsorted(cumulative, target_rank + 1, side="left"))
+        if bucket >= 256 or histogram[bucket] == 0:
+            raise MetricsError("radix tail selection could not locate its boundary")
+        below = int(cumulative[bucket - 1]) if bucket else 0
+        selected_before += below
+        target_rank -= below
+        prefix |= bucket << shift
+        prefix_mask |= 0xFF << shift
+
+    boundary_key = np.uint64(prefix)
+    remaining_equal = count - selected_before
+    boundary_rank = target_rank
+    threshold: float | None = None
+
+    def selected_values() -> Iterator[float]:
+        nonlocal remaining_equal, boundary_rank, threshold
+        returns._file.seek(0)
+        remaining = len(returns)
+        while remaining:
+            size = min(_TAIL_RADIX_CHUNK_FLOATS, remaining)
+            values = np.fromfile(returns._file, dtype=np.float64, count=size)
+            if values.size != size:
+                raise MetricsError("temporary return spool has a truncated float")
+            keys = _ordered_float_keys(values)
+            lower = keys < boundary_key
+            equal_positions = np.flatnonzero(keys == boundary_key)
+            if threshold is None:
+                if boundary_rank < equal_positions.size:
+                    threshold = float(values[equal_positions[boundary_rank]])
+                else:
+                    boundary_rank -= int(equal_positions.size)
+            take_equal = min(remaining_equal, int(equal_positions.size))
+            selected = lower.copy()
+            if take_equal:
+                selected[equal_positions[:take_equal]] = True
+                remaining_equal -= take_equal
+            yield from (float(value) for value in values[selected])
+            remaining -= size
+
+    tail_mean = math.fsum(selected_values()) / count
+    if remaining_equal or threshold is None:
+        raise MetricsError("radix tail selection produced an incomplete tail")
+    return threshold, tail_mean
 
 
 class _StreamingSeriesMetrics:

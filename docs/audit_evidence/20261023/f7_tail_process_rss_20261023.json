@@ -1,0 +1,57 @@
+{
+  "elapsed_ratio_radix_to_heap": 1.1233356555363097,
+  "exact_metrics_match": true,
+  "limitation": "Process RSS sampled every 5ms over deterministic synthetic returns. This is not a full Native historical Train trace and carries no economic or strategy-validation meaning.",
+  "metrics_source_sha256": "8a65d7c62fca4bd84025b27817795abe188736e541c9f8b5558d28d7f284a8cb",
+  "platform": "win32",
+  "python": "3.14.7",
+  "rss_delta_reduction_fraction": 0.634430176565008,
+  "rss_measurement": "Windows process WorkingSetSize sampled every 5ms",
+  "runner_source_sha256": "0bea8994aebc884d0a498d4f26df8b50b9b5e370d2f26e7c7dda762914fb5c96",
+  "runs": {
+    "heap": {
+      "baseline_rss_bytes": 37199872,
+      "elapsed_seconds": 5.355006199912168,
+      "metrics": {
+        "conditional_value_at_risk": 4.79703e-08,
+        "max_drawdown": 1.277118788056697e-06,
+        "mean_period_return": -4.800000000002912e-14,
+        "net_return": -2.421195898216766e-07,
+        "observations": 5000000,
+        "sharpe": -0.0011936026692100058,
+        "sortino": -0.0016880069619487526,
+        "std_period_return": 2.915473741945094e-08,
+        "undefined_metrics": [],
+        "value_at_risk": 4.5000000000000006e-08
+      },
+      "mode": "heap",
+      "observations": 5000000,
+      "peak_rss_bytes": 47407104,
+      "peak_rss_delta_bytes": 10207232,
+      "tail_count": 250000
+    },
+    "radix": {
+      "baseline_rss_bytes": 37105664,
+      "elapsed_seconds": 6.015469399979338,
+      "metrics": {
+        "conditional_value_at_risk": 4.79703e-08,
+        "max_drawdown": 1.277118788056697e-06,
+        "mean_period_return": -4.800000000002912e-14,
+        "net_return": -2.421195898216766e-07,
+        "observations": 5000000,
+        "sharpe": -0.0011936026692100058,
+        "sortino": -0.0016880069619487526,
+        "std_period_return": 2.915473741945094e-08,
+        "undefined_metrics": [],
+        "value_at_risk": 4.5000000000000006e-08
+      },
+      "mode": "radix",
+      "observations": 5000000,
+      "peak_rss_bytes": 40837120,
+      "peak_rss_delta_bytes": 3731456,
+      "tail_count": 250000
+    }
+  },
+  "schema": "rles.f7-tail-process-rss.v1",
+  "synthetic_only": true
+}

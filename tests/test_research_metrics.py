@@ -91,6 +91,32 @@ def test_streaming_tail_selection_avoids_fraction_sized_heap(monkeypatch) -> Non
     assert observed["conditional_value_at_risk"] == expected_cvar
 
 
+@pytest.mark.parametrize("tail_count", [1, 2, 3, 7, 11, 19])
+def test_disk_radix_tail_matches_stable_sorted_reference(tail_count: int) -> None:
+    from math import copysign, fsum
+
+    import rles_research.metrics as research_metrics
+
+    values = [
+        1.7e308, -1.0, 0.0, -0.0, 3.0, -5.0, -1.0, 1.0,
+        -5e307, -1.0e308, 2.0, -0.0, 0.0, 1.7e308, -2.0,
+        7.0, -5.0, 4.0, -0.0, 0.0,
+    ]
+    returns = research_metrics._DiskBackedFloatSequence()
+    try:
+        for value in values:
+            returns.append(value)
+
+        expected = sorted(values)[:tail_count]
+        threshold, tail_mean = research_metrics._disk_backed_tail(returns, tail_count)
+
+        assert threshold == expected[-1]
+        assert copysign(1.0, threshold) == copysign(1.0, expected[-1])
+        assert tail_mean == fsum(expected) / tail_count
+    finally:
+        returns.close()
+
+
 def test_dsr_trial_count_sensitivity_brackets_dependence_without_claiming_correlation() -> None:
     returns = [0.01, -0.004, 0.012, 0.0, -0.003, 0.009, 0.002, -0.006]
     trial_sharpes = [0.2, 0.5, 0.1]
