@@ -1,0 +1,17 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A04 / research-ledger reconciler directory scan isolation",
+  "finding": "Recursive report discovery did not install an explicit traversal error handler. A directory access failure could escape as an unstructured OS error, leaving callers without an explicit signal that the selected report set might be incomplete.",
+  "change": "Replaced implicit Path.rglob traversal with deterministic os.walk using followlinks=false and an error callback. Any traversal error or symlink directory that would be skipped now raises a path-qualified ValueError before report parsing or ledger access, for both dry-run and apply.",
+  "verification": {
+    "reconciler_regression_suite": "tests/world_model/test_reconcile_routeb_research_ledger.py: 21 passed.",
+    "scan_failure_regression": "Injected a subdirectory PermissionError and a directory symlink omitted by non-following traversal; dry-run and apply both fail closed before ledger access.",
+    "ruff": "qa/world_model/reconcile_routeb_research_ledger.py and tests/world_model/test_reconcile_routeb_research_ledger.py passed.",
+    "mypy": "mypy packages qa --follow-imports=silent: success, 225 source files.",
+    "source_manifest": {
+      "files": 604,
+      "identity_sha256": "02983eb7d9bc0478aefe88bcb6e71e00a25b963599373bdd16ef9bd827ae990e"
+    },
+    "scope": "Synthetic temporary report directory and temporary SQLite path only. No project registry, market archive, account data, Validation, Test, or Holdout payload was accessed."
+  }
+}

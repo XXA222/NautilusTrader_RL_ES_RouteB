@@ -1967,3 +1967,13 @@ Batch and online reconciliation now use bounded exact Decimal operations through
 ### M0.1 Decimal exponent-boundary and reconciliation follow-up  2026-10-23
 
 Expanded exact Decimal helpers below the default Emin while retaining the default Emax. They clear inherited status flags before operation and map unavoidable Rounded/Inexact signals to MetricsError. Low-precision tiny-add/tiny-multiply tests, the open/close equity reconciliation case, and existing cashflow/overflow cases pass. Source and rebuilt research-wheel five-file selectors each pass 252 tests with 18 dependency warnings. Ruff, targeted MyPy, diff check, source manifest, and installed/source native_metrics.py SHA parity pass. Manifest: 604 files, b9d91a34cbc084e995e42ddd6d5aa93135e93b0b73c757051787f93d05030292. Evidence: docs/audit_evidence/20261023/m01_native_decimal_range_boundaries_20261023.json. Authenticated account transfer evidence remains an external gate.
+
+## 2026-10-23 A04 reconciler directory-scan fail-closed boundary
+
+**Finding:** recursive report discovery had no explicit traversal-error handling. An unreadable subtree could make discovery abort with an unstructured OS exception or leave unclear whether the selected report set was complete.
+
+**Fix:** `_report_paths()` now uses deterministic `os.walk(..., followlinks=False, onerror=...)`. If any directory cannot be scanned or a symlink directory would be skipped, it raises a path-qualified `ValueError` before parsing reports or opening the ledger. Dry-run and `--apply` share this fail-closed boundary.
+
+**Verification:** injected permission-error and omitted-symlink regressions confirm both modes stop before reconciliation. The full reconciler suite passes **21 tests**; Ruff passes for the two changed Python files; project MyPy passes for **225 source files**. Source manifest verifies **604 files**, identity `02983eb7d9bc0478aefe88bcb6e71e00a25b963599373bdd16ef9bd827ae990e`. Evidence: `docs/audit_evidence/20261023/reconcile_directory_scan_fail_closed_20261023.json`. Temporary synthetic paths only; no project ledger or market/evaluation payload was accessed.
+
+**Next cursor:** continue the A01–A14 code-ready audit from current source. External authenticated cashflows, clean Hosted CI, independent Validation, new market-scope authorization, authentic depth, historical trial coverage, and M4.2 remain separate gates.

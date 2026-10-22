@@ -480,3 +480,7 @@ Low Decimal precision rounded native position quantity and equity checks. Batch 
 ### 2026-10-23 M0.1 continuation  Decimal exponent bounds
 
 Extended the exact Decimal fix to representable low-exponent sums and products, and made arithmetic independent of inherited Decimal status flags. If a result must round, the helper raises a stable metrics error. The five-file source and installed-wheel selectors each pass 252 tests; Ruff and targeted MyPy pass. Module SHA-256 matches between source and RouteB app venv; 604-file source manifest identity: b9d91a34cbc084e995e42ddd6d5aa93135e93b0b73c757051787f93d05030292. Evidence: docs/audit_evidence/20261023/m01_native_decimal_range_boundaries_20261023.json. No authenticated data was used; continue remaining local audit work.
+
+## 2026-10-23 最新续做游标 — A04 reconciler 扫描失败隔离
+
+`qa/world_model/reconcile_routeb_research_ledger.py` 的递归扫描现使用确定顺序且不跟随目录符号链接的 `os.walk`；任一子目录扫描错误或将被跳过的符号链接目录，均在读取报告/账本前明确失败关闭。权限错误与 symlink 注入回归确认 dry-run 和 apply 都拒绝不完整扫描；reconciler 全文件 **21 passed**，Ruff 通过，项目 MyPy **225 files clean**。604-file source manifest identity：`02983eb7d9bc0478aefe88bcb6e71e00a25b963599373bdd16ef9bd827ae990e`。证据：`docs/audit_evidence/20261023/reconcile_directory_scan_fail_closed_20261023.json`。继续 A01–A14 其余本地可实施问题；外部认证门槛保持独立。

@@ -11,6 +11,7 @@ import argparse
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+import os
 import re
 from pathlib import Path
 import sqlite3
@@ -895,9 +896,44 @@ def _report_paths(source: Path) -> list[Path]:
     if not source.is_dir():
         raise ValueError(f"report source does not exist: {source}")
     source_root = source.resolve()
-    paths = {*source.rglob("multi_seed_fold_experiment_report.json"),
-             *source.rglob("r4_e2_e3_comparison_report.json")}
-    for failure_path in source.rglob("failure_receipt.json"):
+    scan_errors: list[OSError] = []
+
+    def record_scan_error(error: OSError) -> None:
+        scan_errors.append(error)
+
+    report_names = {"multi_seed_fold_experiment_report.json",
+                    "r4_e2_e3_comparison_report.json"}
+    paths: set[Path] = set()
+    failure_paths: list[Path] = []
+    symlink_directories: list[Path] = []
+    for directory, dirnames, filenames in os.walk(
+            source_root, followlinks=False, onerror=record_scan_error):
+        dirnames.sort()
+        symlink_directories.extend(
+            Path(directory) / name for name in dirnames
+            if (Path(directory) / name).is_symlink()
+        )
+        for name in sorted(filenames):
+            path = Path(directory) / name
+            if name in report_names:
+                paths.add(path)
+            elif name == "failure_receipt.json":
+                failure_paths.append(path)
+    if scan_errors:
+        error = scan_errors[0]
+        failed_path = error.filename or str(source_root)
+        raise ValueError(
+            f"cannot completely scan report source {source_root}: "
+            f"{failed_path}: {error.strerror or type(error).__name__}"
+        ) from error
+    if symlink_directories:
+        link_path = min(symlink_directories)
+        raise ValueError(
+            f"cannot completely scan report source {source_root}: "
+            f"symlink directory is not traversed: {link_path}"
+        )
+
+    for failure_path in failure_paths:
         try:
             resolved_failure = failure_path.resolve(strict=True)
         except (OSError, RuntimeError):

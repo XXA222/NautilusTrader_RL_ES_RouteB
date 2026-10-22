@@ -186,6 +186,55 @@ def test_report_discovery_keeps_r4_failure_when_either_receipt_is_damaged(tmp_pa
     assert _report_paths(source) == sorted((missing_registration, damaged_failure))
 
 
+def test_report_discovery_fails_closed_when_subdirectory_cannot_be_scanned(
+        tmp_path, monkeypatch):
+    import qa.world_model.reconcile_routeb_research_ledger as reconciler
+
+    source = tmp_path / "reports"
+    source.mkdir()
+    (source / "r4_e2_e3_comparison_report.json").write_text("{}", encoding="utf-8")
+    original_walk = reconciler.os.walk
+
+    def walk_with_unreadable_directory(root, *, followlinks=False, onerror=None):
+        yield from original_walk(root, followlinks=followlinks, onerror=onerror)
+        assert onerror is not None
+        onerror(PermissionError(13, "permission denied", str(source / "locked")))
+
+    monkeypatch.setattr(reconciler.os, "walk", walk_with_unreadable_directory)
+
+    with pytest.raises(ValueError, match="cannot completely scan report source"):
+        reconcile(source, tmp_path / "research.sqlite", apply=False)
+
+    with pytest.raises(ValueError, match="cannot completely scan report source"):
+        reconcile(source, tmp_path / "research.sqlite", apply=True)
+
+
+def test_report_discovery_fails_closed_on_untraversed_symlink_directory(
+        tmp_path, monkeypatch):
+    import qa.world_model.reconcile_routeb_research_ledger as reconciler
+
+    source = tmp_path / "reports"
+    source.mkdir()
+    linked = source / "linked-reports"
+    original_is_symlink = type(linked).is_symlink
+
+    def walk_with_linked_directory(root, *, followlinks=False, onerror=None):
+        assert followlinks is False
+        yield str(source), [linked.name], []
+
+    def is_symlink(path):
+        return path == linked or original_is_symlink(path)
+
+    monkeypatch.setattr(reconciler.os, "walk", walk_with_linked_directory)
+    monkeypatch.setattr(type(linked), "is_symlink", is_symlink)
+
+    with pytest.raises(ValueError, match="symlink directory is not traversed"):
+        reconcile(source, tmp_path / "research.sqlite", apply=False)
+
+    with pytest.raises(ValueError, match="symlink directory is not traversed"):
+        reconcile(source, tmp_path / "research.sqlite", apply=True)
+
+
 @pytest.mark.parametrize(
     ("failure_content", "registration_content"),
     [

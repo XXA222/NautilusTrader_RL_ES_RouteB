@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v1",
-  "generated_at_utc": "2026-10-22T17:10:03.070733+00:00",
-  "source_identity_sha256": "b9d91a34cbc084e995e42ddd6d5aa93135e93b0b73c757051787f93d05030292",
+  "generated_at_utc": "2026-10-22T18:42:23.687424+00:00",
+  "source_identity_sha256": "02983eb7d9bc0478aefe88bcb6e71e00a25b963599373bdd16ef9bd827ae990e",
   "scope": {
     "included": [
       ".gitattributes",
@@ -249,6 +249,10 @@
       },
       {
         "name": "rles-nautilus-adapter",
+        "version": "0.4.0.dev2"
+      },
+      {
+        "name": "rles-orchestrator",
         "version": "0.4.0.dev2"
       },
       {
@@ -2352,8 +2356,8 @@
     },
     {
       "path": "qa/world_model/reconcile_routeb_research_ledger.py",
-      "size_bytes": 57290,
-      "sha256": "66f0a6893ca14771d36a191c5f5b6f6cd11e8d800c6735636dc2bc705fc50119"
+      "size_bytes": 58568,
+      "sha256": "af09f591d51ef5344ddae812061b2bce90784fea0a671a31f155df1d2a9e8952"
     },
     {
       "path": "qa/world_model/routeb_b2_cpu_smoke.py",
@@ -3212,8 +3216,8 @@
     },
     {
       "path": "tests/world_model/test_reconcile_routeb_research_ledger.py",
-      "size_bytes": 38871,
-      "sha256": "e53f73cde66e0bbf5142d894c0ebb7720392ee1fad835fc443b59bea322c1cd7"
+      "size_bytes": 40903,
+      "sha256": "d1dfca5ae68d38547d705a936da5ce743b28b7632c7b469faa42c9290caab216"
     },
     {
       "path": "tests/world_model/test_recursive_forecast.py",
