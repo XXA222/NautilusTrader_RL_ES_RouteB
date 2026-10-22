@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v1",
-  "generated_at_utc": "2026-10-22T19:17:20.235777+00:00",
-  "source_identity_sha256": "b68138cd0fe7ba378f03c4edd6743937ee796c9da28659984f23bf39b5fdca2c",
+  "generated_at_utc": "2026-10-22T19:23:36.428465+00:00",
+  "source_identity_sha256": "59a584b0864d448535e1905a39905e2099536050a9d7550fad94d272327deb73",
   "scope": {
     "included": [
       ".gitattributes",
@@ -1631,8 +1631,8 @@
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/research_access.py",
-      "size_bytes": 29129,
-      "sha256": "5d6229ab3e58a3337e5856490e4460a4a0deacbc5a526382fa51c8712a02de20"
+      "size_bytes": 29320,
+      "sha256": "144cf93c5a16d6807e28ae4d81e8f5434ed50caf8f8997898b337b9dc5aebb27"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/rl_stage.py",
@@ -1646,8 +1646,8 @@
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/wfo_application.py",
-      "size_bytes": 78621,
-      "sha256": "ebe8ff8d377237825ae9532b9d996e3109d1d9c615dd69cbe9627f514ed3afb9"
+      "size_bytes": 78695,
+      "sha256": "62fcd9763e3f24001332f2ea71dc6ddcf070e39d2cfd1739918490bf3df741e0"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/workflow.py",
@@ -1861,8 +1861,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/cli.py",
-      "size_bytes": 35164,
-      "sha256": "ce1517861448ea807a515b478e94a4b97d037a8b518578548f49b44b57f01fe2"
+      "size_bytes": 35628,
+      "sha256": "52e95aa2a37c69f92d59c5ed1b8ad13cf924b572383290698874907aa4134e82"
     },
     {
       "path": "packages/world_model/src/rles_world_model/contracts.py",
@@ -3196,8 +3196,8 @@
     },
     {
       "path": "tests/world_model/test_cli.py",
-      "size_bytes": 24391,
-      "sha256": "138343e0188b823e358dc5815e0035dcdb618f47348b107bd624d8ad24fcd5bc"
+      "size_bytes": 24707,
+      "sha256": "9d7dc80611546cf17d11e882083230a0928b9726bcac009a5b028d573a2eec9c"
     },
     {
       "path": "tests/world_model/test_dataset.py",

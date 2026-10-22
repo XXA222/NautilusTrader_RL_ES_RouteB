@@ -1,17 +1,18 @@
 {
   "schema": "rles.routeb.audit-evidence.v1",
   "audit_item": "M0.2 / installed-wheel workspace discovery on Linux",
-  "finding": "Hosted PR CI run 39836917121 failed tests/test_research_access.py::test_registry_path_does_not_depend_on_output_or_cwd on Ubuntu. project_registry() assumed Path(__file__).parents[4] was the workspace root. Linux site-packages has lib/pythonX between the virtualenv and site-packages, so this selected the virtualenv directory. After correcting root discovery, run 39837931130 exposed a second cross-platform issue: the tracked legacy inventory blob was LF while its SHA marker had been computed from the Windows CRLF checkout bytes, so Linux correctly rejected the mismatched digest.",
-  "change": "The registry locator searches ancestors of the resolved package file for the pyproject workspace marker rather than assuming a fixed parent count. The regression test models a Linux installed-wheel path under .venv/lib/python3.14/site-packages and changes cwd to a temporary directory. The inventory and its marker are now marked -text in .gitattributes, the working copy is normalized to the tracked LF blob bytes, and the checksum marker binds those canonical bytes.",
+  "finding": "Hosted PR CI run 39836917121 failed tests/test_research_access.py::test_registry_path_does_not_depend_on_output_or_cwd on Ubuntu. project_registry() assumed Path(__file__).parents[4] was the workspace root. Linux site-packages has lib/pythonX between the virtualenv and site-packages, so this selected the virtualenv directory. After correcting root discovery, run 39837931130 exposed a second cross-platform issue: the tracked legacy inventory blob was LF while its SHA marker had been computed from the Windows CRLF checkout bytes, so Linux correctly rejected the mismatched digest. A source audit also found the same fixed-depth assumption in WFO source hashing and the world-model CLI's Git/base-commit identity lookup.",
+  "change": "Added ancestor-based workspace-root discovery using the workspace pyproject marker and reused it for the research registry and WFO source-tree identity. The world-model CLI uses the same marker-search behavior for its default repository identity root. Linux wheel-layout regressions change cwd to a temporary directory. The inventory and marker are marked -text in .gitattributes, normalized to tracked LF bytes, and the checksum binds those canonical bytes.",
   "verification": {
     "hosted_failure": "Run 39836917121 / Ubuntu PR contract and unit selector failed 1 test; 847 passed, 11 skipped, 608 deselected.",
     "targeted_regression": "test_registry_path_does_not_depend_on_output_or_cwd: passed with simulated Linux site-packages layout.",
-    "research_access_suite": "tests/test_research_access.py: 115 passed.",
+    "research_access_suite": "tests/test_research_access.py and tests/world_model/test_cli.py: 131 passed, including Linux wheel-layout registry and CLI identity regressions.",
+    "wfo_suite": "tests/test_research_wfo.py: 36 passed after WFO source hashing switched to workspace marker discovery.",
     "ruff": "Full workspace Ruff check (packages ci qa tests) passed.",
     "mypy": "Full project MyPy check (packages qa) passed with 225 source files.",
-    "source_manifest": "604 files verified; source_identity_sha256 0fcdb77a15f788b828df2ee7e360a2908a3fc5f8f03b18e82493751609372fe0.",
+    "source_manifest": "604 files verified; source_identity_sha256 59a584b0864d448535e1905a39905e2099536050a9d7550fad94d272327deb73.",
     "inventory_byte_stability": "Tracked inventory raw LF bytes hash to 2950db3e0c309efc6d081f6fecfa5df25e756920ab3149ed28e455559de0606c, exactly matching the marker. Both files are now protected from autocrlf conversion.",
-    "hosted_rerun": "Run 39837931130 validated the path fix but failed the same test on inventory LF/CRLF digest mismatch. Byte-stability correction passed local research-access regression; hosted verification of the combined fix remains pending.",
+    "hosted_rerun": "Run 39837931130 validated the first path fix but failed the same test on inventory LF/CRLF digest mismatch. Byte-stability and related fixed-depth source-root corrections passed local focused suites; hosted verification of the combined fix remains pending.",
     "scope": "Temporary working directory and mocked registry only; no project research registry, market, account, Validation, Test, or Holdout data was accessed."
   }
 }

@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import subprocess
 
 import numpy as np
@@ -20,11 +21,18 @@ def test_json_input_rejects_duplicate_keys_recursively(tmp_path):
         world_model_cli._read_json(str(path))
 
 
-def test_code_identity_falls_back_to_explicit_snapshot_commit(monkeypatch):
+def test_code_identity_falls_back_to_explicit_snapshot_commit(tmp_path, monkeypatch):
     def no_git_commit(*_args, **_kwargs):
         raise subprocess.CalledProcessError(128, "git rev-parse HEAD")
 
     monkeypatch.setattr(world_model_cli.subprocess, "run", no_git_commit)
+    workspace_root = Path(__file__).resolve().parents[1]
+    monkeypatch.setattr(
+        world_model_cli, "__file__",
+        str(workspace_root / ".venv" / "lib" / "python3.14" / "site-packages"
+            / "rles_world_model" / "cli.py"),
+    )
+    monkeypatch.chdir(tmp_path)
     identity = world_model_cli._routeb_code_identity()
     assert identity["repository_commit"] == "c24d1bc4a47584f91a4c4db93bf77117d4e8341c"
     assert len(identity["source_code_sha256"]) == 64

@@ -95,7 +95,16 @@ def _validate_registered_b0_fold(fold: FoldManifest) -> None:
 
 
 def _routeb_code_identity(root: Path | None = None) -> dict[str, str]:
-    root = (Path(__file__).resolve().parents[4] if root is None else Path(root)).resolve()
+    if root is None:
+        current = Path.cwd().resolve()
+        candidates = (*Path(__file__).resolve().parents, *current.parents, current)
+        root = next((candidate for candidate in candidates
+                     if (candidate / "pyproject.toml").is_file()
+                     and "[tool.uv.workspace]" in
+                     (candidate / "pyproject.toml").read_text(encoding="utf-8")), None)
+        if root is None:
+            raise DataError("cannot locate Route B workspace for repository code identity")
+    root = Path(root).resolve()
     snapshot_marker: Path | None = None
     try:
         commit = subprocess.run(

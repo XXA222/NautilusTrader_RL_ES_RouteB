@@ -644,7 +644,8 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                         for manifest in manifests)
         for identity in candidate_ids
     }
-    source_root = Path(__file__).resolve().parents[4]
+    source_root = (research_access._workspace_root_from_module(__file__)
+                   or Path(__file__).resolve().parent)
     source_hash = _source_tree_hash(source_root)
     rules_source_hash = _file_hash(Path(environment["rules_path"]))
     config_identity_hash = digest({key: value for key, value in config.items() if key != "output"})
