@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v1",
-  "generated_at_utc": "2026-10-22T19:10:13.763812+00:00",
-  "source_identity_sha256": "0fcdb77a15f788b828df2ee7e360a2908a3fc5f8f03b18e82493751609372fe0",
+  "generated_at_utc": "2026-10-22T19:17:20.235777+00:00",
+  "source_identity_sha256": "b68138cd0fe7ba378f03c4edd6743937ee796c9da28659984f23bf39b5fdca2c",
   "scope": {
     "included": [
       ".gitattributes",
@@ -321,8 +321,8 @@
   "files": [
     {
       "path": ".gitattributes",
-      "size_bytes": 191,
-      "sha256": "46cd90beeff3b4166144b40338aeb0339b9551aef0cd557f4a284cb06d964e4a"
+      "size_bytes": 332,
+      "sha256": "d9f5780bb6c8cae97bbf1213dbf0a0ab5d84027bf611f991d5eadbf68b142f51"
     },
     {
       "path": ".github/workflows/ci.yml",

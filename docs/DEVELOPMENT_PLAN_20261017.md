@@ -2007,3 +2007,7 @@ Expanded exact Decimal helpers below the default Emin while retaining the defaul
 **Verification:** `tests/test_research_access.py` — **115 passed**. Full Ruff and MyPy (`packages qa`, **225 source files**) pass; modified modules compile; source manifest verifies **604 files**, identity `0fcdb77a15f788b828df2ee7e360a2908a3fc5f8f03b18e82493751609372fe0`. Evidence: `docs/audit_evidence/20261023/research_registry_linux_wheel_root_20261023.json`. No project registry or formal data was opened. Hosted Linux/Windows/JAX rerun remains pending after this correction.
 
 **Next cursor:** rerun Hosted PR CI on the corrected revision, then continue the dependency-satisfied A01–A14 source audit. Keep the external evidence gates unchanged.
+
+### 2026-10-23 M0.2 follow-up — canonical inventory checksum bytes
+
+Hosted run `39837931130` confirmed the Linux wheel root fix, then failed when reaching the inventory: the Git blob was LF (`2950db3e…`), while its marker matched only the Windows CRLF working-copy bytes (`9fb401e…`). Added exact-byte `-text` attributes for both the inventory and marker, normalized the tracked file to LF, and rebound the marker to the LF SHA-256. The full research-access selector passes **115 tests**; full Ruff and MyPy (**225 source files**) pass; 604-file source identity is `b68138cd0fe7ba378f03c4edd6743937ee796c9da28659984f23bf39b5fdca2c`. Updated evidence: `docs/audit_evidence/20261023/research_registry_linux_wheel_root_20261023.json`. Hosted verification of both Linux findings together is pending.

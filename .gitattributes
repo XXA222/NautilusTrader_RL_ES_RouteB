@@ -1,3 +1,5 @@
-# Fixture manifests bind exact bytes. Windows autocrlf must not alter their
-# source evidence or checksum files when a clean checkout is created.
+# Fixture manifests and the legacy research inventory bind exact bytes.
+# Windows autocrlf must not alter these source evidence files or checksums.
 tests/fixtures/** -text whitespace=cr-at-eol
+docs/audit_evidence/20261016/legacy_research_access_v2.json -text
+docs/audit_evidence/20261016/legacy_research_access_v2.json.sha256 -text

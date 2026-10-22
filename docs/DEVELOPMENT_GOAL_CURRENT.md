@@ -4,6 +4,10 @@
 
 Hosted CI #9 的 Ubuntu 基础测试暴露 `project_registry()` 固定取 `__file__.parents[4]`，Linux 的 `lib/pythonX/site-packages` 目录更深，导致将 `.venv` 错当仓库根。现改为从包文件祖先中查找 workspace marker，并用模拟 Linux wheel 路径和临时 cwd 验收。研究访问回归 **115 passed**，全仓 Ruff、MyPy（225 files）通过；604-file source manifest identity `0fcdb77a15f788b828df2ee7e360a2908a3fc5f8f03b18e82493751609372fe0`。证据：`docs/audit_evidence/20261023/research_registry_linux_wheel_root_20261023.json`。Hosted 修复版重跑待提交后触发。
 
+### 2026-10-23 最新复核：修正历史 inventory 的跨平台哈希
+
+Hosted CI #10 已越过路径发现，但发现历史 inventory 的 marker 只匹配 Windows CRLF 工作副本；Git blob/LF 的 SHA 是 `2950db3e…`。现对 inventory 和 marker 增加 `-text` 精确字节属性，inventory 规范化为 LF，marker 改为 LF 内容 SHA。研究访问回归 **115 passed**；Ruff、MyPy（225 files）通过；604-file source identity `b68138cd0fe7ba378f03c4edd6743937ee796c9da28659984f23bf39b5fdca2c`。修正后的 Hosted CI 验证待提交。
+
 ## 2026-10-23 最新续做：修复 Hosted CI worker 字段诊断
 
 读取 GitHub Actions #8 作业日志发现 Windows/Linux 的 world-model selector 因 `anchor_close=NaN` 报通用 JSON 错误而失败（219 passed、14 skipped、1 failed；JAX CPU 作业通过）。现保留 JSON 默认严格解析和重复键保护，仅让 worker request 在非标准数值进入字段校验前做安全的唯一键解析；递归拒绝其它非有限字段，anchor_close 返回字段专用拒绝。修改后 app venv 的完整 `tests/world_model` 回归 **228 passed、14 个 JAX-only skipped**，全仓 Ruff、MyPy（225 files）通过；604-file source manifest identity `c0bbd1ed76eab14292776aceb96b86478274b2494f59a2e6e89dfe7fc70637ab`。Hosted 修复版重跑仍待确认。证据：`docs/audit_evidence/20261023/worker_cli_anchor_nonfinite_validation_20261023.json`。此前 A04 legacy R4 损坏账目拒绝修复亦已完成。
