@@ -1,0 +1,31 @@
+{
+  "status": "PASS",
+  "scope": "synthetic_mechanism_only",
+  "optimizer_updates": 3,
+  "final_step": 4,
+  "resume_parity": true,
+  "resumed_reports": 1,
+  "forecast_shape": [
+    3,
+    3,
+    5
+  ],
+  "one_step_distribution_shape": [
+    3,
+    5
+  ],
+  "one_step_return_nll_finite": true,
+  "worker_distribution_shape": [
+    1,
+    5
+  ],
+  "worker_one_step_return_nll_finite": true,
+  "worker_f1_forecast_shape": [
+    2,
+    1,
+    5
+  ],
+  "worker_f1_forecast_ohlcv_valid": true,
+  "real_market_validation": false,
+  "economic_claim": false
+}

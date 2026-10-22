@@ -24,3 +24,5 @@ tests/test_native_liquidation_facts.py
 The test process used Python 3.14.7 from the main project's existing `.venv` and loaded RouteB source through `PYTHONPATH`. No dependencies were installed or modified. This verifies the listed RouteB behavior but does not claim a RouteB-only virtual environment was used.
 
 The refreshed source manifest contains 366 files with source identity SHA-256 `5fc001946596b337cb666de41826924f00460e4d02edec852e17a7506766c08a`.
+
+The locked B2 CPU smoke also passed on Python 3.12.10 with JAX/JAXLIB 0.11.2 and the pinned DreamerV3 checkout. Its synthetic-only result and environment record are in `docs/audit_evidence/20261023/b2_cpu_smoke_20261023.json` and `docs/audit_evidence/20261023/b2_cpu_smoke_result_20261023.json`. This does not claim real-market validation, economic performance, CUDA validation, or Train-sample authorization.
