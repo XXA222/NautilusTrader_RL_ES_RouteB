@@ -1,16 +1,11 @@
-# RouteB F7 lazy-frame metadata optimization �� 2026-10-23
+# RouteB F7 lazy-frame and FeatureRow memory update �� 2026-10-23
 
-The lazy per-episode frame sequence keeps only a two-frame working set and avoids Fold-wide derived-frame indexes. Profiling found that Gym step info repeatedly queried lazy episode start/end frames. `BarrierEpisode` now stores the validated decision-window timestamps as scalar metadata, so per-step reporting does not rebuild those frames.
+- Lazy per-episode frames use a two-frame cache; scalar episode-window bounds avoid repeated construction of endpoint frames.
+- `FeatureRow` now uses slots and retains its immutable fields, canonical hash, and explicit pickle compatibility. Python object-size accounting is 288 B per 5-value row versus 376 B before the change, about 11.4 MB saved at 129,600 rows.
+- Source and isolated installed-wheel selectors each pass **118 tests, 18 warnings**; wheel/source module hashes match; all 72 RouteB environment packages are compatible.
+- 90-day installed-wheel synthetic replay: 129,597 decisions; online/lean trajectory SHA-256 matches (`4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f`). RSS deltas are 192,876,544 / 194,117,632 B, about 62% lower than baseline; elapsed times 88.74 / 79.13 s, near baseline 86.54 / 76.47 s.
+- Ruff, targeted MyPy, 605-file source identity verification, and diff checks pass.
 
-## Verification
+Machine-readable evidence: `docs/audit_evidence/20261023/f7_lazy_barrier_frames_20261023.json`.
 
-- Source and isolated installed-wheel selectors: **124 passed each**, 28 dependency warnings each.
-- 90-day synthetic Train replay: 129,597 decisions; online-summary and lean trajectory SHA-256 match at `4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f`.
-- RSS peak deltas: 203,612,160 B online summary and 197,705,728 B lean, about 60.1% below the pre-change pair.
-- Runtime: 88.85 s online summary and 78.77 s lean, near the pre-change 86.54 s and 76.47 s.
-- GymBridge wheel and source SHA-256 match for `episode.py` and `historical.py`; 72 RouteB environment packages are compatible.
-- Ruff, targeted MyPy and the 605-file source manifest verification pass.
-
-Machine-readable profile: `docs/audit_evidence/20261023/f7_lazy_barrier_frames_20261023.json`.
-
-This is synthetic engineering evidence only. F7 remains open for remaining O(n) source/native/report state and authorized real-history Train profiling. Independent Validation, data provenance, market scope/depth, trial-coverage, and M4.2 gates remain open.
+F7 remains open for retained CuratedStore event/time indexes, Native session/cache/report facts, and authenticated real-history Train profiling. External provenance, independent Validation, market authorization/depth, trial-coverage and M4.2 gates remain open.
