@@ -26,22 +26,22 @@
 
 | 检查 | 本轮实测 |
 |---|---|
-| `pytest` 新旧定向测试 | **35 passed**，Python 3.13.5；命令见 README |
+| RouteB F7 五组回归 | **175 passed, 18 dependency warnings, 106.36s**；Python 3.14.7 main `.venv` executable, RouteB source via `PYTHONPATH` |
 | 语法 AST / compileall | PASS，本轮增量 Python 代码与测试 |
-| JAX 基础 pytree checkpoint | PASS（环境 JAX 0.9.0.1 CPU；**不是**项目要求的 0.11.2） |
-| 固定 DreamerV3 RSSM + Ninjax 实际反向梯度 | **BLOCKED**（本容器没有 Ninjax/Elements/Optax 或固定 upstream checkout） |
-| 训练中途恢复逐步等价 | smoke 脚本已补充，**待用户锁定环境验证** |
-| Python 3.14.7、Windows、WSL2 CUDA | **未在本环境运行** |
+| 固定环境 B2 CPU smoke | **PASS**；Python 3.12.10, JAX/JAXLIB 0.11.2, Ninjax 3.5.1, Elements 3.19.1, Optax 0.2.8, pinned DreamerV3 commit; real optimizer/checkpoint/forecast/worker path |
+| 训练中途恢复逐步等价 | **PASS on synthetic mechanism data**；2-step resume to 4 steps exactly matches all uninterrupted checkpoint arrays |
+| Windows / WSL2 CUDA | Windows x64 CPU smoke passed; WSL2 CUDA smoke **not run** |
 | Nautilus 原生撮合/费用/资金费差分 | **未做**；想象账户不是正式经济模拟 |
 | 独立真实 Validation 和收益认证 | **未做**；现有项目数据访问门禁必须保留 |
 
 ## 下一阶段明确开发缺口
 
-1. 在固定 Python 3.12.10、JAX 0.11.2、DreamerV3 commit 的环境运行 B2 CPU smoke；若发现 Ninjax API 与实际网络张量不一致，**仅修改独立适配器**，不改 Dreamer 上游源码。
-2. 在授权 Train 内实现/记录系统性梯度、损失数值和 batch/sequence 资源曲线；中断恢复要比较每个参数与 Optax 状态数组，而不仅是 loss 数值。
-3. B2 单尺度发行前，补严格独立 Validation 读取路径和预注册 E0/E1/E2 分布预测比较；若无授权数据，保留 BLOCKED 而不是输出预测改善结论。
-4. B3 仍需实现真正的三级梯度优化器、跨尺度生成器 F2（目前只有时钟与候选损失），并在相同训练数据/预算下进行 E3/E4 消融。
-5. B4 轻量账户不可无差分校验直接推导费用后可交易盈利；杠杆、Hedge Mode、资金费、标记价格和极端 K 线成交时序还未受 Nautilus 原生认证。
+1. 在新授权的 Train scope 内记录梯度范数、损失数值和 batch/sequence 资源曲线；当前 smoke 只证明合成机制训练，不提供研究样本授权或学习质量证据。
+2. B2 单尺度发行前，继续验证严格独立 Validation 读取路径和预注册 E0/E1/E2 分布预测比较；若无授权数据，保留 BLOCKED，不输出预测改善结论。
+3. B3 仍需实现真正的三级梯度优化器、跨尺度生成器 F2（目前只有时钟与候选损失），并在相同训练数据/预算下进行 E3/E4 消融。
+4. B4 轻量账户不可无差分校验直接推导费用后可交易盈利；杠杆、Hedge Mode、资金费、标记价格和极端 K 线成交时序还未受 Nautilus 原生认证。
+
+B2 smoke exact output and environment pins are archived in `docs/audit_evidence/20261023/b2_cpu_smoke_20261023.json` and `docs/audit_evidence/20261023/b2_cpu_smoke_result_20261023.json`. The smoke uses synthetic bars and explicitly reports `real_market_validation=false` and `economic_claim=false`.
 
 > 本版没有建立多级哈希链。SHA 仅用于文件损坏/数据标准化身份防错，不声称抵御有意篡改研究准入数据库的对手。
 

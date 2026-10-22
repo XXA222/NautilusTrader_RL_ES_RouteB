@@ -1,0 +1,35 @@
+{
+  "schema": "rles.audit-evidence.v1",
+  "work_package": "B2 locked JAX CPU smoke",
+  "status": "SYNTHETIC_MECHANISM_PASS",
+  "date": "2026-10-23",
+  "workspace": "C:/Users/QX/Documents/ChatGPT/RouteB",
+  "command": "PYTHONPATH=packages/world_model/src;packages/data/src;packages/contracts/src;packages/orchestrator/src;packages/research/src JAX_PLATFORMS=cpu XLA_PYTHON_CLIENT_PREALLOCATE=false packages/world_model/environment/.venv/Scripts/python.exe qa/world_model/routeb_b2_cpu_smoke.py --checkout .tmp/dreamerv3 --output-dir .tmp/routeb_b2_cpu_smoke_20261023",
+  "environment": {
+    "python": "3.12.10",
+    "jax": "0.11.2",
+    "jaxlib": "0.11.2",
+    "ninjax": "3.5.1",
+    "elements": "3.19.1",
+    "optax": "0.2.8",
+    "dreamerv3_commit": "e01491fad6434b2245a3b8ca201dd7faedcc458c",
+    "platform": "Windows x64 CPU"
+  },
+  "smoke_script_sha256": "81305eb145517513298de18c772c40ac35570b6759ae8407852a25b580d492b8",
+  "result": {
+    "path": "docs/audit_evidence/20261023/b2_cpu_smoke_result_20261023.json",
+    "sha256": "3e376b940aaa636b785707b56034cf5ef3c07409857ff8b1b158e3199a6cf8b9",
+    "status": "PASS",
+    "scope": "synthetic_mechanism_only",
+    "optimizer_updates": 3,
+    "final_step": 4,
+    "resume_parity": true,
+    "resumed_reports": 1,
+    "forecast_shape": [3, 3, 5],
+    "distribution_shape": [3, 5],
+    "worker_distribution_shape": [1, 5],
+    "worker_forecast_shape": [2, 1, 5],
+    "worker_forecast_ohlcv_valid": true
+  },
+  "boundary": "This verifies the locked synthetic CPU training/checkpoint/forecast/worker path only. No real market data, account data, Validation/Test/Holdout, or economic claim is included. It does not establish Train learning quality, independent Validation, CUDA behavior, or hosted CI."
+}
