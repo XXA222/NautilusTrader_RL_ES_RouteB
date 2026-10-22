@@ -204,6 +204,38 @@ def test_account_accumulator_fails_closed_after_partially_applied_metric_error()
         accumulator.result(periods_per_year=1.0)
 
 
+def test_account_accumulator_rejects_finite_rows_with_overflowing_cost_total() -> None:
+    accumulator = AccountFactsAccumulator(sample_interval_ns=1, max_return_count=4)
+
+    def add(index: int, fee: float) -> None:
+        accumulator.add({
+            "ts_ns": index, "equity": 100.0, "external_cashflow": 0.0,
+            "turnover_notional": 0.0, "fee": fee, "funding": 0.0,
+            "slippage_cost": 0.0,
+        })
+
+    add(0, 0.0)
+    add(1, 1e308)
+    with pytest.raises(MetricsError, match="total fee accumulation overflow"):
+        add(2, 1e308)
+    with pytest.raises(MetricsError, match="cannot report after a failed account fact"):
+        accumulator.result(periods_per_year=1.0)
+
+
+def test_trade_profit_factor_rejects_overflowing_finite_pnl_sum() -> None:
+    facts = tuple(
+        {"ts_ns": index, "equity": 100.0, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+         "slippage_cost": 0.0}
+        for index in range(3)
+    )
+    with pytest.raises(MetricsError, match="realized trade PnL aggregation overflow"):
+        from_account_facts(
+            facts, periods_per_year=1.0, sample_interval_ns=1,
+            realized_trade_pnls=(1e308, 1e308, -1.0),
+        )
+
+
 def test_account_metrics_reject_irregular_sampling() -> None:
     facts = tuple(
         {"ts_ns": timestamp, "equity": 1_000.0, "external_cashflow": 0.0,
