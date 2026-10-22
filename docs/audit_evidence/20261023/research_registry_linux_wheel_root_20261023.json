@@ -1,0 +1,16 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "M0.2 / installed-wheel workspace discovery on Linux",
+  "finding": "Hosted PR CI run 39836917121 failed tests/test_research_access.py::test_registry_path_does_not_depend_on_output_or_cwd on Ubuntu. project_registry() assumed Path(__file__).parents[4] was the workspace root. Linux site-packages has lib/pythonX between the virtualenv and site-packages, so this selected the virtualenv directory instead of the checkout and could not locate the workspace marker or registry inventory.",
+  "change": "The registry locator now searches ancestors of the resolved package file for the pyproject workspace marker rather than assuming a fixed number of parent directories. The regression test models a Linux installed-wheel path under .venv/lib/python3.14/site-packages and changes cwd to a temporary directory before resolving the registry.",
+  "verification": {
+    "hosted_failure": "Run 39836917121 / Ubuntu PR contract and unit selector failed 1 test; 847 passed, 11 skipped, 608 deselected.",
+    "targeted_regression": "test_registry_path_does_not_depend_on_output_or_cwd: passed with simulated Linux site-packages layout.",
+    "research_access_suite": "tests/test_research_access.py: 115 passed.",
+    "ruff": "Full workspace Ruff check (packages ci qa tests) passed.",
+    "mypy": "Full project MyPy check (packages qa) passed with 225 source files.",
+    "source_manifest": "604 files verified; source_identity_sha256 0fcdb77a15f788b828df2ee7e360a2908a3fc5f8f03b18e82493751609372fe0.",
+    "hosted_rerun": "Pending on the repaired commit; the observed failure belongs to commit de75d45443817864816b15072483c80b8d6b53d3.",
+    "scope": "Temporary working directory and mocked registry only; no project research registry, market, account, Validation, Test, or Holdout data was accessed."
+  }
+}

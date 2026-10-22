@@ -1997,3 +1997,13 @@ Expanded exact Decimal helpers below the default Emin while retaining the defaul
 **Verification:** the focused worker request/duplicate-key selector passes; the full RouteB app `tests/world_model` suite passes (**228 passed, 14 JAX-only skipped**; the earlier Hosted JAX CPU job passed). Full Ruff passes; MyPy passes for **225 source files**; changed modules compile. The source manifest verifies **604 files**, identity `c0bbd1ed76eab14292776aceb96b86478274b2494f59a2e6e89dfe7fc70637ab`. Evidence: `docs/audit_evidence/20261023/worker_cli_anchor_nonfinite_validation_20261023.json`. The hosted failure is from `d1defb7298314ce6231178842dac204f23c75619`; validation on the repaired revision remains pending.
 
 **Next cursor:** obtain a clean Hosted Linux/Windows run on the repaired branch revision, then continue dependency-satisfied A01–A14 code audit. External cashflows, independent Validation, authorized market scope, authentic depth, historical trial coverage, and M4.2 remain separate gates.
+
+## 2026-10-23 — M0.2 Linux installed-wheel registry root discovery
+
+**Finding:** Hosted run `39836917121` exposed that `project_registry()` used `Path(__file__).parents[4]` as the checkout root. Linux wheel paths include an extra `lib/pythonX` level compared with the Windows venv layout, so the heuristic selected `.venv` and could not locate the project registry inventory when the test changed cwd.
+
+**Fix:** discover the workspace root by scanning resolved package-file ancestors for the workspace marker. The regression fixture simulates `.venv/lib/python3.14/site-packages/rles_orchestrator/research_access.py`, changes cwd to a temporary path, and still proves the registry resolves to the checkout's `.artifacts` directory.
+
+**Verification:** `tests/test_research_access.py` — **115 passed**. Full Ruff and MyPy (`packages qa`, **225 source files**) pass; modified modules compile; source manifest verifies **604 files**, identity `0fcdb77a15f788b828df2ee7e360a2908a3fc5f8f03b18e82493751609372fe0`. Evidence: `docs/audit_evidence/20261023/research_registry_linux_wheel_root_20261023.json`. No project registry or formal data was opened. Hosted Linux/Windows/JAX rerun remains pending after this correction.
+
+**Next cursor:** rerun Hosted PR CI on the corrected revision, then continue the dependency-satisfied A01–A14 source audit. Keep the external evidence gates unchanged.

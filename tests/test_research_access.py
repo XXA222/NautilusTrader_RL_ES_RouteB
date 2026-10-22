@@ -755,9 +755,16 @@ def test_registry_path_does_not_depend_on_output_or_cwd(tmp_path, monkeypatch):
     from types import SimpleNamespace
     monkeypatch.setattr(module, "ProjectResearchRegistry",
                         lambda path: SimpleNamespace(path=path, import_inventory=lambda *_: None))
+    workspace_root = Path(__file__).resolve().parents[1]
+    # Model a Linux wheel installed inside the checkout: its package path has
+    # lib/pythonX/site-packages between the workspace root and __file__.
+    monkeypatch.setattr(
+        module, "__file__",
+        str(workspace_root / ".venv" / "lib" / "python3.14" / "site-packages"
+            / "rles_orchestrator" / "research_access.py"),
+    )
     monkeypatch.chdir(tmp_path)
     registry = module.project_registry()
-    workspace_root = Path(__file__).resolve().parents[1]
     assert registry.path == workspace_root / ".artifacts" / "research-access.sqlite"
 
 

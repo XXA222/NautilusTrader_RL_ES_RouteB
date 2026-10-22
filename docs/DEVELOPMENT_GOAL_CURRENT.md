@@ -1,5 +1,9 @@
 # RouteB 审计整改：当前连续开发目标
 
+## 2026-10-23 最新续做：修复 Linux wheel 下项目登记库定位
+
+Hosted CI #9 的 Ubuntu 基础测试暴露 `project_registry()` 固定取 `__file__.parents[4]`，Linux 的 `lib/pythonX/site-packages` 目录更深，导致将 `.venv` 错当仓库根。现改为从包文件祖先中查找 workspace marker，并用模拟 Linux wheel 路径和临时 cwd 验收。研究访问回归 **115 passed**，全仓 Ruff、MyPy（225 files）通过；604-file source manifest identity `0fcdb77a15f788b828df2ee7e360a2908a3fc5f8f03b18e82493751609372fe0`。证据：`docs/audit_evidence/20261023/research_registry_linux_wheel_root_20261023.json`。Hosted 修复版重跑待提交后触发。
+
 ## 2026-10-23 最新续做：修复 Hosted CI worker 字段诊断
 
 读取 GitHub Actions #8 作业日志发现 Windows/Linux 的 world-model selector 因 `anchor_close=NaN` 报通用 JSON 错误而失败（219 passed、14 skipped、1 failed；JAX CPU 作业通过）。现保留 JSON 默认严格解析和重复键保护，仅让 worker request 在非标准数值进入字段校验前做安全的唯一键解析；递归拒绝其它非有限字段，anchor_close 返回字段专用拒绝。修改后 app venv 的完整 `tests/world_model` 回归 **228 passed、14 个 JAX-only skipped**，全仓 Ruff、MyPy（225 files）通过；604-file source manifest identity `c0bbd1ed76eab14292776aceb96b86478274b2494f59a2e6e89dfe7fc70637ab`。Hosted 修复版重跑仍待确认。证据：`docs/audit_evidence/20261023/worker_cli_anchor_nonfinite_validation_20261023.json`。此前 A04 legacy R4 损坏账目拒绝修复亦已完成。

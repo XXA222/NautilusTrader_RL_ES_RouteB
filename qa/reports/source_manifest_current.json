@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v1",
-  "generated_at_utc": "2026-10-22T19:02:36.447694+00:00",
-  "source_identity_sha256": "c0bbd1ed76eab14292776aceb96b86478274b2494f59a2e6e89dfe7fc70637ab",
+  "generated_at_utc": "2026-10-22T19:10:13.763812+00:00",
+  "source_identity_sha256": "0fcdb77a15f788b828df2ee7e360a2908a3fc5f8f03b18e82493751609372fe0",
   "scope": {
     "included": [
       ".gitattributes",
@@ -1631,8 +1631,8 @@
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/research_access.py",
-      "size_bytes": 28827,
-      "sha256": "a80f3a9bb0ee51f21164a0413ad5786255196ed9d5256cfef2d7b9060fba74d4"
+      "size_bytes": 29129,
+      "sha256": "5d6229ab3e58a3337e5856490e4460a4a0deacbc5a526382fa51c8712a02de20"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/rl_stage.py",
@@ -3056,8 +3056,8 @@
     },
     {
       "path": "tests/test_research_access.py",
-      "size_bytes": 49844,
-      "sha256": "234284acc49aac3724bde83922378ddfcdbf7934e9127cd1e6e4161e6c1c53e0"
+      "size_bytes": 50191,
+      "sha256": "b7f3623e57f87571e1b2169a48cf4d975de32558f8872d7dae30abeafc12dac4"
     },
     {
       "path": "tests/test_research_artifacts_json_integrity.py",

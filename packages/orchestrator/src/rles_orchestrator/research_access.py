@@ -72,8 +72,13 @@ def _strict_inventory_json(content: bytes) -> dict[str, Any]:
 
 def project_registry() -> ProjectResearchRegistry:
     # Source checkout identity is stable even if the CLI's cwd/output changes.
-    source = Path(__file__).resolve().parents[4]
-    candidates = (source, *Path.cwd().resolve().parents, Path.cwd().resolve())
+    source_file = Path(__file__).resolve()
+    source = next((candidate for candidate in source_file.parents
+                   if (candidate / "pyproject.toml").is_file()
+                   and "[tool.uv.workspace]" in
+                   (candidate / "pyproject.toml").read_text(encoding="utf-8")), None)
+    current = Path.cwd().resolve()
+    candidates = (*((source,) if source is not None else ()), *current.parents, current)
     for candidate in candidates:
         metadata = candidate / "pyproject.toml"
         if metadata.is_file() and "[tool.uv.workspace]" in metadata.read_text(encoding="utf-8"):
