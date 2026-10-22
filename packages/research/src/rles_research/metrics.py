@@ -7,6 +7,7 @@ import heapq
 import struct
 import tempfile
 from collections.abc import Iterable, Iterator, Sequence, Mapping
+from typing import overload
 from .numeric import finite_real
 
 
@@ -40,7 +41,13 @@ class _DiskBackedFloatSequence(Sequence[float]):
                 raise MetricsError("temporary return spool has a truncated float")
             yield from (item[0] for item in struct.iter_unpack("!d", block))
 
-    def __getitem__(self, index: int | slice) -> float | list[float]:
+    @overload
+    def __getitem__(self, index: int) -> float: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[float]: ...
+
+    def __getitem__(self, index: int | slice) -> float | Sequence[float]:
         if isinstance(index, slice):
             return [self[position] for position in range(*index.indices(self._count))]
         if isinstance(index, bool) or not isinstance(index, int):

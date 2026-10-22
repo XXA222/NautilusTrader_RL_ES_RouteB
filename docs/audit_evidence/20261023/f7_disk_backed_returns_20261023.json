@@ -1,0 +1,32 @@
+{
+  "schema": "rles.audit-evidence.v1",
+  "work_package": "F7 disk-backed account return sequence",
+  "status": "ENGINEERING_FIX_VERIFIED",
+  "date": "2026-10-23",
+  "workspace": "C:/Users/QX/Documents/ChatGPT/RouteB",
+  "changes": [
+    {
+      "path": "packages/research/src/rles_research/metrics.py",
+      "sha256": "e9b6101ad297f0f9c506177cc48597e8959f7dd2319557381b51e1282dc54c96",
+      "summary": "AccountFactsAccumulator replays return floats from an auto-deleted temporary file, preserving multi-pass exact metrics while removing the O(n) Python float list. Optional max_return_count rejects before accumulator state advances."
+    },
+    {
+      "path": "tests/test_research_metrics.py",
+      "sha256": "2ff315d232eb498d065cf82900e2eb41d31cc90ad5a59d08f9069d13a995fe17",
+      "summary": "Added a 4,096-return exact parity check between disk-backed and in-memory metrics, spool-size assertion, and return-count rejection state-integrity regression."
+    }
+  ],
+  "verification": {
+    "pytest_command": "python -m pytest -q tests/test_historical_factory.py tests/test_native_report_accumulator_parity.py tests/test_native_decimal_arithmetic.py tests/test_research_metrics.py tests/test_native_liquidation_facts.py --basetemp .tmp_backup_final_pytest_20261023",
+    "pytest_result": "175 passed, 18 warnings in 105.08s",
+    "ruff_command": "python -m ruff check packages/research/src/rles_research/metrics.py tests/test_research_metrics.py",
+    "ruff_result": "All checks passed",
+    "mypy_command": "python -m mypy --platform win32 --ignore-missing-imports --follow-imports=silent packages/research/src/rles_research/metrics.py packages/research/src/rles_research/native_metrics.py packages/orchestrator/src/rles_orchestrator/application.py",
+    "mypy_result": "Success: no issues found in 3 source files",
+    "source_manifest_identity_sha256": "ba347c9f8047525e970902f5117c462e546a8d09059d092206234f7b208da461",
+    "source_manifest_file_count": 366
+  },
+  "environment_boundary": "Python 3.14.7 and tooling were invoked from the main project's existing .venv without installing or changing packages. RouteB source was loaded via PYTHONPATH and MYPYPATH. This is not a RouteB-isolated environment verification.",
+  "data_boundary": "Synthetic account equity rows only; no market, Validation, Test, or Holdout payload was read.",
+  "remaining_f7_limits": "Full account rows remain materialized when explicitly requested. Tail risk uses a bounded-to-configured-horizon heap at report time; this is not constant-memory independent of the configured maximum return count. Real-history Train profile and clean Hosted Linux/Windows CI remain incomplete."
+}

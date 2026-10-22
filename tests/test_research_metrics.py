@@ -5,7 +5,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from rles_research.metrics import MetricsError, from_account_facts
+from rles_research.metrics import (
+    AccountFactsAccumulator,
+    MetricsError,
+    from_account_facts,
+    series_metrics,
+)
 from rles_research.native_metrics import account_rows, native_report, reconcile_linear_equity
 from rles_research.statistics import (
     deflated_sharpe, deflated_sharpe_trial_count_sensitivity,
@@ -85,6 +90,49 @@ def test_account_metrics_reject_irregular_sampling() -> None:
     )
     with pytest.raises(MetricsError, match="irregular account sampling"):
         from_account_facts(facts, periods_per_year=1, sample_interval_ns=10)
+
+
+def test_disk_backed_return_metrics_match_in_memory_series_exactly() -> None:
+    equities = [1_000.0]
+    for index in range(4_096):
+        period_return = (0.001 if index % 7 in (0, 1, 3) else -0.0007)
+        equities.append(equities[-1] * (1 + period_return))
+    facts = (
+        {"ts_ns": index, "equity": equity, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0, "slippage_cost": 0.0}
+        for index, equity in enumerate(equities)
+    )
+
+    accumulator = AccountFactsAccumulator(sample_interval_ns=1)
+    for fact in facts:
+        accumulator.add(fact)
+
+    replayed_returns = list(accumulator.returns)
+    assert len(accumulator.returns) == len(equities) - 1
+    assert not isinstance(accumulator.returns, list)
+    assert accumulator.returns._file.seek(0, 2) == len(replayed_returns) * 8
+    expected = series_metrics(replayed_returns, periods_per_year=365)
+    result = accumulator.result(periods_per_year=365)
+    assert {key: result[key] for key in expected} == expected
+
+
+def test_account_return_limit_rejects_before_advancing_accumulator_state() -> None:
+    accumulator = AccountFactsAccumulator(sample_interval_ns=1, max_return_count=1)
+    facts = (
+        {"ts_ns": index, "equity": equity, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0, "slippage_cost": 0.0}
+        for index, equity in enumerate((100.0, 101.0, 102.0))
+    )
+    first, second, third = facts
+    accumulator.add(first)
+    accumulator.add(second)
+
+    with pytest.raises(MetricsError, match="configured maximum return count"):
+        accumulator.add(third)
+
+    assert accumulator.count == 2
+    assert accumulator.last_ts == second["ts_ns"]
+    assert len(accumulator.returns) == 1
 
 
 def test_quote_execution_can_report_realized_price_improvement_as_signed_slippage() -> None:

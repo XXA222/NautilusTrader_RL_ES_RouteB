@@ -18,9 +18,9 @@ tests/test_native_report_accumulator_parity.py
 tests/test_native_decimal_arithmetic.py
 tests/test_research_metrics.py
 tests/test_native_liquidation_facts.py
-173 passed, 18 warnings in 106.18s
+175 passed, 18 warnings in 105.08s
 ```
 
 The test process used Python 3.14.7 from the main project's existing `.venv` and loaded RouteB source through `PYTHONPATH`. No dependencies were installed or modified. This verifies the listed RouteB behavior but does not claim a RouteB-only virtual environment was used.
 
-The refreshed source manifest contains 366 files with source identity SHA-256 `6e195c69029b2793de8024f62d08333b1a49b7f5eac705e2698585d4d12c7273`.
+The refreshed source manifest contains 366 files with source identity SHA-256 `ba347c9f8047525e970902f5117c462e546a8d09059d092206234f7b208da461`.

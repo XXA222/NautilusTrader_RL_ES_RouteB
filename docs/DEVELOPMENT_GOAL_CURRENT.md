@@ -7,7 +7,7 @@
 ## 可直接交给 Codex 的目标
 
 ```text
-持续在 `D:\Program Files\NautilusTrader_RL_ES` 中落实审计报告 `C:\Users\QX\Downloads\NautilusTrader-RL-ES_源码深度审计与后续开发建议_20261017.md` 的未完成整改（A01–A14）。这是一个连续实施目标：每轮都要从当前续做位置检查并完成可做的源码/工程工作，不能把“检查完”“提出计划”或“更新文档”当作完成。审计基线 `c24d1bc4a47584f91a4c4db93bf77117d4e8341c` 仅供历史对照。
+持续在 RouteB 独立项目中落实审计报告 `C:\Users\QX\Downloads\NautilusTrader-RL-ES_源码深度审计与后续开发建议_20261017.md` 的未完成整改（A01–A14）。指定 RouteB checkout 为 `D:\Program Files\NautilusTrader_RL_ES_RouteB`；当前连接工作副本为 `C:\Users\QX\Documents\ChatGPT\RouteB`。不得把修改写入主项目 `D:\Program Files\NautilusTrader_RL_ES`，也不得合并 RouteA。每轮都从当前续做位置完成可做的源码/工程工作；检查、计划或文档更新不能代替实现。审计基线 `c24d1bc4a47584f91a4c4db93bf77117d4e8341c` 仅供历史对照。
 
 每次启动以及每个工作包验收后都继续执行以下循环，直到没有依赖已满足且可独立实施的工程任务：
 
@@ -21,6 +21,6 @@
 
 ## 续做位置
 
-最新执行记录为 **F7 online native summary reducer**：精确 Decimal 成交额/滑点/权益核对已补齐，summary-only `rollout()` 已接入按屏障增量的 `NativeReportAccumulator`，只保留当前时间戳组和一个终态快照；在线/保留式报告端到端对照通过。当前 366-file source manifest identity 为 `0d2d5e3ab71bc47984ddf19c07dd151a1b879709054a5888eebd860807b5e8d5`；相关联合回归 **173 passed**，Ruff 与目标 MyPy 通过。证据：`docs/audit_evidence/20261023/m01_native_decimal_exact_arithmetic_20261023.json`。准确 VaR/CVaR 仍保留收益序列；请求完整账户行时仍会生成行数组。测试通过现有主项目 `.venv` 只读执行、加载 RouteB 工作区源码；RouteB 专用 venv 不可访问，未安装或修改主项目环境中的包。此证据仅属于当前 `C:\Users\QX\Documents\ChatGPT\RouteB` 工作区；指定的 `D:\Program Files\NautilusTrader_RL_ES_RouteB` checkout 本轮不可访问，未声称已同步到该 checkout 或 GitHub。下一步继续 F7 测量及 A01–A14 代码审计；Hosted CI、真实现金流、独立 Validation、阶段工件、真实深度及新授权样本仍分别受外部门禁约束。
+最新完成项为 **F7 online native summary reducer 与收益序列内存削减**：精确 Decimal 成交额/滑点/权益核对已补齐，summary-only `rollout()` 按屏障增量交给 `NativeReportAccumulator`，只保留当前时间戳组和一个终态快照；账户收益序列改为自动清理的临时磁盘序列，可重复读取以保留精确 VaR/CVaR 与标准差计算。新增 4,096 段收益的磁盘/内存指标逐值一致回归，以及超上限拒绝后累计器状态不前移回归。当前 366-file source manifest identity 为 `ba347c9f8047525e970902f5117c462e546a8d09059d092206234f7b208da461`；5 组联合回归 **175 passed, 18 warnings**，Ruff 通过，目标 MyPy 3 个源文件通过。证据：`docs/audit_evidence/20261023/m01_native_decimal_exact_arithmetic_20261023.json` 与 `docs/backup/GITHUB_BACKUP_20261023.md`。请求完整账户行时仍会生成行数组。测试通过现有主项目 `.venv` 只读执行、加载 RouteB 工作区源码；未安装或修改主项目环境中的包，因此不代表 RouteB 专用 venv 验证。当前连接工作副本已备份到独立公开仓库 `XXA222/NautilusTrader_RL_ES_RouteB` 的 `backup/routeb-20261023` 分支；指定 D 盘 checkout 本轮不可访问，故未声称同步至该 checkout。下一步继续 F7 基准内存/耗时测量，再做 A01–A14 的其余独立工程审计；Hosted CI、真实现金流、独立 Validation、阶段工件、真实深度及新授权样本仍分别受外部门禁约束。
 
 外部门禁按执行记录保留：真实账户现金流来源与长窗对账、独立 Validation、兼容的 E1/R1/E2 阶段工件、真实历史深度、新授权独立市场窗口、干净交付 Hosted CI，以及 A09 标的/持仓/杠杆扩展。它们只限制各自依赖的验收，不得成为停止其它代码工作的理由。开始新一轮时必须复核这些状态是否变化。
