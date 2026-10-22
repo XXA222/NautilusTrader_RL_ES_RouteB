@@ -53,7 +53,7 @@ def _canonical(value):
         # Nautilus assigns fresh UUIDs to simulator initialization and fills;
         # they are audit identities, not trajectory/economic state. Normalize
         # only these two fields so otherwise complete terminal-fill facts stay
-        # in the retained-vs-lean parity digest.
+        # in the online-summary-vs-lean trajectory digest.
         return {
             str(key): ("<run-local-native-id>" if key in {"event_id", "init_id"}
                        else _canonical(item))
@@ -172,7 +172,7 @@ def _factory_args(store: CuratedStore, days: int) -> dict:
     }
 
 
-def _run_case(store: CuratedStore, days: int, *, retain_snapshots: bool) -> dict:
+def _run_case(store: CuratedStore, days: int, *, online_summary: bool) -> dict:
     import gc
 
     gc.collect()
@@ -184,7 +184,7 @@ def _run_case(store: CuratedStore, days: int, *, retain_snapshots: bool) -> dict
     accumulator = None
     with RssSampler() as sampler:
         factory = HistoricalEnvironmentFactory(**_factory_args(store, days))
-        if retain_snapshots:
+        if online_summary:
             accumulator = NativeReportAccumulator(
                 sample_interval_ns=MINUTE_NS,
                 max_return_count=days * DAY_MINUTES + 1,
@@ -193,7 +193,7 @@ def _run_case(store: CuratedStore, days: int, *, retain_snapshots: bool) -> dict
                 linear_equity_rounding=Decimal("0.00000001"),
             )
         env = factory.make_env(
-            retain_report_snapshots=retain_snapshots,
+            retain_report_snapshots=online_summary,
             report_snapshot_sink=(None if accumulator is None else accumulator.add_snapshot),
         )
         try:
@@ -222,9 +222,10 @@ def _run_case(store: CuratedStore, days: int, *, retain_snapshots: bool) -> dict
                 "metrics_sha256": hashlib.sha256(metric_bytes).hexdigest(),
             }
     record = {
-        "days": days, "retain_report_snapshots": retain_snapshots,
-        "spool_report_snapshots": False,
-        "stream_report_snapshots": retain_snapshots,
+        "days": days,
+        "mode": "online_summary_sink" if online_summary else "lean_execution",
+        "report_snapshot_sink_enabled": online_summary,
+        "report_snapshot_sequence_retained": False,
         "decision_steps": steps, "trajectory_sha256": digest.hexdigest(),
         "rss_start_bytes": rss_start, "rss_peak_bytes": sampler.peak,
         "rss_peak_delta_bytes": max(0, sampler.peak - rss_start),
@@ -236,16 +237,16 @@ def _run_case(store: CuratedStore, days: int, *, retain_snapshots: bool) -> dict
     return record
 
 
-def _isolated_case(days: int, max_days: int, *, retain_snapshots: bool) -> dict:
+def _isolated_case(days: int, max_days: int, *, online_summary: bool) -> dict:
     command = [
         sys.executable, str(Path(__file__).resolve()), "--worker",
         "--days", str(days), "--max-days", str(max_days),
-        "--retain-snapshots", "true" if retain_snapshots else "false",
+        "--online-summary", "true" if online_summary else "false",
     ]
     completed = subprocess.run(command, capture_output=True, text=True, check=False)
     if completed.returncode != 0:
         raise RuntimeError(
-            f"isolated {days}-day {'retained' if retain_snapshots else 'lean'} profile failed: "
+            f"isolated {days}-day {'online-summary' if online_summary else 'lean'} profile failed: "
             f"{completed.stderr[-4000:]}"
         )
     try:
@@ -254,7 +255,7 @@ def _isolated_case(days: int, max_days: int, *, retain_snapshots: bool) -> dict:
         raise RuntimeError("isolated synthetic profile returned invalid JSON") from exc
 
 
-def _worker_case(days: int, max_days: int, *, retain_snapshots: bool) -> dict:
+def _worker_case(days: int, max_days: int, *, online_summary: bool) -> dict:
     if available_memory() < 2 * 1024**3:
         raise MemoryError("less than 2 GiB free before isolated synthetic profile")
     source_started = time.perf_counter()
@@ -267,7 +268,7 @@ def _worker_case(days: int, max_days: int, *, retain_snapshots: bool) -> dict:
         "rss_end_bytes": process_rss(),
     }
     return {
-        "case": _run_case(store, days, retain_snapshots=retain_snapshots),
+        "case": _run_case(store, days, online_summary=online_summary),
         "source": source_summary,
     }
 
@@ -288,22 +289,22 @@ def run(days: tuple[int, ...], output: Path) -> dict:
     for day in days:
         if available_memory() < 2 * 1024**3:
             raise MemoryError("less than 2 GiB free before profile case")
-        print(f"starting isolated {day}-day retained profile", flush=True)
-        retained_result = _isolated_case(day, max_days, retain_snapshots=True)
+        print(f"starting isolated {day}-day online-summary profile", flush=True)
+        summary_result = _isolated_case(day, max_days, online_summary=True)
         print(f"starting isolated {day}-day lean profile", flush=True)
-        lean_result = _isolated_case(day, max_days, retain_snapshots=False)
-        retained, lean = retained_result["case"], lean_result["case"]
+        lean_result = _isolated_case(day, max_days, online_summary=False)
+        summary, lean = summary_result["case"], lean_result["case"]
         if source_summary is None:
-            source_summary = retained_result["source"]
-        if (retained["decision_steps"] != lean["decision_steps"]
-                or retained["trajectory_sha256"] != lean["trajectory_sha256"]):
-            raise RuntimeError(f"retained/lean native trajectories differ for {day} days")
-        cases.append({"retained": retained, "lean": lean,
+            source_summary = summary_result["source"]
+        if (summary["decision_steps"] != lean["decision_steps"]
+                or summary["trajectory_sha256"] != lean["trajectory_sha256"]):
+            raise RuntimeError(f"online-summary/lean native trajectories differ for {day} days")
+        cases.append({"online_summary": summary, "lean_execution": lean,
                       "trajectory_equivalent": True})
-        print(json.dumps({"days": day, "steps": retained["decision_steps"],
+        print(json.dumps({"days": day, "steps": summary["decision_steps"],
                           "trajectory_equivalent": True,
-                          "retained_rss_peak_delta_bytes": retained["rss_peak_delta_bytes"],
-                          "lean_rss_peak_delta_bytes": lean["rss_peak_delta_bytes"]}),
+                          "online_summary_rss_peak_delta_bytes": summary["rss_peak_delta_bytes"],
+                          "lean_execution_rss_peak_delta_bytes": lean["rss_peak_delta_bytes"]}),
               flush=True)
     source_files = (
         Path(__file__),
@@ -313,7 +314,7 @@ def run(days: tuple[int, ...], output: Path) -> dict:
         project / "packages/research/src/rles_research/metrics.py",
     )
     result = {
-        "schema": "rles.f7-synthetic-native-growth.v1",
+        "schema": "rles.f7-synthetic-native-growth.v2",
         "status": "PASS_SYNTHETIC_ENGINEERING_ONLY",
         "scope": "synthetic Train-only native-engine replay; no market data or registry access",
         "market_data_used": False, "test_data_used": False,
@@ -325,9 +326,11 @@ def run(days: tuple[int, ...], output: Path) -> dict:
         },
         "source": source_summary, "cases": cases,
         "measurement_note": (
-            "Online summary and lean cases run in independent child processes. Each child's "
-            "rss_start is measured after identical synthetic source generation; online-mode "
-            "peaks include per-barrier metric reduction and final report assembly."
+            "Online-summary-sink and lean-execution cases run in independent child processes. "
+            "The online summary callback consumes each compact snapshot without retaining a "
+            "per-barrier snapshot sequence. Each child's rss_start is measured after identical "
+            "synthetic source generation; online-mode peaks include per-barrier metric reduction "
+            "and final report assembly."
         ),
     }
     output.write_text(json.dumps(result, sort_keys=True, indent=2, allow_nan=False) + "\n",
@@ -341,15 +344,15 @@ def main() -> int:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--worker", action="store_true")
     parser.add_argument("--max-days", type=int)
-    parser.add_argument("--retain-snapshots", choices=("true", "false"))
+    parser.add_argument("--online-summary", choices=("true", "false"))
     args = parser.parse_args()
     if args.worker:
         if (args.output is not None or len(args.days) != 1 or args.max_days is None
-                or args.retain_snapshots is None
+                or args.online_summary is None
                 or not 1 <= args.days[0] <= args.max_days <= 90):
             parser.error("invalid isolated worker arguments")
         result = _worker_case(args.days[0], args.max_days,
-                              retain_snapshots=args.retain_snapshots == "true")
+                              online_summary=args.online_summary == "true")
         print(json.dumps(result, sort_keys=True, allow_nan=False))
         return 0
     if args.output is None:
