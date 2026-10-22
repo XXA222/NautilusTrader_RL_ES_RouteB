@@ -1,5 +1,9 @@
 # RouteB 审计整改：当前连续开发目标
 
+## 2026-10-23 最新续做：A04 legacy R4 账本损坏记录
+
+复核旧版 R4 失败报告的唯一 attempt 匹配时发现，账本中畸形 recipe/event-detail JSON 曾被静默跳过。现改为失败关闭并拒绝不完整账本视图；临时合成 SQLite 回归覆盖损坏配方和非对象事件 detail，合法单匹配恢复仍通过。对账器回归 **26 passed**，Ruff、py_compile、全仓 MyPy（225 files）通过；604-file source manifest identity `48815532670160883cc0f2f1c37a82aeab8603e6bd9a9a52ea5101bf0c911350`。证据位于 `docs/audit_evidence/20261023/reconcile_directory_scan_fail_closed_20261023.json`。无项目账本、市场、账户或正式评估数据访问。继续 A01–A14 代码审计。
+
 持续在独立工作区 `D:\Program Files\NautilusTrader_RL_ES_RouteB` 落实 [审计任务索引](DEVELOPMENT_GOALS_REVIEW_20261017.md) 中仍可实施的 A01–A14 工程整改。每轮从实际源码和开发执行记录继续，直接实现并完成必要回归；不能以审计、计划或文档更新替代代码工作。
 
 ## 执行约束

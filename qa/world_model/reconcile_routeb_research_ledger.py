@@ -455,9 +455,13 @@ def _matching_failed_legacy_r4(report: dict[str, Any], accesses: list[dict[str, 
             for attempt_key, recipe_encoded in attempts:
                 try:
                     recipe = _strict_json_loads(recipe_encoded)
-                except (TypeError, json.JSONDecodeError):
-                    continue
-                if not isinstance(recipe, dict) or recipe.get("fold_sha256") != fold_sha:
+                except (TypeError, UnicodeError, json.JSONDecodeError) as exc:
+                    raise ValueError(
+                        "legacy R4 trial attempt recipe is invalid JSON"
+                    ) from exc
+                if not isinstance(recipe, dict):
+                    raise ValueError("legacy R4 trial attempt recipe is not an object")
+                if recipe.get("fold_sha256") != fold_sha:
                     continue
                 events = connection.execute(
                     "SELECT event_key,status,detail_json FROM trial_attempt_event "
@@ -468,10 +472,14 @@ def _matching_failed_legacy_r4(report: dict[str, Any], accesses: list[dict[str, 
                 for position, (event_key, status, detail_encoded) in enumerate(events):
                     try:
                         detail = _strict_json_loads(detail_encoded)
-                    except (TypeError, json.JSONDecodeError):
-                        continue
+                    except (TypeError, UnicodeError, json.JSONDecodeError) as exc:
+                        raise ValueError(
+                            "legacy R4 trial attempt event detail is invalid JSON"
+                        ) from exc
                     if not isinstance(detail, dict):
-                        continue
+                        raise ValueError(
+                            "legacy R4 trial attempt event detail is not an object"
+                        )
                     if (event_key == "started" and status == "started"
                             and detail.get("access_key") == access_key
                             and detail.get("fold_hash") == fold_sha

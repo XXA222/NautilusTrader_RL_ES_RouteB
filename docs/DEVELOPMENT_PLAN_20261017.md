@@ -1977,3 +1977,13 @@ Expanded exact Decimal helpers below the default Emin while retaining the defaul
 **Verification:** injected permission-error, omitted-symlink, unreadable-failure/registration-receipt, corrupted identity, non-object identity, and `#`-path SQLite regressions pass. The full reconciler suite passes **26 tests**; Ruff passes for the two changed Python files; project MyPy passes for **225 source files**. Source manifest verifies **604 files**, identity `c080242137afcfa8ad4bcab0356345432f0d54ee27985123fa52c920abe362cc`. Evidence: `docs/audit_evidence/20261023/reconcile_directory_scan_fail_closed_20261023.json`. Temporary synthetic paths only; no project ledger or market/evaluation payload was accessed.
 
 **Next cursor:** continue the A01–A14 code-ready audit from current source. External authenticated cashflows, clean Hosted CI, independent Validation, new market-scope authorization, authentic depth, historical trial coverage, and M4.2 remain separate gates.
+
+## 2026-10-23 — A04 legacy R4 reconciler malformed ledger entries
+
+**Finding:** `_matching_failed_legacy_r4()` skipped malformed trial-attempt recipe JSON and malformed event-detail JSON. A corrupt sibling ledger row could therefore be omitted while the remaining attempt was still treated as the unique match for a legacy R4 failure receipt.
+
+**Fix:** malformed JSON and valid non-object values in any candidate recipe or its event detail now raise contextual `ValueError`; reconciliation cannot silently establish uniqueness from a partial ledger view. Added regression coverage by corrupting a temporary sibling attempt recipe and then its failure-event detail, verifying each is rejected, and restoring the synthetic rows to confirm the legitimate read-only reconciliation still works.
+
+**Verification:** `tests/world_model/test_reconcile_routeb_research_ledger.py` — **26 passed**; Ruff passed for the changed source and test; py_compile passed; project MyPy passed for **225 source files**. Source manifest verifies **604 files**, identity `48815532670160883cc0f2f1c37a82aeab8603e6bd9a9a52ea5101bf0c911350`. Evidence: `docs/audit_evidence/20261023/reconcile_directory_scan_fail_closed_20261023.json`. Only temporary synthetic SQLite records and report receipts were used; no project ledger, market, account, Validation, Test, or Holdout data was accessed.
+
+**Next cursor:** continue the dependency-satisfied A01–A14 source audit. External authenticated cashflows, clean Hosted CI, independent Validation, new market-scope authorization, authentic depth, historical trial coverage, and M4.2 remain separate gates.

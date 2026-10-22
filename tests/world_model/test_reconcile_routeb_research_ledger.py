@@ -645,6 +645,57 @@ def test_legacy_failed_r4_report_is_verified_from_terminal_ledger_only(tmp_path,
         status="failed", report_sha=failure["report_sha256"],
         detail={"error": "WorkerFailure", "test_payload_decoded": False})
 
+    # A malformed sibling attempt must not be silently discarded while the
+    # reconciler claims that the remaining valid attempt is a unique match.
+    sibling_key = research_access.register_routeb_r4_baseline_comparison_attempt(
+        label=label, candidate_id="R4_E3_HIERARCHY",
+        configuration={"training": {"seed": 32, "steps": 2}},
+        fold_sha256=fold_sha, feature_sha256="7" * 64, seed=32)
+    with sqlite3.connect(registry_path) as connection:
+        sibling_recipe = connection.execute(
+            "SELECT recipe_json FROM trial_attempt WHERE attempt_key=?",
+            (sibling_key,),
+        ).fetchone()[0]
+        connection.execute("DROP TRIGGER trial_attempt_no_update")
+        connection.execute(
+            "UPDATE trial_attempt SET recipe_json=? WHERE attempt_key=?",
+            ("{broken", sibling_key),
+        )
+    with pytest.raises(ValueError, match="attempt recipe is invalid JSON"):
+        build_plan(failure_path, registry_path)
+
+    with sqlite3.connect(registry_path) as connection:
+        connection.execute(
+            "UPDATE trial_attempt SET recipe_json=? WHERE attempt_key=?",
+            (sibling_recipe, sibling_key),
+        )
+    research_access.record_routeb_candidate_event(
+        sibling_key, event_key="started", status="started",
+        detail={"access_key": "0" * 64, "fold_hash": fold_sha,
+                "test_payload_decoded": False})
+    research_access.record_routeb_candidate_event(
+        sibling_key, event_key="failed", status="failed",
+        detail={"error": "WorkerFailure", "test_payload_decoded": False})
+    with sqlite3.connect(registry_path) as connection:
+        sibling_failed_detail = connection.execute(
+            "SELECT detail_json FROM trial_attempt_event "
+            "WHERE attempt_key=? AND event_key='failed'", (sibling_key,),
+        ).fetchone()[0]
+        connection.execute("DROP TRIGGER trial_event_no_update")
+        connection.execute(
+            "UPDATE trial_attempt_event SET detail_json=? "
+            "WHERE attempt_key=? AND event_key='failed'",
+            ("null", sibling_key),
+        )
+    with pytest.raises(ValueError, match="event detail is not an object"):
+        build_plan(failure_path, registry_path)
+    with sqlite3.connect(registry_path) as connection:
+        connection.execute(
+            "UPDATE trial_attempt_event SET detail_json=? "
+            "WHERE attempt_key=? AND event_key='failed'",
+            (sibling_failed_detail, sibling_key),
+        )
+
     plan = build_plan(failure_path, registry_path)
     assert plan.read_only is True
     assert plan.result_status == "failed"
