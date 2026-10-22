@@ -777,6 +777,24 @@ def test_unresolved_r4_access_fails_closed_on_corrupt_development_identity(tmp_p
         _unresolved_r4_accesses(registry_path)
 
 
+def test_unresolved_r4_access_supports_uri_reserved_registry_path_characters(tmp_path):
+    registry_path = tmp_path / "research#archive.sqlite"
+    registry = ProjectResearchRegistry(registry_path)
+    label = "routeb-fold-solusdt-r4-uri-path-v1"
+    key = digest(["test", label])
+    registry.reserve_fresh_development(
+        key=key, owner=digest(["owner", label]), market="SOLUSDT",
+        family="perpetual-market-v1", start_ns=100, end_ns=200,
+        identity={"label": label, "fold_sha256": "b" * 64},
+    )
+
+    unresolved = _unresolved_r4_accesses(registry_path)
+
+    assert len(unresolved) == 1
+    assert unresolved[0]["access_key"] == key
+    assert unresolved[0]["state"] == "reservation_without_attempts"
+
+
 def test_unresolved_r4_access_marks_unparseable_attempt_identity_ambiguous(tmp_path, monkeypatch):
     registry_path = tmp_path / "research.sqlite"
     registry = ProjectResearchRegistry(registry_path)

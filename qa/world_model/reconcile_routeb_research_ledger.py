@@ -16,6 +16,7 @@ import re
 from pathlib import Path
 import sqlite3
 from typing import Any
+from urllib.parse import quote
 
 from rles_data.core import digest, require_hash
 from rles_research.access import ProjectResearchRegistry
@@ -46,6 +47,11 @@ def _strict_json_loads(content: str | bytes | bytearray) -> Any:
     """Parse JSON while rejecting duplicate keys and non-standard constants."""
     return json.loads(content, object_pairs_hook=_json_object_without_duplicate_keys,
                       parse_constant=_reject_json_constant)
+
+
+def _read_only_sqlite_uri(path: Path) -> str:
+    """Build an SQLite file URI without interpreting path characters as URI syntax."""
+    return f"file:{quote(path.resolve().as_posix(), safe='/:')}?mode=ro"
 
 
 def _contains_r4_receipt_schema(text: str) -> bool:
@@ -158,7 +164,7 @@ def _read_development_accesses(registry_path: Path) -> list[dict[str, Any]]:
     if not registry_path.is_file():
         raise ValueError(f"research registry does not exist: {registry_path}")
     try:
-        with sqlite3.connect(f"file:{registry_path.resolve().as_posix()}?mode=ro", uri=True) as connection:
+        with sqlite3.connect(_read_only_sqlite_uri(registry_path), uri=True) as connection:
             rows = connection.execute(
                 "SELECT access_key,start_ns,end_ns,purpose,identity,state "
                 "FROM access WHERE purpose='development'"
@@ -355,7 +361,7 @@ def _matching_completed_legacy_r4(report: dict[str, Any], accesses: list[dict[st
     try:
         registry_file = Path(registry_path).resolve()
         with sqlite3.connect(
-                f"file:{registry_file.as_posix()}?mode=ro", uri=True) as connection:
+                _read_only_sqlite_uri(registry_file), uri=True) as connection:
             result_row = connection.execute(
                 "SELECT status,report_sha FROM development_result WHERE access_key=?",
                 (access_key,),
@@ -434,7 +440,7 @@ def _matching_failed_legacy_r4(report: dict[str, Any], accesses: list[dict[str, 
     try:
         registry_file = Path(registry_path).resolve()
         with sqlite3.connect(
-                f"file:{registry_file.as_posix()}?mode=ro", uri=True) as connection:
+                _read_only_sqlite_uri(registry_file), uri=True) as connection:
             row = connection.execute(
                 "SELECT status,report_sha FROM development_result WHERE access_key=?",
                 (access_key,),
@@ -556,7 +562,7 @@ def _r4_failure_attempts(registry_path: str | Path, label: str, fold_sha: str,
     path = Path(registry_path).resolve()
     protocol_id = f"{R4_PROTOCOL_PREFIX}{label}"
     try:
-        connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+        connection = sqlite3.connect(_read_only_sqlite_uri(path), uri=True)
         try:
             rows = connection.execute(
                 "SELECT a.attempt_key,a.candidate_id,a.feature_sha,a.seed,a.recipe_json "
@@ -992,7 +998,7 @@ def _unresolved_r4_accesses(registry_path: str | Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
     try:
-        connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+        connection = sqlite3.connect(_read_only_sqlite_uri(path), uri=True)
         try:
             rows = connection.execute(
                 "SELECT access_key,start_ns,end_ns,state,identity FROM access "
