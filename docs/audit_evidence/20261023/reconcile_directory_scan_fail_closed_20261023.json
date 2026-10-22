@@ -1,20 +1,21 @@
 {
   "schema": "rles.routeb.audit-evidence.v1",
   "audit_item": "A04 / research-ledger reconciler scan, recovery-summary, and SQLite URI integrity",
-  "finding": "Recursive report discovery had no explicit traversal error handling, silently omitted symlink directories, and dropped unreadable failure or registration receipts whose protocol could not be identified. The unresolved R4 recovery summary also skipped malformed access identity JSON. Read-only registry connections interpolated raw paths into SQLite URIs, so a valid `#` path character was parsed as URI syntax and queried the wrong SQLite file.",
-  "change": "Replaced implicit Path.rglob traversal with deterministic os.walk using followlinks=false and an error callback. Any traversal error or symlink directory that would be skipped raises a path-qualified ValueError before report parsing or ledger access. Unreadable/invalid failure or registration receipts are surfaced for rejection. The recovery summary raises a stable ValueError on malformed or non-object development access identity. All five read-only SQLite call sites now percent-encode URI path characters while preserving separators and drive colons.",
+  "finding": "Recursive report discovery had no explicit traversal error handling, silently omitted symlink directories, and dropped unreadable failure or registration receipts whose protocol could not be identified. Recovery summaries skipped malformed identity JSON, and the report reader allowed valid non-object JSON identities to pass. Read-only registry connections interpolated raw paths into SQLite URIs, so a valid `#` path character was parsed as URI syntax and queried the wrong SQLite file.",
+  "change": "Replaced implicit Path.rglob traversal with deterministic os.walk using followlinks=false and an error callback. Any traversal error or symlink directory that would be skipped raises a path-qualified ValueError before report parsing or ledger access. Unreadable/invalid failure or registration receipts are surfaced for rejection. Both development-access readers reject malformed or non-object identity values. All five read-only SQLite call sites now percent-encode URI path characters while preserving separators and drive colons.",
   "verification": {
-    "reconciler_regression_suite": "tests/world_model/test_reconcile_routeb_research_ledger.py: 25 passed.",
+    "reconciler_regression_suite": "tests/world_model/test_reconcile_routeb_research_ledger.py: 26 passed.",
     "scan_failure_regression": "Injected a subdirectory PermissionError and a directory symlink omitted by non-following traversal; dry-run and apply both fail closed before ledger access.",
     "receipt_read_regression": "Injected PermissionError when reading failure_receipt.json; discovery includes it, dry-run reports it as rejected, and apply refuses partial reconciliation.",
     "registration_read_regression": "Injected PermissionError when reading registration_receipt.json beside an otherwise unrelated failure receipt; discovery includes it, dry-run rejects it, and apply refuses partial reconciliation.",
     "recovery_identity_regression": "Injected malformed access.identity JSON after disabling the test database immutability trigger; unresolved-scope summary now rejects the damaged ledger instead of returning an empty result.",
+    "identity_type_regression": "Injected valid JSON null into an access identity; the report reader now rejects the row because the identity contract requires an object.",
     "sqlite_uri_path_regression": "An R4 reservation in a temporary registry path containing `#` is correctly read through an encoded read-only URI; the previous raw URI selected a different/empty database.",
     "ruff": "qa/world_model/reconcile_routeb_research_ledger.py and tests/world_model/test_reconcile_routeb_research_ledger.py passed.",
     "mypy": "mypy packages qa --follow-imports=silent: success, 225 source files.",
     "source_manifest": {
       "files": 604,
-      "identity_sha256": "33318829995bf944305a8ef9f41486571d81d6a2707f0bad459e4aa9dfc2feaf"
+      "identity_sha256": "c080242137afcfa8ad4bcab0356345432f0d54ee27985123fa52c920abe362cc"
     },
     "scope": "Synthetic temporary report directory and temporary SQLite path only. No project registry, market archive, account data, Validation, Test, or Holdout payload was accessed."
   }

@@ -8,6 +8,7 @@ import pytest
 
 from qa.world_model.reconcile_routeb_research_ledger import (
     _read_artifact_bytes,
+    _read_development_accesses,
     ReconciliationPlan,
     _report_paths,
     _unresolved_r4_accesses,
@@ -775,6 +776,24 @@ def test_unresolved_r4_access_fails_closed_on_corrupt_development_identity(tmp_p
 
     with pytest.raises(ValueError, match="invalid development access identity"):
         _unresolved_r4_accesses(registry_path)
+
+
+def test_development_access_reader_rejects_non_object_identity(tmp_path):
+    registry_path = tmp_path / "research.sqlite"
+    registry = ProjectResearchRegistry(registry_path)
+    label = "routeb-fold-solusdt-r4-scalar-identity-v1"
+    key = digest(["test", label])
+    registry.reserve_fresh_development(
+        key=key, owner=digest(["owner", label]), market="SOLUSDT",
+        family="perpetual-market-v1", start_ns=100, end_ns=200,
+        identity={"label": label, "fold_sha256": "c" * 64},
+    )
+    with sqlite3.connect(registry_path) as connection:
+        connection.execute("DROP TRIGGER access_identity_immutable")
+        connection.execute("UPDATE access SET identity=? WHERE access_key=?", ("null", key))
+
+    with pytest.raises(ValueError, match="invalid identity object"):
+        _read_development_accesses(registry_path)
 
 
 def test_unresolved_r4_access_supports_uri_reserved_registry_path_characters(tmp_path):

@@ -177,6 +177,8 @@ def _read_development_accesses(registry_path: Path) -> list[dict[str, Any]]:
             identity = _strict_json_loads(encoded)
         except (TypeError, json.JSONDecodeError) as exc:
             raise ValueError(f"access {key} has invalid identity JSON") from exc
+        if not isinstance(identity, dict):
+            raise ValueError(f"access {key} has invalid identity object")
         result.append({
             "access_key": key, "start_ns": start_ns, "end_ns": end_ns,
             "purpose": purpose, "identity": identity, "state": state,
