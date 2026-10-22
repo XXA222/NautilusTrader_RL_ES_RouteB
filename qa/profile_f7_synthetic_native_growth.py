@@ -308,6 +308,9 @@ def run(days: tuple[int, ...], output: Path) -> dict:
               flush=True)
     source_files = (
         Path(__file__),
+        project / "packages/data/src/rles_data/core.py",
+        project / "packages/data/src/rles_data/features.py",
+        project / "packages/gym_bridge/src/rles_gym_bridge/episode.py",
         project / "packages/gym_bridge/src/rles_gym_bridge/historical.py",
         project / "packages/orchestrator/src/rles_orchestrator/application.py",
         project / "packages/research/src/rles_research/native_metrics.py",
