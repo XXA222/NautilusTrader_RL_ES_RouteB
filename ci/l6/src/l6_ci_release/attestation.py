@@ -9,9 +9,28 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from typing import cast
 from pathlib import Path
 
 from .gates import EvidenceRef, GATE_CHECKS, GATES, PREREQUISITES, GateBlocked, verify_evidence
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"invalid JSON constant: {value}")
+
+
+def _loads_strict_json(raw: str) -> object:
+    return json.loads(raw, object_pairs_hook=_unique_json_object,
+                      parse_constant=_reject_json_constant)
 
 
 def _digest(payload: object) -> str:
@@ -82,7 +101,10 @@ def load_gate_reports(directory: Path, *, trusted_producers: set[str],
         if not path.is_file() or path.is_symlink() or path.stat().st_size>2_000_000:
             raise GateBlocked(f'{gate} report missing/unsafe or oversized')
         try:
-            reports[gate]=json.loads(path.read_text(encoding='utf-8'))
+            report = _loads_strict_json(path.read_text(encoding='utf-8'))
+            if not isinstance(report, dict):
+                raise ValueError('gate report must be a JSON object')
+            reports[gate] = cast(Mapping[str, object], report)
         except (OSError,ValueError) as exc:
             raise GateBlocked(f'{gate} report unreadable') from exc
     return verify_gate_reports(reports,trusted_producers=trusted_producers,require_paper=require_paper)
@@ -99,7 +121,7 @@ def main() -> int:
     if not src.is_file() or src.is_symlink() or src.stat().st_size>100_000:
         raise GateBlocked('reviewer trusted producer registry missing/unsafe')
     try:
-        producers=json.loads(src.read_text(encoding='utf-8'))
+        producers=_loads_strict_json(src.read_text(encoding='utf-8'))
     except (OSError,ValueError) as exc:
         raise GateBlocked('invalid reviewer producer registry') from exc
     if not isinstance(producers,list) or not producers or any(not isinstance(x,str) or not x for x in producers):

@@ -13,14 +13,29 @@ MINUTE_NS = 60_000_000_000
 
 
 class FrameLike(Protocol):
-    ts_close_ns: int
-    available_at_ns: int
-    instrument: str
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: float
+    @property
+    def ts_close_ns(self) -> int: ...
+
+    @property
+    def available_at_ns(self) -> int: ...
+
+    @property
+    def instrument(self) -> str: ...
+
+    @property
+    def open(self) -> float: ...
+
+    @property
+    def high(self) -> float: ...
+
+    @property
+    def low(self) -> float: ...
+
+    @property
+    def close(self) -> float: ...
+
+    @property
+    def volume(self) -> float: ...
 
 
 @dataclass(frozen=True, slots=True)

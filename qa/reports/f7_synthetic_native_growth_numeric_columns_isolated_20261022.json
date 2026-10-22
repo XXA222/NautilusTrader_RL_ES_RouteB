@@ -1,0 +1,60 @@
+{
+  "cases": [
+    {
+      "lean": {
+        "days": 90,
+        "decision_steps": 129597,
+        "elapsed_seconds": 76.556597399991,
+        "native_report": null,
+        "retain_report_snapshots": false,
+        "rss_end_bytes": 1052590080,
+        "rss_peak_bytes": 1099534336,
+        "rss_peak_delta_bytes": 510664704,
+        "rss_start_bytes": 588869632,
+        "trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f"
+      },
+      "retained": {
+        "days": 90,
+        "decision_steps": 129597,
+        "elapsed_seconds": 93.99860460008495,
+        "native_report": {
+          "fill_count": 2,
+          "funding_count": 0,
+          "metrics_sha256": "0c9bb2fbdbd241a24d05c4c9b6a3e864bf37db3ea5e78dc71eb9785ea9e50a45",
+          "snapshot_count": 129600,
+          "terminal_flat": true
+        },
+        "retain_report_snapshots": true,
+        "rss_end_bytes": 1073766400,
+        "rss_peak_bytes": 1118285824,
+        "rss_peak_delta_bytes": 528683008,
+        "rss_start_bytes": 589602816,
+        "trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f"
+      },
+      "trajectory_equivalent": true
+    }
+  ],
+  "market_data_used": false,
+  "measurement_note": "Retained and lean cases run in independent child processes. Each child's rss_start is measured after identical synthetic source generation; retained-mode peaks also include native_report.",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.14.7",
+  "research_registry_accessed": false,
+  "schema": "rles.f7-synthetic-native-growth.v1",
+  "scope": "synthetic Train-only native-engine replay; no market data or registry access",
+  "source": {
+    "event_count": 389258,
+    "generation_seconds": 14.737956600030884,
+    "rss_end_bytes": 595886080,
+    "rss_peak_bytes": 640868352,
+    "snapshot_sha256": "626685e11f28160ea015602ff1756331c2f80db2454bcc4d1ceb8d30306809e5"
+  },
+  "source_files_sha256": {
+    "packages/gym_bridge/src/rles_gym_bridge/historical.py": "fa9bb2a8d4f0870098866c01c9506e052410a6ae04a4b068b6d3be477bae0e48",
+    "packages/orchestrator/src/rles_orchestrator/application.py": "69b5d6b12b3969c45af4e0d5dbb062377f8a7b2c720dbb62eed05c7f25827441",
+    "packages/research/src/rles_research/metrics.py": "a1e8b44dd0d2b6751ee08ae318ccb8931c56bddbd43dc6c6ff2e807f25a60300",
+    "packages/research/src/rles_research/native_metrics.py": "e2d18d2f9550374c6725ea87ad7cdf87fd464bb8d006fca8409573bbe44ba4b0",
+    "qa/profile_f7_synthetic_native_growth.py": "0d003d293a29dece3b3e5b1d25bffe6b47ddb6d3e2b08ad4884567cc2c313b0c"
+  },
+  "status": "PASS_SYNTHETIC_ENGINEERING_ONLY",
+  "test_data_used": false
+}

@@ -1,0 +1,43 @@
+{
+  "cases": [
+    {
+      "legacy_peak_python_bytes": 92432,
+      "legacy_seconds": 0.001206899993121624,
+      "metric_values_match": true,
+      "observations": 1440,
+      "one_pass_peak_python_bytes": 2656,
+      "one_pass_seconds": 0.0013194000348448753,
+      "peak_ratio": 0.028734637355028562,
+      "time_ratio": 1.0932140544903577
+    },
+    {
+      "legacy_peak_python_bytes": 2766776,
+      "legacy_seconds": 0.03224830003455281,
+      "metric_values_match": true,
+      "observations": 43200,
+      "one_pass_peak_python_bytes": 68976,
+      "one_pass_seconds": 0.03865860006771982,
+      "peak_ratio": 0.024930099147889094,
+      "time_ratio": 1.198779471361238
+    },
+    {
+      "legacy_peak_python_bytes": 64736320,
+      "legacy_seconds": 0.7735834999475628,
+      "metric_values_match": true,
+      "observations": 1000000,
+      "one_pass_peak_python_bytes": 1643280,
+      "one_pass_seconds": 0.89740139991045,
+      "peak_ratio": 0.02538420472464298,
+      "time_ratio": 1.1600575761650553
+    }
+  ],
+  "comparison": "current one-pass metrics vs previous returns/downside/full-sort implementation",
+  "limitations": [
+    "synthetic metric-only profile; not Nautilus end-to-end RSS",
+    "does not include the upstream AccountFactsAccumulator return vector or factory snapshots"
+  ],
+  "measurement": "tracemalloc peak is captured separately from elapsed wall time",
+  "python": "3.12.10",
+  "schema": "rles.series-metrics-memory-profile.v1",
+  "sequence": "lazy deterministic ((index % 101) - 50) * 1e-7"
+}

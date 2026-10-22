@@ -19,6 +19,7 @@ for _package_root in (_ROOT / "packages").iterdir():
 
 from rles_data.core import DataError  # noqa: E402
 from rles_data.features import Scaler  # noqa: E402
+from rles_data.json_utils import loads_unique_json  # noqa: E402
 from rles_gym_bridge.historical import HistoricalEnvironmentFactory  # noqa: E402
 from rles_orchestrator.application import (  # noqa: E402
     _file_hash,
@@ -29,6 +30,16 @@ from rles_orchestrator.application import (  # noqa: E402
     rollout,
 )
 from rles_orchestrator.research_access import market_key, record_development  # noqa: E402
+
+
+def _load_json_object(path: Path) -> dict:
+    try:
+        value = loads_unique_json(path.read_bytes())
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise DataError(f"cannot read unambiguous gamma-probe JSON: {path}") from exc
+    if not isinstance(value, dict):
+        raise DataError(f"gamma-probe JSON root must be an object: {path}")
+    return value
 
 
 def available_memory() -> int:
@@ -78,7 +89,7 @@ def _assert_no_formal_overlap(registry_path: Path, market: str, windows: list[di
 def evaluate(plan_path: Path, output: Path) -> dict:
     plan_path = plan_path.resolve()
     plan_sha = _verify_file(plan_path)
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    plan = _load_json_object(plan_path)
     if (plan.get("schema") != "rles.discount-half-life-evaluation.v1"
             or plan.get("status") != "preregistered_before_any_model_diagnostic"):
         raise DataError("a frozen evaluation amendment is required")
@@ -92,9 +103,9 @@ def evaluate(plan_path: Path, output: Path) -> dict:
     manifest_sha = _verify_file(manifest_path)
     if manifest_sha != plan["trained_run_manifest_sha256"]:
         raise DataError("trained model manifest changed")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = _load_json_object(manifest_path)
     trained_root = (_ROOT / plan["trained_runs_root"]).resolve()
-    source_plan = json.loads(training_plan_path.read_text(encoding="utf-8"))
+    source_plan = _load_json_object(training_plan_path)
     bundle_root = (_ROOT / source_plan["source_bundle"]).resolve()
     if _verify_file(bundle_root / "bundle.json") != source_plan["source_bundle_sha256"]:
         raise DataError("frozen source bundle changed")
@@ -104,7 +115,7 @@ def evaluate(plan_path: Path, output: Path) -> dict:
         if _file_hash(path) != source_plan[key]["sha256"]:
             raise DataError("frozen source market or rules changed")
 
-    full_environment = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))["environment"]
+    full_environment = _load_json_object(bundle_root / "bundle.json")["environment"]
     full_environment = dict(full_environment)
     full_environment["market_path"] = str(market_path)
     full_environment["rules_path"] = str(rules_path)
@@ -150,7 +161,7 @@ def evaluate(plan_path: Path, output: Path) -> dict:
             learning_path = run_root / "R1-learning.json"
             if _verify_file(learning_path) != row["learning_sha256"]:
                 raise DataError("paired learning diagnostics changed after manifest freeze")
-            completed = json.loads((run_root / "COMPLETED.json").read_text(encoding="utf-8"))
+            completed = _load_json_object(run_root / "COMPLETED.json")
             if completed["bundle_sha256"] != row["bundle_sha256"]:
                 raise DataError("completed run marker does not bind the frozen bundle")
             run_records.append({**row, "run_root": str(run_root)})
@@ -204,7 +215,7 @@ def evaluate(plan_path: Path, output: Path) -> dict:
 
         returns = []
         for trained in run_records:
-            trained_bundle = json.loads((_ROOT / trained["bundle"]).read_text(encoding="utf-8"))
+            trained_bundle = _load_json_object(_ROOT / trained["bundle"])
             scaler_values = dict(trained_bundle["preprocessing"]["scaler"])
             scaler_values["mean"] = tuple(scaler_values["mean"])
             scaler_values["std"] = tuple(scaler_values["std"])

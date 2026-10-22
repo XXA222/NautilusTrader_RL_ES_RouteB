@@ -17,7 +17,7 @@ import numpy as np
 os.environ["JAX_PLATFORMS"] = "cpu"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
-from rles_world_model.cli import main as world_model_main
+from rles_world_model.cli import _read_json, main as world_model_main
 from rles_world_model.routeb.codec import OHLCVCodec, TrainOnlyStandardizer
 from rles_world_model.routeb.integration import prepare_forecast_context
 from rles_world_model.routeb.jax_gru import GRUConfig
@@ -98,7 +98,7 @@ def main() -> int:
         ])
         if status != 0:
             raise RuntimeError(f"train-prepared failed for {name}")
-        reports[name] = json.loads(report.read_text(encoding="utf-8"))
+        reports[name] = _read_json(str(report))
 
     left, right = reports["e1"], reports["e2"]
     shared = ("fold_hash", "train_scope_id", "train_npz_sha256", "train_examples",
@@ -247,7 +247,7 @@ def main() -> int:
     ])
     if status != 0:
         raise RuntimeError("fixed-sequence E2 NLL sanity training failed")
-    sanity = json.loads(sanity_report_path.read_text(encoding="utf-8"))
+    sanity = _read_json(str(sanity_report_path))
     nll_reports = sanity["worker_result"]["reports"]
     initial_nll = float(nll_reports[0]["pred_nll"])
     final_nll = float(nll_reports[-1]["pred_nll"])

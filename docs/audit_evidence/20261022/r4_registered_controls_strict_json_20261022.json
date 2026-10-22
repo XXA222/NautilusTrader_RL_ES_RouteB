@@ -1,0 +1,32 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A05 / registered R4 experiment-control JSON integrity",
+  "finding": "The registered R4 hierarchy and E2/E3 runners loaded frozen fold config, preregistered protocol, source-preparation receipt, and archive receipt with default json.loads. Duplicate object keys were silently resolved using the last value, even though the complete bytes were preregistered and hashed.",
+  "change": "Both registered runners, all five R4 Fold freezers, and the ADA/DOGE/SOL official-archive downloaders now use rles_data.loads_unique_json for persisted controls and receipts, rejecting duplicate keys recursively. The registered runners normalize IO, UTF-8, and JSON syntax failures to ValueError. Added a synthetic nested-duplicate and invalid-UTF-8 regression.",
+  "source_files": {
+    "qa/world_model/run_registered_r4_hierarchy.py": "bebfd3f4f5cb527ce4c1fc1f252a1bcbe3d4f82b91ffa374ebf9b7f9e250fe14",
+    "qa/world_model/run_registered_r4_e2_e3_comparison.py": "933feec2885c72b5cac1dc1701661d2212e45b1a0909e9fa0ea3944f2e852132",
+    "qa/world_model/freeze_routeb_r4_ada_fold.py": "2a132119dee8a0c54e48512a9296a09867da3333d8103e428cabb93e00a0cb76",
+    "qa/world_model/freeze_routeb_r4_bnb_fold.py": "7bba44e8fd2918e17ac2f7881fd9a85b954cf885449bd1278055854962403c7c",
+    "qa/world_model/freeze_routeb_r4_doge_fold.py": "3d01630049fa27203789c665ab11f9eafed90c664f8a24a579b6c392636e8557",
+    "qa/world_model/freeze_routeb_r4_sol_fold.py": "75b6e9aca98918b28b2974380e574095f20718c6cefddc174af8077bdbf7446d",
+    "qa/world_model/freeze_routeb_r4_xrp_fold.py": "ecea1082ce8252177e838a1e95b6c2576ad54ffe92ce6fc41839c3ee639a5ff9",
+    "qa/world_model/download_routeb_r4_ada_archives.py": "dd95e12527c7279cfc60f44e222fb2e4609dc91882a9f9dc6fe2318ea75e3ccc",
+    "qa/world_model/download_routeb_r4_doge_archives.py": "b116c3afb0100dfcb627ee3a664ad50bd37f5a686937e9b824fae8ff08d2d459",
+    "qa/world_model/download_routeb_r4_sol_archives.py": "b71a7a7831fbaf2ea79cfa2d476429ee3ee24ae2af620d8ee652bb5238d8815e"
+  },
+  "test_files": {
+    "tests/world_model/test_routeb_r4_path_pool.py": "4026dff105fa21bd7403760a002241121c89c1700131853385fbd4ff22793802"
+  },
+  "verification": {
+    "pytest": "tests/world_model/test_routeb_r4_path_pool.py tests/world_model/test_routeb_r4_baseline_comparison.py: 11 passed",
+    "ruff": "passed for both runners and test module",
+    "mypy": "packages qa: 224 source files, no issues; installed untyped-wheel diagnostic disabled",
+    "source_manifest": {
+      "file_count": 579,
+      "source_identity_sha256": "a4aa67a4ad0216f0333488b2ebd0bfee64100bd37cac93cab016d1a5853ad28c",
+      "verified": true
+    }
+  },
+  "scope": "Synthetic temporary JSON only; no market, ledger, Validation, Test, or Holdout data was read. Archive downloaders were linted and compiled but not run; QA-only scripts changed, so no package wheel rebuild was required."
+}

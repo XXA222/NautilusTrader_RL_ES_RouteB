@@ -5,13 +5,63 @@ from types import SimpleNamespace
 
 import pytest
 
-from rles_research.metrics import MetricsError, from_account_facts
+from rles_research.metrics import (
+    AccountFactsAccumulator,
+    MetricsError,
+    from_account_facts,
+    series_metrics,
+)
 from rles_research.native_metrics import account_rows, native_report, reconcile_linear_equity
+from rles_research.native_metrics import _ordered_snapshots
 from rles_research.statistics import (
     deflated_sharpe, deflated_sharpe_trial_count_sensitivity,
 )
 
 pytestmark = pytest.mark.unit
+
+
+def test_ordered_native_snapshots_reuse_sequence_and_unordered_input_is_stably_sorted():
+    first = SimpleNamespace(decision_ts_ns=1, currency="USDT", equity=Decimal("1000"), label="first")
+    same_time = SimpleNamespace(decision_ts_ns=1, currency="USDT", equity=Decimal("1001"), label="second")
+    later = SimpleNamespace(decision_ts_ns=2, currency="USDT", equity=Decimal("1002"), label="later")
+    ordered = [first, same_time, later]
+
+    assert _ordered_snapshots(ordered) is ordered
+    unordered = [later, first, same_time]
+    assert [item.label for item in _ordered_snapshots(unordered)] == ["first", "second", "later"]
+
+
+def test_series_metrics_preserves_exact_tail_statistics_without_return_copy():
+    from math import ceil, fsum, sqrt
+
+    values = (0.013, -0.021, 0.004, -0.008, 0.031, -0.002, 0.006, -0.014)
+
+    class OnePassReturns:
+        def __init__(self, samples):
+            self.samples = samples
+            self.iterations = 0
+
+        def __len__(self):
+            return len(self.samples)
+
+        def __iter__(self):
+            self.iterations += 1
+            if self.iterations > 1:
+                raise AssertionError("return sequence must be consumed in one pass")
+            return iter(self.samples)
+
+    returns = OnePassReturns(values)
+    observed = series_metrics(returns, periods_per_year=365.25, tail_quantile=0.25)
+    mean = fsum(values) / len(values)
+    variance = fsum((value - mean) ** 2 for value in values) / (len(values) - 1)
+    downside = sqrt(fsum(min(0, value) ** 2 for value in values) / len(values))
+    worst = sorted(values)[:ceil(len(values) * 0.25)]
+    assert returns.iterations == 1
+    assert observed["mean_period_return"] == pytest.approx(mean, rel=1e-14)
+    assert observed["std_period_return"] == pytest.approx(sqrt(variance), rel=1e-14)
+    assert observed["value_at_risk"] == pytest.approx(-worst[-1])
+    assert observed["conditional_value_at_risk"] == pytest.approx(-fsum(worst) / len(worst))
+    assert observed["sortino"] == pytest.approx(mean / downside * sqrt(365.25), rel=1e-14)
 
 
 def test_dsr_trial_count_sensitivity_brackets_dependence_without_claiming_correlation() -> None:
@@ -77,6 +127,54 @@ def test_account_metrics_only_compute_profit_factor_from_closed_trade_pnls() -> 
     assert with_closed_trades["closed_trade_count"] == 3
 
 
+def test_account_accumulator_retains_exact_returns_in_compact_double_storage() -> None:
+    accumulator = AccountFactsAccumulator(sample_interval_ns=10)
+    for index, equity in enumerate((100.0, 101.0, 99.0, 100.5)):
+        accumulator.add({
+            "ts_ns": index * 10,
+            "equity": equity,
+            "external_cashflow": 0.0,
+            "turnover_notional": 0.0,
+            "fee": 0.0,
+            "funding": 0.0,
+            "slippage_cost": 0.0,
+        })
+
+    assert accumulator.returns.typecode == "d"
+    assert accumulator.returns.itemsize == 8
+    expected = series_metrics(tuple(accumulator.returns), periods_per_year=525_600)
+    actual = accumulator.result(periods_per_year=525_600)
+    for name, value in expected.items():
+        assert actual[name] == value
+
+
+def test_streaming_account_accumulator_matches_exact_quantiles_without_return_buffer() -> None:
+    facts = tuple(
+        {"ts_ns": index * 10, "equity": 1_000.0 + index * 0.07
+         + ((index % 7) - 3) * 1.5, "external_cashflow": 0.0,
+         "turnover_notional": 10.0, "fee": 0.1, "funding": 0.0,
+         "slippage_cost": 0.0}
+        for index in range(40)
+    )
+    stored = AccountFactsAccumulator(sample_interval_ns=10)
+    streamed = AccountFactsAccumulator(sample_interval_ns=10, max_return_count=100)
+    for fact in facts[:20]:
+        stored.add(fact)
+        streamed.add(fact)
+    interim = streamed.result(periods_per_year=525_600)
+    assert interim["observations"] == 19
+    for fact in facts[20:]:
+        stored.add(fact)
+        streamed.add(fact)
+
+    expected = stored.result(periods_per_year=525_600)
+    actual = streamed.result(periods_per_year=525_600)
+
+    assert streamed.returns is None
+    assert actual == expected
+    assert len(streamed._return_metrics.worst_heap) == 5
+
+
 def test_account_metrics_reject_irregular_sampling() -> None:
     facts = tuple(
         {"ts_ns": timestamp, "equity": 1_000.0, "external_cashflow": 0.0,
@@ -120,12 +218,13 @@ def test_native_report_reassembles_incremental_fill_and_funding_facts() -> None:
         (snapshot(1, 1_000.0), snapshot(11, 999.9, (fill,)),
          snapshot(21, 999.7, (), (funding,))),
         fill_references={"order-1": Decimal("100")}, sample_interval_ns=10,
+        contract_multiplier=Decimal(1),
     )
     compact_report = native_report(
         (snapshot(1, 1_000.0), snapshot(11, 999.9, (fill,)),
          snapshot(21, 999.7, (), (funding,))),
         fill_references={"order-1": Decimal("100")}, sample_interval_ns=10,
-        include_account_rows=False,
+        include_account_rows=False, contract_multiplier=Decimal(1),
     )
 
     assert report["fills"] == [fill]
@@ -155,7 +254,8 @@ def test_native_money_rejects_malformed_grouping_separator(field: str, amount: s
     )
 
     with pytest.raises(MetricsError, match="invalid native ledger amount"):
-        account_rows(snapshots, fill_references={"order-1": Decimal("100")})
+        account_rows(snapshots, fill_references={"order-1": Decimal("100")},
+                     contract_multiplier=Decimal(1))
 
 
 def test_native_money_accepts_nautilus_decimal_amount_serialization() -> None:
@@ -171,9 +271,34 @@ def test_native_money_accepts_nautilus_decimal_amount_serialization() -> None:
                          **{**base, "fills": (fill,)}),
     )
 
-    rows = account_rows(snapshots, fill_references={"order-1": Decimal("100")})
+    rows = account_rows(snapshots, fill_references={"order-1": Decimal("100")},
+                        contract_multiplier=Decimal(1))
 
     assert rows[1]["fee"] == pytest.approx(1234.5)
+
+
+def test_positionless_fill_accounting_requires_rule_multiplier_and_scales_values() -> None:
+    opening = {"event_id": "open", "client_order_id": "open-order", "order_side": "BUY",
+               "last_qty": "1", "last_px": "102", "commission": "0.2 USDT"}
+    closing = {"event_id": "close", "client_order_id": "close-order", "order_side": "SELL",
+               "last_qty": "1", "last_px": "108", "commission": "0.216 USDT"}
+    base = dict(currency="USDT", funding=(), positions=(), orders=())
+    snapshots = (
+        SimpleNamespace(decision_ts_ns=1, equity=Decimal("1000"), fills=(), **base),
+        SimpleNamespace(decision_ts_ns=11, equity=Decimal("1003.8"), fills=(opening,), **base),
+        SimpleNamespace(decision_ts_ns=21, equity=Decimal("1011.584"), fills=(closing,), **base),
+    )
+    references = {"open-order": Decimal("100"), "close-order": Decimal("110")}
+
+    with pytest.raises(MetricsError, match="frozen rule contract multiplier"):
+        account_rows(snapshots, fill_references=references)
+
+    rows = account_rows(snapshots, fill_references=references,
+                        contract_multiplier=Decimal(2))
+    assert rows[1]["turnover_notional"] == pytest.approx(204)
+    assert rows[1]["slippage_cost"] == pytest.approx(4)
+    assert rows[2]["turnover_notional"] == pytest.approx(216)
+    assert rows[2]["slippage_cost"] == pytest.approx(4)
 
 
 def test_native_report_merges_same_timestamp_facts_and_uses_terminal_equity() -> None:
@@ -189,7 +314,7 @@ def test_native_report_merges_same_timestamp_facts_and_uses_terminal_equity() ->
         SimpleNamespace(decision_ts_ns=21, equity=999.7, fills=(), funding=(), **base),
     )
     report = native_report(snapshots, fill_references={"order-1": Decimal("100")},
-                           sample_interval_ns=10)
+                           sample_interval_ns=10, contract_multiplier=Decimal(1))
     assert len(report["account_rows"]) == 3
     assert report["account_rows"][1]["equity"] == 999.7
     assert report["metrics"]["total_fee"] == pytest.approx(0.1)
@@ -216,7 +341,7 @@ def test_native_report_counts_identical_event_ids_once_across_same_timestamp_bar
     )
 
     report = native_report(snapshots, fill_references={"order-1": Decimal("100")},
-                           sample_interval_ns=10)
+                           sample_interval_ns=10, contract_multiplier=Decimal(1))
 
     assert report["account_rows"][-1]["equity"] == 999.7
     assert report["metrics"]["total_fee"] == pytest.approx(0.1)
@@ -238,7 +363,7 @@ def test_same_timestamp_native_fill_identity_conflict_is_rejected() -> None:
     )
     with pytest.raises(MetricsError, match="conflicting facts"):
         native_report(snapshots, fill_references={"order-1": Decimal("100")},
-                      sample_interval_ns=10)
+                      sample_interval_ns=10, contract_multiplier=Decimal(1))
 
 
 def test_account_metrics_consume_one_shot_iterable_without_row_materialization() -> None:
@@ -276,9 +401,11 @@ def _linear_ledger():
 
     snapshots = (
         snapshot(1, "1000"),
-        snapshot(11, "997.800", fills[:1], positions=({"side": "LONG"},)),
+        snapshot(11, "997.800", fills[:1], positions=({"side": "LONG", "is_inverse": False,
+                                                       "multiplier": "1"},)),
         snapshot(11, "1005.192", fills[:2], funding),
-        snapshot(21, "1005.089", fills[2:3], positions=({"side": "SHORT"},)),
+        snapshot(21, "1005.089", fills[2:3], positions=({"side": "SHORT", "is_inverse": False,
+                                                         "multiplier": "1"},)),
         snapshot(21, "1007.989", fills, funding),
         snapshot(31, "1007.989", fills, funding),
     )
@@ -300,7 +427,8 @@ def test_account_rows_fail_closed_on_malformed_native_history_facts(field, repla
     target = snapshots[1 if field == "fills" else 2]
     malformed = SimpleNamespace(**{**vars(target), field: replacement})
     with pytest.raises(MetricsError, match=message):
-        account_rows((snapshots[0], malformed, snapshots[-1]), fill_references=references)
+        account_rows((snapshots[0], malformed, snapshots[-1]), fill_references=references,
+                     contract_multiplier=Decimal(1))
 
 
 def test_linear_ledger_reconciles_every_flat_barrier_without_double_costs() -> None:
@@ -382,6 +510,28 @@ def test_native_ledger_rejects_unverifiable_or_ambiguous_external_cashflow_facts
                            snapshots[2])
     with pytest.raises(MetricsError, match="duplicate native barriers"):
         account_rows(duplicate_timestamp, fill_references={}, external_cashflows=(flow,))
+
+
+@pytest.mark.parametrize("field, value, message", [
+    ("amount", 0.1, "exact decimal value"),
+    ("source_id", " statement ", "without surrounding whitespace"),
+])
+def test_native_ledger_rejects_lossy_cashflow_amount_and_ambiguous_source_id(
+    field: str, value: object, message: str,
+) -> None:
+    base = dict(currency="USDT", fills=(), funding=(), positions=(), orders=(),
+                liquidation_capability=True, liquidation_orders=())
+    snapshots = (
+        SimpleNamespace(decision_ts_ns=1, equity=Decimal("1000"), **base),
+        SimpleNamespace(decision_ts_ns=11, equity=Decimal("1001"), **base),
+    )
+    flow = {"event_id": "transfer-1", "decision_ts_ns": 11, "currency": "USDT",
+            "kind": "DEPOSIT", "amount": "1", "source_id": "statement",
+            "source_sha256": "e" * 64}
+    flow[field] = value
+
+    with pytest.raises(MetricsError, match=message):
+        account_rows(snapshots, fill_references={}, external_cashflows=(flow,))
 
 
 @pytest.mark.parametrize("kind", [[], {}, None, 1, "TRANSFER"])
@@ -474,6 +624,84 @@ def test_linear_reconciliation_checks_open_marked_equity_and_rejects_mismatch() 
     with pytest.raises(MetricsError, match="equity mismatch at open barrier"):
         reconcile_linear_equity((snapshots[0], bad_open, snapshots[-1]),
                                 rounding_per_event=Decimal(0))
+
+
+def test_linear_multiplier_is_applied_to_native_equity_turnover_and_slippage() -> None:
+    opened = {"event_id": "open-m2", "client_order_id": "open-order", "order_side": "BUY",
+              "last_qty": "2", "last_px": "100", "commission": "0.4 USDT"}
+    closed = {"event_id": "close-m2", "client_order_id": "close-order", "order_side": "SELL",
+              "last_qty": "2", "last_px": "103", "commission": "0.412 USDT"}
+    position = {"side": "LONG", "quantity": "2", "multiplier": "2",
+                "is_inverse": False, "settlement_currency": "USDT"}
+
+    def snapshot(ts, equity, fills=(), positions=(), mark=None):
+        return SimpleNamespace(
+            decision_ts_ns=ts, equity=Decimal(equity), currency="USDT", fills=fills,
+            funding=(), positions=positions, orders=(), mark=mark,
+        )
+
+    snapshots = (
+        snapshot(1, "1000"),
+        snapshot(11, "1007.6", (opened,), (position,), Decimal("102")),
+        snapshot(21, "1011.188", (closed,)),
+    )
+    references = {"open-order": Decimal("99"), "close-order": Decimal("104")}
+
+    rows = account_rows(snapshots, fill_references=references)
+    assert rows[1]["turnover_notional"] == pytest.approx(400)
+    assert rows[1]["slippage_cost"] == pytest.approx(4)
+    assert rows[2]["turnover_notional"] == pytest.approx(412)
+    assert rows[2]["slippage_cost"] == pytest.approx(4)
+
+    reconciliation = reconcile_linear_equity(snapshots, rounding_per_event=Decimal(0))
+    assert reconciliation["checked_open_barriers"] == 1
+    assert reconciliation["checked_flat_barriers"] == 2
+    assert reconciliation["contract_multiplier"] == "2"
+    assert reconciliation["rows"][1]["price_pnl_at_mark"] == "8"
+    assert reconciliation["rows"][1]["contract_multiplier"] == "2"
+    assert reconciliation["rows"][1]["expected_equity"] == "1007.6"
+    assert reconciliation["rows"][2]["expected_equity"] == "1011.188"
+
+
+def test_linear_account_rows_reject_multiplier_changes_within_report() -> None:
+    position_one = {"side": "LONG", "quantity": "1", "multiplier": "1", "is_inverse": False}
+    position_two = {"side": "LONG", "quantity": "1", "multiplier": "2", "is_inverse": False}
+    snapshots = (
+        SimpleNamespace(decision_ts_ns=1, equity=Decimal("1000"), currency="USDT",
+                        fills=(), funding=(), positions=(position_one,), orders=()),
+        SimpleNamespace(decision_ts_ns=2, equity=Decimal("1000"), currency="USDT",
+                        fills=(), funding=(), positions=(position_two,), orders=()),
+    )
+
+    with pytest.raises(MetricsError, match="contract multiplier changes"):
+        account_rows(snapshots, fill_references={})
+
+
+def test_explicit_contract_multiplier_must_match_native_position_facts() -> None:
+    position = {"side": "LONG", "quantity": "1", "multiplier": "2", "is_inverse": False}
+    snapshots = (SimpleNamespace(decision_ts_ns=1, equity=Decimal("1000"), currency="USDT",
+                                 fills=(), funding=(), positions=(position,), orders=()),)
+
+    with pytest.raises(MetricsError, match="explicit contract multiplier conflicts"):
+        account_rows(snapshots, fill_references={}, contract_multiplier=Decimal(1))
+
+
+@pytest.mark.parametrize(
+    ("position", "message"),
+    [
+        ({"side": "LONG", "is_inverse": True, "multiplier": "1"}, "inverse position"),
+        ({"side": "LONG", "multiplier": "1"}, "linear capability is unknown"),
+        ({"side": "LONG", "is_inverse": False}, "multiplier is missing"),
+        ({"side": "LONG", "is_inverse": False, "multiplier": "0"}, "must be positive"),
+    ],
+)
+def test_account_rows_require_explicit_linear_position_multiplier(position, message) -> None:
+    snapshots = (
+        SimpleNamespace(decision_ts_ns=1, equity=Decimal("1000"), currency="USDT",
+                        fills=(), funding=(), positions=(position,), orders=()),
+    )
+    with pytest.raises(MetricsError, match=message):
+        account_rows(snapshots, fill_references={})
 
 
 def test_linear_liquidation_facts_and_terminal_equity_reconcile_together() -> None:
@@ -607,7 +835,7 @@ def test_native_report_orders_facts_and_liquidation_state_by_snapshot_time() -> 
     )
     report = native_report(
         snapshots, fill_references={"buy-order": Decimal(100), "sell-order": Decimal(100)},
-        sample_interval_ns=10,
+        sample_interval_ns=10, contract_multiplier=Decimal(1),
     )
 
     assert [row["ts_ns"] for row in report["account_rows"]] == [1, 11, 21]

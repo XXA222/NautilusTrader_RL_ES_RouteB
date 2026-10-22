@@ -25,6 +25,7 @@ for _package_root in (_ROOT / "packages").iterdir():
 
 from rles_data.core import DataError  # noqa: E402
 from rles_data.features import Scaler  # noqa: E402
+from rles_data.json_utils import loads_unique_json  # noqa: E402
 from rles_gym_bridge.historical import HistoricalEnvironmentFactory  # noqa: E402
 from rles_orchestrator.application import (  # noqa: E402
     _file_hash,
@@ -36,6 +37,16 @@ from rles_orchestrator.application import (  # noqa: E402
     train,
 )
 from rles_orchestrator.research_access import record_development  # noqa: E402
+
+
+def _load_json_object(path: Path) -> dict:
+    try:
+        value = loads_unique_json(path.read_bytes())
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise DataError(f"cannot read unambiguous gamma-probe JSON: {path}") from exc
+    if not isinstance(value, dict):
+        raise DataError(f"gamma-probe JSON root must be an object: {path}")
+    return value
 
 
 def available_memory() -> int:
@@ -72,7 +83,7 @@ def run(plan_path: Path, output: Path) -> dict:
     root = _ROOT
     plan_path = plan_path.resolve()
     plan_sha = _verify_file(plan_path)
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    plan = _load_json_object(plan_path)
     if (plan.get("schema") != "rles.discount-half-life-probe.v2"
             or plan.get("status") != "preregistered_before_training"):
         raise DataError("a preregistered discount probe plan is required")
@@ -90,7 +101,7 @@ def run(plan_path: Path, output: Path) -> dict:
     if available_memory() < plan["minimum_start_free_bytes"]:
         raise MemoryError("less than the preregistered free-memory start threshold")
 
-    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = _load_json_object(bundle_root / "bundle.json")
     environment = dict(bundle["environment"])
     environment["market_path"] = str(market_path)
     environment["rules_path"] = str(rules_path)
@@ -160,7 +171,7 @@ def run(plan_path: Path, output: Path) -> dict:
                     "bundle_sha256": result_bundle_sha,
                     "training_coverage": result["training_coverage"],
                     "learning_sha256": _verify_file(run_output / "R1-learning.json"),
-                    "actor_hash": json.loads((run_output / "bundle.json").read_text(encoding="utf-8"))["actor"]["actor_hash"],
+                    "actor_hash": _load_json_object(run_output / "bundle.json")["actor"]["actor_hash"],
                 })
                 del result
                 gc.collect()
@@ -202,7 +213,7 @@ def run(plan_path: Path, output: Path) -> dict:
 
         for trained in records:
             trained_root = output / trained["bundle"]
-            trained_bundle = json.loads((trained_root / "bundle.json").read_text(encoding="utf-8"))
+            trained_bundle = _load_json_object(trained_root / "bundle.json")
             scaler_values = dict(trained_bundle["preprocessing"]["scaler"])
             scaler_values["mean"] = tuple(scaler_values["mean"])
             scaler_values["std"] = tuple(scaler_values["std"])

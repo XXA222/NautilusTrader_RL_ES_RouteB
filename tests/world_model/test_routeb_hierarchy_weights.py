@@ -47,3 +47,39 @@ def test_risk_horizon_weights_emphasize_long_horizon_losses() -> None:
 
     np.testing.assert_allclose(value, 8.3)
     np.testing.assert_allclose(gradient, np.asarray(weights) / sum(weights))
+
+
+def test_hierarchy_risk_diagnostics_split_terms_without_changing_objective() -> None:
+    jax = pytest.importorskip("jax")
+    jnp = pytest.importorskip("jax.numpy")
+    from rles_world_model.routeb.jax_hierarchy import (
+        _weighted_risk_channels, _weighted_risk_terms,
+    )
+    from rles_world_model.routeb.jax_model import _weighted_risk_loss
+
+    continuous = jnp.asarray([1.0, 2.0, 4.0, 8.0, 16.0])
+    barrier = jnp.asarray([0.2, 0.4, 0.8, 1.6, 3.2])
+    weights = (0.5, 0.5, 1.0, 1.5, 1.5)
+    continuous_nll, barrier_bce, combined = _weighted_risk_terms(
+        continuous, barrier, weights)
+
+    np.testing.assert_allclose(
+        continuous_nll, _weighted_risk_loss(continuous, jnp.zeros_like(barrier), weights))
+    np.testing.assert_allclose(
+        barrier_bce, _weighted_risk_loss(jnp.zeros_like(continuous), barrier, weights))
+    np.testing.assert_allclose(
+        combined, _weighted_risk_loss(continuous, barrier, weights))
+    np.testing.assert_allclose(continuous_nll + barrier_bce, combined, rtol=1e-6)
+
+    channel_by_horizon = jnp.stack((
+        continuous / 4.0,
+        continuous / 4.0,
+        continuous / 4.0,
+        continuous / 4.0,
+    ), axis=-1)
+    channel_losses = _weighted_risk_channels(channel_by_horizon, weights)
+    np.testing.assert_allclose(channel_losses.sum(), continuous_nll)
+
+    gradient = jax.grad(
+        lambda values: _weighted_risk_terms(values, barrier, weights)[2])(continuous)
+    np.testing.assert_allclose(gradient, np.asarray(weights) / sum(weights))

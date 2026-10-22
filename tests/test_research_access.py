@@ -37,6 +37,36 @@ def test_project_registry_rejects_malformed_scope_purpose(tmp_path, purpose):
         )
 
 
+@pytest.mark.parametrize(("field", "value"), [
+    ("market", "ETHUSDT "),
+    ("market", "ethusdt"),
+    ("family", "perpetual-market-v1 "),
+    ("family", "Perpetual-Market-V1"),
+])
+def test_project_registry_rejects_noncanonical_overlap_namespace(tmp_path, field, value):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    reserve(registry, purpose="development")
+    scope = dict(key="alias", owner="another-owner", market="ETHUSDT",
+                 family="perpetual-market-v1", start_ns=100, end_ns=200,
+                 purpose="development", identity={})
+    scope[field] = value
+    with pytest.raises(ValueError, match="valid research scope"):
+        registry.reserve(**scope)
+
+
+def test_project_registry_enables_sqlite_foreign_keys_for_every_transaction(tmp_path):
+    import sqlite3
+
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    with registry._tx() as connection:
+        assert connection.execute("PRAGMA foreign_keys").fetchone() == (1,)
+        with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY constraint failed"):
+            connection.execute(
+                "INSERT INTO development_result VALUES(?,?,?,?,?)",
+                ("missing-access", "completed", "a" * 64, "{}", 0),
+            )
+
+
 def test_wfo_development_reservation_freezes_curated_source_identity_before_payload_read(
     tmp_path, monkeypatch,
 ):
@@ -172,6 +202,108 @@ def test_wfo_query_intent_is_frozen_before_read_and_later_binds_selected_candida
         )
 
 
+def test_start_query_intents_rejects_string_instead_of_sequence_of_ids(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    identity = {
+        "protocol_id": "wfo-protocol", "query_id": "x",
+        "source_sha256": "a" * 64, "candidate_ids": ["candidate-a"],
+    }
+    registry.reserve_query_intent(
+        protocol_id="wfo-protocol", intent_id="x", owner="wfo-owner",
+        market="ETHUSDT", family="perpetual-market-v1", start_ns=1, end_ns=2,
+        purpose="test", identity=identity,
+    )
+
+    with pytest.raises(ResearchLockError, match="invalid project query intent start batch"):
+        registry.start_query_intents(
+            protocol_id="wfo-protocol", owner="wfo-owner", intent_ids="x",
+        )
+    registry.start_query_intents(
+        protocol_id="wfo-protocol", owner="wfo-owner", intent_ids=("x",),
+    )
+
+
+def test_formal_query_intent_rejects_duplicate_candidate_ids(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    identity = {
+        "protocol_id": "wfo-protocol", "query_id": "query-one",
+        "source_sha256": "a" * 64,
+        "candidate_ids": ["candidate-a", "candidate-a"],
+    }
+    with pytest.raises(ResearchLockError, match="invalid pre-read formal query intent"):
+        registry.reserve_query_intent(
+            protocol_id="wfo-protocol", intent_id="query-one", owner="wfo-owner",
+            market="ETHUSDT", family="perpetual-market-v1", start_ns=1, end_ns=2,
+            purpose="test", identity=identity,
+        )
+
+
+def test_formal_query_intent_rejects_padded_candidate_aliases(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    identity = {
+        "protocol_id": "wfo-protocol", "query_id": "query-one",
+        "source_sha256": "a" * 64,
+        "candidate_ids": ["candidate-a", "candidate-a "],
+    }
+    with pytest.raises(ResearchLockError, match="invalid pre-read formal query intent"):
+        registry.reserve_query_intent(
+            protocol_id="wfo-protocol", intent_id="query-one", owner="wfo-owner",
+            market="ETHUSDT", family="perpetual-market-v1", start_ns=1, end_ns=2,
+            purpose="test", identity=identity,
+        )
+
+
+def test_verify_query_intent_rejects_bool_timestamp_alias(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    identity = {
+        "protocol_id": "wfo-protocol", "query_id": "query-one",
+        "source_sha256": "a" * 64, "candidate_ids": ["candidate-a"],
+    }
+    registry.reserve_query_intent(
+        protocol_id="wfo-protocol", intent_id="query-one", owner="wfo-owner",
+        market="ETHUSDT", family="perpetual-market-v1", start_ns=1, end_ns=2,
+        purpose="test", identity=identity,
+    )
+    registry.start_query_intents(
+        protocol_id="wfo-protocol", owner="wfo-owner", intent_ids=("query-one",),
+    )
+
+    with pytest.raises(ResearchLockError, match="invalid formal query intent verification"):
+        registry.verify_query_intent(
+            protocol_id="wfo-protocol", intent_id="query-one", owner="wfo-owner",
+            market="ETHUSDT", family="perpetual-market-v1", start_ns=True, end_ns=2,
+            purpose="test", source_sha256="a" * 64, candidate_id="candidate-a",
+        )
+
+
+@pytest.mark.parametrize("identifier", [" ", " candidate-a "])
+def test_trial_attempt_rejects_blank_or_padded_identity_strings(tmp_path, identifier):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    with pytest.raises(ValueError, match="invalid project trial attempt identity"):
+        registry.register_trial_attempt(
+            attempt_key="attempt", protocol_id="protocol", candidate_id=identifier,
+            recipe={"steps": 64}, feature_sha="a" * 64, seed=1,
+        )
+
+
+def test_trial_attempt_event_rejects_padded_event_key(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    registry.register_trial_attempt(
+        attempt_key="attempt", protocol_id="protocol", candidate_id="candidate",
+        recipe={"steps": 64}, feature_sha="a" * 64, seed=1,
+    )
+    with pytest.raises(ValueError, match="invalid project trial attempt event"):
+        registry.record_trial_attempt_event(
+            "attempt", event_key=" started ", status="started",
+        )
+
+
+def test_trial_attempt_summary_rejects_padded_protocol_id(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    with pytest.raises(ValueError, match="protocol ID is required"):
+        registry.trial_attempt_summary(" protocol ")
+
+
 def test_project_trial_attempts_are_append_only_idempotent_and_report_seed_feature_recipe(tmp_path):
     import sqlite3
 
@@ -202,6 +334,19 @@ def test_project_trial_attempts_are_append_only_idempotent_and_report_seed_featu
             connection.execute("UPDATE trial_attempt SET seed=18 WHERE attempt_key='attempt-a'")
         with pytest.raises(sqlite3.IntegrityError, match="append-only"):
             connection.execute("DELETE FROM trial_attempt_event WHERE attempt_key='attempt-a'")
+
+
+def test_project_trial_attempt_summary_orders_same_candidate_seeds_stably(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    common = dict(
+        protocol_id="protocol-a", candidate_id="candidate-a",
+        recipe={"lr": "0.001"}, feature_sha="a" * 64,
+    )
+    registry.register_trial_attempt(attempt_key="seed-18", seed=18, **common)
+    registry.register_trial_attempt(attempt_key="seed-17", seed=17, **common)
+    summary = registry.trial_attempt_summary("protocol-a")
+    assert [(attempt["seed"], attempt["attempt_key"])
+            for attempt in summary["attempts"]] == [(17, "seed-17"), (18, "seed-18")]
 
 
 @pytest.mark.parametrize("status", [[], {}, None, 7, "unknown"])
@@ -258,6 +403,49 @@ def test_project_trial_lifecycle_retry_is_idempotent_after_terminal_event(tmp_pa
     )
     assert [event["status"] for event in registry.trial_attempt_events("attempt")] == [
         "registered", "started", "selected",
+    ]
+
+
+@pytest.mark.parametrize("status", ["failed", "interrupted"])
+def test_registered_trial_can_be_terminalized_before_start(tmp_path, status):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    registry.register_trial_attempt(
+        attempt_key="attempt", protocol_id="routeb-r4-baseline:fold",
+        candidate_id="candidate", recipe={"steps": 64},
+        feature_sha="a" * 64, seed=1,
+    )
+    registry.record_trial_attempt_event(
+        "attempt", event_key=f"registration-{status}", status=status,
+        detail={"test_payload_decoded": False},
+    )
+    assert [event["status"] for event in registry.trial_attempt_events("attempt")] == [
+        "registered", status,
+    ]
+
+
+def test_reopening_registry_rebuilds_trial_transition_trigger(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "project.sqlite"
+    registry = ProjectResearchRegistry(path)
+    registry.register_trial_attempt(
+        attempt_key="attempt", protocol_id="routeb-r4-baseline:fold",
+        candidate_id="candidate", recipe={"steps": 64},
+        feature_sha="a" * 64, seed=1,
+    )
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP TRIGGER trial_event_transition_guard")
+        connection.execute("""CREATE TRIGGER trial_event_transition_guard
+            BEFORE INSERT ON trial_attempt_event WHEN NEW.status='failed' BEGIN
+            SELECT RAISE(ABORT,'stale lifecycle trigger'); END""")
+
+    reopened = ProjectResearchRegistry(path)
+    reopened.record_trial_attempt_event(
+        "attempt", event_key="registered-run-failed", status="failed",
+        detail={"error": "preflight"},
+    )
+    assert [event["status"] for event in reopened.trial_attempt_events("attempt")] == [
+        "registered", "failed",
     ]
 
 
@@ -443,6 +631,28 @@ def test_started_access_is_never_refunded_and_receipt_detects_tampering(tmp_path
             connection.execute("UPDATE access SET state='reserved' WHERE access_key='one'")
 
 
+@pytest.mark.parametrize("key,token,identity", [
+    ([], "token", {}),
+    ("key", [], {}),
+    ("key", "token", []),
+])
+def test_consume_rejects_malformed_registry_arguments(tmp_path, key, token, identity):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    with pytest.raises(ValueError, match="evaluation access identity required"):
+        registry.consume(key, token, identity)
+
+
+@pytest.mark.parametrize("key,report_sha", [
+    ([], "a" * 64),
+    ("key", []),
+    ("key", "g" * 64),
+])
+def test_verify_report_rejects_malformed_registry_arguments(tmp_path, key, report_sha):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    with pytest.raises(ValueError, match="access key and report SHA256"):
+        registry.verify_report(key, report_sha)
+
+
 @pytest.mark.parametrize("split", ["test", "holdout"])
 @pytest.mark.parametrize("supplied_factory", [False, True])
 def test_ordinary_api_rejects_formal_reads_before_bundle_or_environment(tmp_path, monkeypatch, split, supplied_factory):
@@ -492,6 +702,47 @@ def test_development_entry_cannot_relabel_previously_reserved_holdout(tmp_path, 
                         lambda **_: pytest.fail("blocked before market/scaler access"))
     with pytest.raises(ResearchLockError, match="interval already"):
         application.prepare(config)
+
+
+def test_project_registry_rejects_duplicate_unresolved_inventory_key(tmp_path, monkeypatch):
+    import importlib.util
+    from hashlib import sha256
+    from types import SimpleNamespace
+
+    from rles_data.core import DataError
+
+    source_root = tmp_path / "repository"
+    inventory_path = (source_root / "docs" / "audit_evidence" / "20261016"
+                      / "legacy_research_access_v2.json")
+    inventory_path.parent.mkdir(parents=True)
+    (source_root / "pyproject.toml").write_text(
+        "[tool.uv.workspace]\nmembers = []\n", encoding="utf-8",
+    )
+    content = (
+        b'{"schema":"rles.legacy-research-access.v1","entries":[],'
+        b'"unresolved":[{"market":"BTCUSDT"}],"unresolved":[]}'
+    )
+    inventory_path.write_bytes(content)
+    inventory_path.with_suffix(".json.sha256").write_text(
+        sha256(content).hexdigest(), encoding="ascii",
+    )
+
+    source_file = (source_root / "packages" / "orchestrator" / "src"
+                   / "rles_orchestrator" / "research_access.py")
+    module_path = Path(research_access.__file__).resolve()
+    spec = importlib.util.spec_from_file_location("strict_inventory_test", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "__file__", str(source_file))
+    registry = SimpleNamespace(imported=None)
+    def import_inventory(entries, inventory_sha):
+        registry.imported = (entries, inventory_sha)
+    registry.import_inventory = import_inventory
+    monkeypatch.setattr(module, "ProjectResearchRegistry", lambda _path: registry)
+
+    with pytest.raises(DataError, match="duplicate JSON object key"):
+        module.project_registry()
+    assert registry.imported is None
 
 
 def test_registry_path_does_not_depend_on_output_or_cwd(tmp_path, monkeypatch):
@@ -606,6 +857,26 @@ def test_frozen_test_query_cannot_be_reopened_for_another_window_or_output(tmp_p
         )
 
 
+def test_frozen_test_query_rejects_malformed_component_without_type_error(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    shared = {
+        "protocol_id": "protocol", "query_id": "query", "split": "test",
+        "mode": "base", "source_sha": "a" * 64, "bundle_sha": "b" * 64,
+        "recipe_sha": "c" * 64, "code_sha": "d" * 64,
+    }
+    registry.reserve(
+        key="policy", owner="owner", market="ETHUSDT",
+        family="perpetual-market-v1", start_ns=100, end_ns=200,
+        purpose="test", identity={**shared, "component": "policy"},
+    )
+    with pytest.raises(ResearchLockError, match="query identity already reserved"):
+        registry.reserve(
+            key="malformed", owner="owner", market="ETHUSDT",
+            family="perpetual-market-v1", start_ns=100, end_ns=200,
+            purpose="test", identity={**shared, "component": ["baselines"]},
+        )
+
+
 def test_historical_inventory_records_overlap_atomically_without_authorizing_reads(tmp_path):
     import sqlite3
 
@@ -628,3 +899,151 @@ def test_historical_inventory_records_overlap_atomically_without_authorizing_rea
     with sqlite3.connect(registry.path) as connection:
         assert connection.execute("SELECT COUNT(*) FROM access").fetchone()[0] == 2
         assert connection.execute("SELECT COUNT(*) FROM inventory_import").fetchone()[0] == 1
+
+
+@pytest.mark.parametrize("entries", [None, ["not-an-entry"], [{}], [
+    {"key": "entry", "owner": "caller", "market": "ETHUSDT",
+     "family": "perpetual-market-v1", "start_ns": 1, "end_ns": 2,
+     "purpose": "development", "identity": {}},
+], [
+    {"key": [], "market": "ETHUSDT", "family": "perpetual-market-v1",
+     "start_ns": 1, "end_ns": 2, "purpose": "development", "identity": {}},
+], [
+    {"key": "x", "market": "ETHUSDT ", "family": "perpetual-market-v1",
+     "start_ns": 1, "end_ns": 2, "purpose": "development", "identity": {}},
+], [
+    {"key": "x", "market": "ETHUSDT", "family": "Perpetual-Market-V1",
+     "start_ns": 1, "end_ns": 2, "purpose": "development", "identity": {}},
+]])
+def test_historical_inventory_import_rejects_malformed_entry_shapes_atomically(
+    tmp_path, entries,
+):
+    import sqlite3
+
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    with pytest.raises(ValueError, match="legacy inventory"):
+        registry.import_inventory(entries, "a" * 64)
+    with sqlite3.connect(registry.path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM access").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM inventory_import").fetchone()[0] == 0
+
+
+def test_historical_inventory_import_requires_sha256_identity(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    with pytest.raises(ValueError, match="legacy inventory"):
+        registry.import_inventory([], "not-a-sha256")
+
+
+def test_historical_inventory_import_rejects_duplicate_access_keys_atomically(tmp_path):
+    import sqlite3
+
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    entry = dict(key="duplicate", market="ETHUSDT", family="perpetual-market-v1",
+                 start_ns=100, end_ns=200, purpose="development", identity={})
+    with pytest.raises(ValueError, match="duplicate access keys"):
+        registry.import_inventory([entry, dict(entry)], "a" * 64)
+    with sqlite3.connect(registry.path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM access").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM inventory_import").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("change", [
+    {"entry": None},
+    {"entry": {"key": "x", "market": "ETHUSDT", "family": "perpetual-market-v1",
+               "start_ns": 1, "end_ns": 2, "purpose": [], "identity": {}}},
+    {"entry": {"key": "x", "market": "ETHUSDT", "family": "perpetual-market-v1",
+               "start_ns": True, "end_ns": 2, "purpose": "test", "identity": {}}},
+])
+def test_legacy_inventory_parser_rejects_malformed_access_entry(change):
+    import json
+
+    from rles_data.core import DataError
+
+    entry = {"key": "x", "market": "ETHUSDT", "family": "perpetual-market-v1",
+             "start_ns": 1, "end_ns": 2, "purpose": "test", "identity": {}}
+    inventory = {
+        "schema": "rles.legacy-research-access.v1",
+        "entries": [change.get("entry", entry)], "unresolved": [],
+    }
+    with pytest.raises(DataError, match="invalid access entry"):
+        research_access._strict_inventory_json(json.dumps(inventory).encode("utf-8"))
+
+
+def test_legacy_inventory_parser_rejects_duplicate_access_keys():
+    import json
+
+    from rles_data.core import DataError
+
+    entry = {"key": "duplicate", "market": "ETHUSDT",
+             "family": "perpetual-market-v1", "start_ns": 1, "end_ns": 2,
+             "purpose": "development", "identity": {}}
+    inventory = {"schema": "rles.legacy-research-access.v1",
+                 "entries": [entry, dict(entry)], "unresolved": []}
+    with pytest.raises(DataError, match="duplicate access keys"):
+        research_access._strict_inventory_json(json.dumps(inventory).encode("utf-8"))
+
+
+def test_development_result_rejects_unhashable_status(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    with pytest.raises(ValueError, match="valid development result receipt"):
+        registry.record_development_result(
+            key="key", identity={}, status=[], report_sha="a" * 64,
+        )
+
+
+def test_evaluation_completion_rejects_non_string_report_digest(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    with pytest.raises(ValueError, match="report SHA256 required"):
+        registry.complete("key", "token", 7)
+
+
+def test_trial_attempt_summary_rejects_non_string_protocol_id(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    with pytest.raises(ValueError, match="protocol ID is required"):
+        registry.trial_attempt_summary(7)
+
+
+@pytest.mark.parametrize("recipe", [{1: "value"}, {"nested": {1: "value"}}])
+def test_trial_attempt_recipe_rejects_non_string_json_object_keys(tmp_path, recipe):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    with pytest.raises(ValueError, match="finite JSON data"):
+        registry.register_trial_attempt(
+            attempt_key="attempt", protocol_id="protocol", candidate_id="candidate",
+            recipe=recipe, feature_sha="a" * 64, seed=1,
+        )
+
+
+def test_project_registry_fails_closed_on_duplicate_persisted_formal_identity(tmp_path):
+    import sqlite3
+
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    identity = {"protocol_id": "protocol-a", "query_id": "query-a", "component": "policy"}
+    registry.reserve(
+        key="first", owner="run-a", market="ETHUSDT", family="perpetual-market-v1",
+        start_ns=100, end_ns=200, purpose="test", identity=identity,
+    )
+    with sqlite3.connect(registry.path) as connection:
+        # Emulate on-disk corruption by bypassing the application immutability trigger.
+        connection.execute("DROP TRIGGER access_identity_immutable")
+        connection.execute(
+            "UPDATE access SET identity=? WHERE access_key=?",
+            ('{"protocol_id":"protocol-a","protocol_id":"protocol-b",'
+             '"query_id":"query-a","component":"policy"}', "first"),
+        )
+
+    with pytest.raises(ResearchLockError, match="corrupted prior formal reservation identity"):
+        registry.reserve(
+            key="disjoint-query-reuse", owner="run-a", market="ETHUSDT",
+            family="perpetual-market-v1", start_ns=300, end_ns=400,
+            purpose="test", identity=identity,
+        )
+
+
+
+def test_legacy_inventory_parser_rejects_nonstandard_json_constant():
+    from rles_data.core import DataError
+
+    payload = (b'{"schema":"rles.legacy-research-access.v1",'
+               b'"entries":[],"unresolved":[{"identity":{"value":NaN}}]}')
+    with pytest.raises(DataError, match="invalid or ambiguous"):
+        research_access._strict_inventory_json(payload)

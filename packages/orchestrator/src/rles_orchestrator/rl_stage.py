@@ -23,6 +23,7 @@ from .transfer import (
     adapt_l4_distillation, adapt_l4_load, transfer,
 )
 from .workflow import ProviderStageOutput, StageContext, transfer_evidence_hash
+from .json_utils import loads_unique_json
 
 
 class RLStageExecutor:
@@ -125,7 +126,7 @@ class RLStageExecutor:
             if not path.is_file():
                 raise RuntimeError("A4 R1 resume is missing its durable E1 transfer evidence")
             payload = path.read_bytes()
-            raw = json.loads(payload.decode("utf-8"))
+            raw = loads_unique_json(payload.decode("utf-8"))
             if not isinstance(raw, dict) or set(raw) != {"result", "evidence_hash"}:
                 raise RuntimeError("durable E1 transfer evidence schema mismatch")
             value = raw["result"]
@@ -168,7 +169,7 @@ class RLStageExecutor:
             identity = sha256(payload).hexdigest()
             if marker.read_text(encoding="ascii") != identity:
                 raise RuntimeError("durable R1 learning diagnostics failed integrity verification")
-            record = json.loads(payload.decode("utf-8"))
+            record = loads_unique_json(payload.decode("utf-8"))
             if (not isinstance(record, dict)
                     or record.get("schema") not in {
                         "rles.r1-learning.v1", "rles.r1-learning.v2", "rles.r1-learning.v3",

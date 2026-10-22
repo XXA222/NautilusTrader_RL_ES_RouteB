@@ -1,0 +1,36 @@
+{
+  "project": "D:/Program Files/NautilusTrader_RL_ES_RouteB",
+  "finding": "A09/M4.1 lacked source-backed BTC/ETH/SOL current instrument metadata and cross-asset native precision/Funding/equity-unit acceptance.",
+  "source": {
+    "endpoint": "https://fapi.binance.com/fapi/v1/exchangeInfo",
+    "captured_server_time_utc": "2026-10-22T06:35:32.110Z",
+    "fixture": "tests/fixtures/binance_usdm_exchange_info_20261022.json",
+    "fixture_sha256": "4D400184CB16C8ADB9987C9F12C1C3A389A682BB4EC479DECBE1F452F57772A4",
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT"
+    ],
+    "selection": "Exact symbol records selected from the official current response; no historic archive implied."
+  },
+  "validation": {
+    "test": "tests/test_nautilus_adapter_smoke.py::test_official_usdm_current_rules_drive_precision_funding_and_quote_equity",
+    "focused_result": "3 passed",
+    "full_selector": "tests/test_nautilus_adapter_smoke.py",
+    "full_selector_result": "36 passed",
+    "adapter_source_and_installed_module_sha256": "f5aca5ac71e231a4af70e776893b0ecd17e267df3c0571041c71e5f499573276"
+  },
+  "coverage": [
+    "Loads tick size, LOT_SIZE step/min quantity, and MIN_NOTIONAL from each current source row.",
+    "Checks native base, quote, settlement currencies and instrument precision.",
+    "Executes an order at or above exchange minimum notional on all three instruments.",
+    "Applies a synthetic funding settlement and reconciles quote-currency adjustment and account equity in USDT."
+  ],
+  "limitations": [
+    "Funding event is synthetic; it validates engine unit/sign propagation, not historical funding rates or interval schedules.",
+    "Fees are set to zero in the harness; exchangeInfo does not establish user-specific maker/taker fee tiers.",
+    "Linear multiplier 1 is the configured base-asset quantity convention; historical instrument rule records still require their effective-date source.",
+    "No market-history, account-ledger, Validation, Test, or Holdout payload was read."
+  ],
+  "status": "Current snapshot engineering coverage closed; historical/account economic certification remains open."
+}

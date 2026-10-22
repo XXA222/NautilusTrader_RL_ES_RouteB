@@ -1,0 +1,50 @@
+{
+  "schema": "rles.f7-summary-snapshot-spool.v1",
+  "date": "2026-10-22",
+  "status": "PASS_SEMANTICS_OPT_IN_ONLY",
+  "finding": "The compact report series still retains O(n) barrier facts. A temporary disk-backed sequence preserves the existing multi-pass report implementation while reducing resident snapshot memory.",
+  "implementation": {
+    "flag": "spool_summary_snapshots",
+    "encoding": "Python marshal v4 over a tagged data-only representation; no pickle",
+    "index": "unsigned 64-bit byte offsets",
+    "lifecycle": "temporary file is closed after report assembly and factory snapshot reference is cleared",
+    "default_enabled": false
+  },
+  "long_window_profile": "qa/reports/f7_synthetic_native_growth_summary_marshal_20261022.json",
+  "verification": {
+    "days": 90,
+    "decision_steps": 129597,
+    "snapshot_count": 129600,
+    "trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f",
+    "baseline_trajectory_match": true,
+    "native_metrics_sha256": "0c9bb2fbdbd241a24d05c4c9b6a3e864bf37db3ea5e78dc71eb9785ea9e50a45",
+    "baseline_metrics_match": true,
+    "spooled_rss_peak_delta_bytes": 511631360,
+    "spooled_elapsed_seconds": 128.877168799983,
+    "lean_rss_peak_delta_bytes": 508731392,
+    "lean_elapsed_seconds": 76.595924199908,
+    "in_memory_compact_prior_rss_peak_delta_bytes": 519860224,
+    "in_memory_compact_prior_elapsed_seconds": 86.8062425000826,
+    "single_run_tradeoff": "about 8.2 MB lower RSS and about 42.1 seconds slower than the prior in-memory compact report run",
+    "source_targeted_tests": "2 passed",
+    "installed_targeted_tests_with_PYTHONPATH_unset": "2 passed",
+    "source_and_installed_full_selectors_before_final_opt_in_parameter": "192 passed each",
+    "ruff": "passed",
+    "mypy": "Success: no issues found in historical.py, application.py, and profile_f7_synthetic_native_growth.py",
+    "py_compile": "passed",
+    "source_manifest": {
+      "files": 596,
+      "source_identity_sha256": "0d377361d063e9700e77aa60de28604c096ba0cd9a5639e93bc1edd4e622e1a6",
+      "verified": true
+    },
+    "wheelhouse": {
+      "wheel_count": 12,
+      "all_match": true,
+      "gym_bridge_installed_sha256": "23492a0a7b2814f7a4f190e87f5e44b9d857dc255704daeff4456edd3c657802",
+      "orchestrator_installed_sha256": "9dd01216ee41c0e0244fae809d9eb52e3171bab418644fc10eed49f3d11e3a17",
+      "dependencies_compatible": 69
+    }
+  },
+  "decision_and_next_cursor": "Keep disk spooling explicit because the measured time cost is too high for the default. Implement an online Native summary accumulator to avoid O(n) snapshot retention and repeated disk decoding while preserving cashflow alignment, multiplier-aware reconciliation, liquidation facts, and exact tail metrics.",
+  "scope_limit": "Synthetic data only. No market archive, account, ledger, Validation, Test, or Holdout payload was accessed. RouteB only; main project and RouteA were not modified."
+}

@@ -22,7 +22,9 @@
 
 **当前工程续做：M0.1 原生金额解析及 M0.2 分发覆盖/manifest 范围缺口已修复。** A08 现在拒绝会被旧逗号清理逻辑改写的畸形 native money token；研究指标与原生清算回归 **83 passed**。分发 smoke 覆盖当前构建中的全部 **12 个 RLES 包**，包括 `rles_world_model`；source manifest 排除嵌套 `.tmp`、`.venv*` 和 `dist*` 生成目录。2026-10-18 又修复 GitHub 工作流硬编码 11 wheels 的问题，改为按 workspace 包数核对；wheel smoke 现逐项导入 12 包声明的 7 个 console/plugin entry points 并检查归档来源。当前 Windows 默认 selector **669 passed、1 CUDA-only skipped、102 deselected、46 warnings**，Ruff 和 `mypy packages qa`（148 files）通过；12 wheels/12 sdists 构建及 wheel manifest **all_match=true**，隔离 wheel/entry-point smoke 通过。M0.1 的真实现金流真实性与完整性、M0.2 clean Hosted Linux/Windows CI、M1.2 独立 Validation、M1.3 兼容阶段输入、M2.3 真实深度、M3.2 新授权独立覆盖仍受各自外部门禁限制；继续寻找其它已具备条件的代码缺口。
 
-**Route B WorldModel 状态：** 用户提供的 2026-10-17 工程设计稿要求先走 B0+B1。B0/B1 工程实现及 CPU smoke 已有 PASS 证据；本轮补齐 source-window 完整时间栅格及缺失/迟到 availability、replay/Fold dataset identity，并把 Fold 各段连续性与合法 purge/embargo 空档分开检查；`tests/world_model` 为 **17 passed**。B0 真实 Train/授权 Validation 证据仍 `BLOCKED`，所以 B2 不启动；JAX WSL2/CUDA 仍未实测。细节见 `docs/world_model/README_STAGE.md` 与 2026-10-18 执行记录。
+**2026-10-22 当前状态刷新：** F7/A07 的 RouteB 原生环境合成 1/30/90 天报告快照保留/精简对照均逐步轨迹一致，报告状态仅为 synthetic engineering evidence；峰值 RSS retained/lean 为 79.97/0.36、254.13/15.78、618.17/136.90 MiB。R1 学习工厂现关闭训练和内部 eval 不使用的报告快照，外部经济回放保留默认快照。焦点回归 4 passed；Ruff 通过、MyPy 212 source files clean。当前 source manifest 558 files，identity `967411f88f4dc2f589c293911c0fc11c2a74fa13c9fca5b69f9835be25036459`；12 wheel + 12 sdist `all_match=true`，RouteB 独立 app venv 的 12 package / 6 entry point provenance smoke 通过。本地结果仍不替代真实长窗账本与 clean Hosted CI。
+
+**Route B WorldModel 当前状态（2026-10-21 核验）：** 上述早期 B0/B1-only 状态已被后续开发取代，不再适用。B0–B3 的数据边界、RSSM/JAX 训练、checkpoint resume、E2 风险监督、R3 latent regularizer、R4 三尺度 E3/E3b/E4 与 F2 合成反馈均已有工程实现；RouteB 隔离 CPU/JAX 回归 **14 passed**，app 主环境组合回归中 JAX 项仍单列跳过。R2/R3 的多窗/消融已有登记 Validation 结果但候选未晋级；R4 AVAX run-03 完成后 E4 未通过全种子主门，E3 仍待与既有 recurrent baseline 做新增独立 Fold/跨标的验证。没有 Test/Holdout 解封、生产启用或经济认证。状态与剩余门槛见 `docs/world_model/V3_IMPLEMENTATION_STATUS.md`、`docs/ROUTEB_V22_CODE_AUDIT.md` 和 [当前连续开发游标](DEVELOPMENT_GOAL_CURRENT.md)。
 
 **最新工程进展：N04 supervised GPU quota 正常释放和后代保护回归已通过。** Windows Job 的 PID 清单同时含有 Python launcher parent 和实际 owner；现在释放前先确认共享 GPU 内核锁已空闲，并确认 Job 内其它活动 PID 都是 owner 的祖先，活动应用后代会令 quota release 拒绝。`tests/test_resource_recovery.py tests/test_compute_device.py` **27 passed**，Ruff 与 Windows MyPy 通过。N04 仍不构成 VRAM 上限或跨 OS-user/平台认证；下一项仍按任务表选择依赖已满足的真实代码缺口。
 
@@ -46,21 +48,21 @@ M1.1 已通过实现等价验收。M1.2 默认保留旧 `FitnessSpec`；新 `con
 
 | 顺序 / ID | 对应审计项 | 当前状态 | 依赖 / 完成证据 |
 |---|---|---|---|
-| 01 / M0.1 | A08 | PARTIAL，等待已认证且覆盖可证明的真实现金流采集 | 显式外部现金流输入、身份/时间/来源哈希校验、Binance USDⓈ-M `TRANSFER` JSON 导入及平仓/持仓权益核对已有回归；分页归档入口校验 inclusive 页段连续覆盖、越界事件与潜在截断，manifest 绑定每页原始 SHA；乱序 native snapshots 按时间统一排列 fill/Funding/清算生命周期；清算订单累计 `filled_qty` 拒绝回退/超量；Transfer JSON 单页/分页解码拒绝重复对象键；核心金额边界现在不再删除逗号，畸形数值失败关闭。指标/清算近期联合回归 **83 passed**；真实账户账本核验仍待独立类型化来源；来源 SHA 不认证账户真实性或查询完整性 |
-| 02 / M0.2 | A10 | PARTIAL，本地 Windows PR/静态/当前源码分发验收通过；Hosted clean Linux/Windows CI 待运行 | 工作流按 `packages/*/pyproject.toml` 数量核对 wheels、验证 source manifest、逐文件比较 wheel 与源码并对 `packages qa` 运行 mypy。manifest 覆盖整个 `qa`（排除生成报告），文本换行规范为 LF；当前验证 **321 files**。12 wheels/12 sdists、`all_match=true`；wheel smoke 覆盖 **12/12 包、7/7 entry points**。此前完整 Windows 套件 **767 passed、5 CUDA-only skipped**；本轮 manifest 定向回归、Ruff、`mypy packages qa` 通过。Hosted Linux/Windows CI 尚未运行；本机结果不替代平台 CI |
-| 03 / M0.3 | A04 | PARTIAL，项目权限与 Train-only 所有应用/worker 入口 scoped-reader 回归通过 | 权限回归覆盖身份、半开区间、并发、跨 owner/output 同 query 重开拒绝、崩溃/重试、历史导入、同 owner Test 重标拒绝、WFO 同 query 同 split/mode 组件例外及访问行身份/状态/删除保护；`validate`、Train-only `train`、`market-audit`、`diagnose-train`、R1 多环境 worker 和 E1/E2 候选 worker 都经 ledger-first scoped reader。最近新增 `purpose`、身份键与开发来源 `schema_version` 畸形输入校验，访问/WFO/CLI 回归 **128 passed**。正式 Evaluation 配置被 Train-only 入口读取前拒绝；登记启用前的历史访问覆盖仍无法证明 |
+| 01 / M0.1 | A08 | PARTIAL，等待已认证且覆盖可证明的真实现金流采集 | 显式外部现金流输入、身份/时间/来源哈希校验、Binance USDⓈ-M `TRANSFER` JSON 导入及平仓/持仓权益核对已有回归；分页归档入口校验 inclusive 页段连续覆盖、越界事件与潜在截断，manifest 绑定每页原始 SHA；乱序 native snapshots 按时间统一排列 fill/Funding/清算生命周期；清算订单累计 `filled_qty` 拒绝回退/超量；Transfer JSON 单页/分页解码拒绝重复对象键，`income` 必须是官方 schema 要求的精确十进制字符串；native cashflow 金额拒绝浮点，source ID 拒绝首尾空白；核心金额边界不再删除逗号，畸形数值失败关闭。 instrument_rule 的 maker/taker fee validator 现接受有符号有限值以保留合法 rebate，同时 margin rate 仍非负；数据事件/归档/历史工厂源码与隔离 wheel 选择器各 167 passed，12-wheel source match 通过。 共享 Event schema 还拒绝空白/首尾空白 instrument 标识；当前数据事件/归档/hash 选择器 source 与 wheel 各 77 passed，历史规则工厂各 2 passed。当前现金流/指标/清算/历史工厂联合回归 **200 passed**；12-wheel source match 与隔离 venv provenance 通过。真实账户账本核验仍待独立类型化来源；来源 SHA 不认证账户真实性或查询完整性 |
+| 02 / M0.2 | A10 | PARTIAL，本地 Windows 当前源码/分发检查通过；Hosted clean Linux/Windows CI 待运行 | 工作流按 `packages/*/pyproject.toml` 数量核对 wheels、验证 source manifest、逐文件比较 wheel 与源码并对 `packages qa` 运行 mypy。manifest 覆盖整个 `qa`（排除生成报告），文本换行规范为 LF；**当前 manifest 已核验 602 files**，identity `73470b5f5c08dc4a744c70849320a47c61d967462f4fac2d526b8e061513c934`；本次 M0.2 workflow lane fail-closed 变更已纳入该身份。最终源码 `uv build --all-packages` 构建 **12 wheels + 12 sdists**；wheel manifest **all_match=true**；12 个 wheel 已装入 RouteB app venv，provenance smoke 验证 **12/12 包、6/6 当前声明 entry points** 均从该 venv 导入。当前 Windows PR selector **721 passed、4 skipped、313 deselected、46 warnings**（跳过为 1 CUDA-only、3 JAX-only）；world-model app selector **204 passed、14 JAX-only skipped**；RouteB CPU/JAX hierarchy/quality **56 passed**。全仓 Ruff (`packages ci qa tests`) 与 `mypy packages qa`（217 source files）通过。12-wheel manifest `all_match=true`，RouteB app venv 的 12/12 包、6/6 entry points provenance smoke 通过。manifest verifier 现拒绝重复 JSON 键/非法 UTF-8，wheel verifier 还拒绝重复 ZIP 成员、重复 METADATA Name/Version、与项目版本不符的旧 wheel，并在 source/package path 上拒绝 symlink，symlink 排除先于文件 stat；新增 12 项边界回归通过，12-wheel source-match 复核通过。Hosted Linux/Windows CI 尚未运行；本机结果不替代平台 CI |
+| 03 / M0.3 | A04 | PARTIAL，WFO Train/Validation/Test/Holdout 各阶段现按授权 scope 解码；登记前历史访问覆盖仍不可证明 | 除既有 ledger-first Train/worker 入口外，WFO 不再在启动时解码至 Holdout；默认候选 Train、Validation、stress Validation、Test baseline、正式 Test、最终 Holdout 和 final retrain 均使用各自窗口 reader。正式 Test/Holdout 必须先消费 EvaluationAccess，再读取其 warmup→score-end 窗口。复合 bundle identity 绑定市场 marker snapshot 与 rules SHA。WFO+application CLI+historical factory 源码选择器 **163 passed、18 warnings**；Ruff/MyPy 通过。详见 `docs/audit_evidence/20261022/wfo_scoped_payload_boundaries_20261022.json`。项目账本/真实市场未读取，M0.3 仍需解决授权启用前历史覆盖不可证明 |
 | 04 / M1.1 | A01 | PASS，合成 Train-inner perpetual parity；E2 neutral and legacy restore regressions | 同一 frozen L4 actor 的基准 SoftRisk 与 `(1,1)` 逐步经济 trace、fills、Funding 和指标相同；新版 E2 中性候选的两代 checkpoint/resume 对照验证 evidence、durable ledger（5→10 requests）、预算与最终选择；pre-neutral E2 schema 3 恢复不插入额外候选（6 checkpoint tests passed） |
 | 05 / M1.2 | A02 | PARTIAL | v1 保持兼容；v2 候选级 lexicographic feasibility 排序令任何不可行 episode 的选择分数为 -2，并将可行分数严格约束在 (-1,1)，lane 拒绝越界可行响应。最新修复了有限负终值被旧输入校验挡在破产筛选之前的问题；constraint-priority v1/v2 与 installed worker 均覆盖 `final_equity < 0`。Compute-worker pool **30 passed**、native training/ES worker **29 passed**，独立 Validation 证据未满足，不能晋级新目标 |
-| 06 / M1.3 | A11 | PARTIAL（v2 三阶段分析器工程通过；完整原生经济报告缺输入） | v2 分析器验证 E1 genome/spec/hash/lane evidence 与 bundle lineage，要求 E1/R1/E2 报告绑定同一预注册及 market/rules/window/seed/environment/execution/hard-risk/scaler 身份，复算共同 native timestamps、成本对账和三个阶段差值；11 项合成回归通过。既有 R1-neutral→E2 配对保留，仓库暂无兼容 E1 bundle/三阶段报告，不重训或重放历史窗口制造输入 |
+| 06 / M1.3 | A11 | PARTIAL（v2 三阶段分析器工程通过；完整原生经济报告缺输入） | v2 分析器验证 E1 genome/spec/hash/lane evidence 与 bundle lineage，要求 E1/R1/E2 报告绑定同一预注册及 market/rules/window/seed/environment/execution/hard-risk/scaler 身份，复算共同 native timestamps、成本对账和三个阶段差值；本轮新增严格的硬风控计数/决策与订单数量边界、冻结起始余额与原生初始权益相符性、`max_abs_residual` 明细/摘要一致性、报告与 bundle/actor/sidecar 路径限制及解析后目录边界校验；再修复两版分析器 JSON 重复键静默覆盖、非法 UTF-8 异常外泄、NaN 对账残差绕过、bool 数字混入及报告计数越界，两个新版及兼容分析器定向回归 37 passed、1 skipped（仅系统禁止 symlink 创建）。既有 R1-neutral→E2 配对保留，仓库暂无兼容 E1 bundle/三阶段报告，不重训或重放历史窗口制造输入 |
 | 07 / M2.1 | A03 | PASS（T0/T1 全决策覆盖诊断） | 冻结的 90 天 Train-inner T0/T1 固定策略配对；90 个连续 rank-exclusive episode lane 完整覆盖 T0 的 129,597 个决策步（此前实现漏 87 步，现已修正）；T2 未开发，不属于当前验收范围；收益与成本仍是 scenario-only，T1 独立起始余额求和不构成复利收益或纯强制平仓因果效应 |
 | 08 / M2.2 | A12 | PASS（工程验收） | 可选逐决策 trace 贯通 Actor normalized raw action、SoftRisk/HardRisk target、计划、订单、fill、币种费用与权益变化；`CANCEL/WAIT` 行补充相关既有订单的最终状态、累计 fill 数量与事件 ID、费用和残量原因，submitted fill 与相关订单事实分开。原生订单身份拒绝空白及首尾空格、拒绝冲突重复事实并仅折叠完全相同快照；`FILLED`/`PARTIALLY_FILLED` 状态必须与累计成交量一致；当前 NautilusTrader 的 15 个 `OrderStatus` 变体均得到显式 trace 结果。无效拒单原因退回稳定状态标签，完整历史工厂回归 **79 passed**，Ruff/Windows MyPy 通过；最新默认 Windows selector 与当前 wheel 证据见执行计划 |
 | 09 / M2.3 | A06 | PASS（Bar Base/Stress 与合成部分成交压力工程回归）/ CONDITIONAL（真实 Quote/Depth） | Base 保留足量合成深度；Stress 的 `simulated_depth_fraction` 绑定配置身份并由原生 Nautilus 引擎实际部分撮合；同窗历史深度仍缺，因此不认证真实流动性 |
-| 10 / M2.4 | A07 | PASS（60/360 Train-inner 性能与经济/Replay 等价） | 工厂范围缓存可见批次与不可变 BarrierFrame；报告冷/热 Reset、吞吐、峰值 RSS 和缓存计数；72 项工厂/训练 Episode 回归通过；后续完整 `test_historical_factory.py` 通过 47 项 |
+| 10 / M2.4 | A07 | PASS（60/360 Train-inner 性能与经济/Replay 等价；合成 F7 1/30/90d retention/trajectory engineering） | 工厂范围缓存可见批次与不可变 BarrierFrame；报告冷/热 Reset、吞吐、峰值 RSS 和缓存计数。F7 在 RouteB Native 环境对照 retaining 与 lean 报告快照，1/30/90d 的 1,437/43,197/129,597 个决策轨迹逐步等价；RSS 证据和 4 项定向回归见 2026-10-22 开发计划。本次为合成工程证据，不认证真实历史市场 Native RSS/经济账本 |
 | 11 / M3.1 | A05 | PARTIAL | WFO 最终 DSR 报告现同时包含本 protocol 的候选证据和共享登记库跨 protocol 的 standalone attempt/recipe/feature/seed/lifecycle 汇总；注册 recipe/detail 将非有限或非 JSON 输入规范为 `ValueError`，seed 限定为 `[0, 2**32)`，防止超范围种子进入 SQLite。新增 Python 与 SQLite 双层生命周期迁移校验，允许 WFO 选择后的阶段恢复和 standalone failed/interrupted 恢复；直连数据库的迁移触发器回归也通过；研究访问/WFO/CLI 组合 **144 passed**，Ruff、Windows MyPy 通过。未登记的历史人工选择和失败尝试仍不可恢复，历史有效试验数保持 `not_estimated` |
 | 12 / M3.2 | A13 | PARTIAL（代码诊断通过，研究覆盖待授权） | 训练 diagnostics 分列 interaction samples、唯一决策 timestamp/revisit fraction、Episode overlap pair 和固定 volatility/trend/Funding regime bins；本轮 overlap pair 统计改为 O(n log n) sweep/heap，57 项 RL/native Episode 回归通过。Stage60 v4 使用复用 Train 日期；历史 `recorded` 标签不构成新读授权，独立市场覆盖仍缺合法的新授权协议 |
 | 13 / M3.3 | A14 | PASS（Train-inner 诊断）/ 未晋级 | 36 份冻结 Base/Stress 报告完成 51,732 步逐决策归因、固定状态分组和区块 bootstrap；权益对账通过，零 Validation/Test/Holdout 查询；冻结 RL 全部落入 deadband、无实际敞口/成交，未通过跨窗口基线优势门槛 |
 | 14 / M3.4 | A11/A14 | CONDITIONAL | 上述研究门禁及合格独立窗口；先小预算筛查，再决定路线扩张 |
-| 15 / M4.1 | A09 | DEFERRED | 当前 ETH NETTING 经济主线完成后开展通用标的元数据 |
+| 15 / M4.1 | A09 | PARTIAL（现行公开规则快照及三标的工程验收通过；历史规则/真实账户认证待续） | 已保存 Binance USDⓈ-M exchangeInfo 的 BTC/ETH/SOL 原始 symbol 记录，并以三标的原生引擎验收精度、数量步长、最低名义额、合成 Funding 结算和 USDT 权益单位（36 项 adapter smoke 通过）。快照仅对应 2026-10-22T06:35:32.110Z；历史生效规则、账户费率与真实账户流水仍未认证 |
 | 16 / M4.2 | A09 | DEFERRED | M4.1 及独立保证金/双向持仓合同与金标准数据 |
 
 依赖只约束依赖它的工作：远程 CI、历史规则或真实深度阻塞时，可以继续不依赖该证据的工程修复与明确标注的 Train-inner 诊断。M1 的 P0 工作不必等待真实深度或正式 Holdout。依赖未满足时不得开启正式晋级实验，也不得把可推进的工程项一起搁置。
@@ -160,3 +162,181 @@ git diff --check
 原目标中的协调器/learner 资源边界、硬退出恢复、必要 GPU 路线、干净环境复现与发布候选验收继续保留，细节沿用 [资源恢复目标](DEVELOPMENT_RESOURCE_RECOVERY_20261013.md) 和 [2026-10-16 开发计划](DEVELOPMENT_PLAN_20261016.md)。R1-learning v5 现按训练块记录 CPU RSS 与 CUDA allocator 的 allocated/reserved 峰值，实际 CUDA smoke 已验证数值关系；这不构成整机 VRAM 使用测量或硬件级显存上限。N04 的 Windows Job 仍只硬限 CPU 提交内存，其他平台及 VRAM 强隔离继续保留未认证边界。
 
 最终交付须能从干净源码与可分发小样本复现基础链路，给出当前实现、平台、研究与能力边界的独立状态。正式经济验收若因历史规则或独立样本阻塞，允许交付明确边界的工程成果，仍保持收益认证未完成。未经经济与语义门禁，不扩大模型/ES 搜索、不开放新 Holdout、不开展多币种或高杠杆主线。
+
+**2026-10-22 RouteB risk-channel diagnostic continuation:** the E3 synthetic terminal gradient decomposition now identifies unstandardized log-realized-volatility as the dominant risk-head channel (median gradient norm `315.44`, versus at most `8.40` for the other individual components). This prompted an additive trainer diagnostic that logs each risk channel while preserving the combined risk objective formula. RouteB’s latest package state is source manifest 569 files (`23c4ca9f79a1eab579d9528305f2d084f681369ea013d55e4143979871fbc94b`), 12/12 wheels source-matched, 56 focused JAX tests passed and 204/14 skipped in the app selector. No market objective was retuned; synthetic evidence does not identify a market cause. Remaining gates retain their existing evidence requirements.
+
+
+**2026-10-22 账本回执解析完整性补强：** Reconciler 所有 JSON 输入现拒绝重复对象键；目录扫描对含 R4 schema（含转义）的歧义 failure/registration 仍会登记为需拒绝的候选，避免消费过的失败 access 静默遗漏。聚焦测试 18 passed、Ruff/MyPy 通过；真实 RouteB ledger dry-run 42 accepted、0 rejected、0 unresolved，未写账或读取行情 payload。细节见 `docs/DEVELOPMENT_PLAN_20261017.md` 最新记录及 `docs/audit_evidence/20261022/reconcile_strict_json_20261022.json`。
+
+
+**2026-10-22 A04 历史访问清单完整性：** 项目 ledger 启动导入现在拒绝重复 JSON 键、无效 UTF-8 与未知 inventory schema；修复前的合成测试确认重复 `unresolved` 可以被空值覆盖。安装后 RouteB wheel 的研究权限+reconciler 回归 92 passed；12 wheel/source 比对及 12 包、6 entry points 来源验证通过。该工程修复不补造无法追溯的登记前历史，也不认证旧清单来源真实性。
+
+
+**2026-10-22 A04 最终本地验证：** 重新安装 RouteB 构建 wheel 后，PR marker selector **722 passed / 4 skipped**；world-model app suite **208 passed / 14 JAX-only skipped**；独立 CPU/JAX venv 的 world-model 非 CLI 部分 **207 passed**。四项 skip 的环境原因已分别覆盖：CUDA-only 仍需 GPU，JAX 项由 CPU/JAX venv 执行，CLI 在 app suite 执行。Hosted clean Linux/Windows CI 仍待交付运行。
+
+### A04 query-intent validation boundary — 2026-10-22
+
+The query-intent batch and verifier APIs now fail closed on scalar-string batches, boolean timestamps, invalid scope, and malformed required identifiers before lookup. Regressions were first observed failing against the prior implementation and now pass. Final installed-wheel selector: **165 passed**; 12 wheels match package sources; all 12 modules/6 entry points load from the isolated RouteB application venv; `uv pip check` confirms 69 compatible packages. Evidence: `docs/audit_evidence/20261022/query_intent_input_contract_20261022.json`. Next audit the remaining locally actionable A01–A14 inputs and authorization boundaries; externally hosted CI and external research evidence remain open.
+
+### A04 registry input hardening follow-up — 2026-10-22
+
+Fixed malformed status/digest handling that leaked `TypeError`, and protocol summaries that accepted a non-string ID as a successful empty result. Added regression tests, with the three new cases observed failing before the fix. The final installed-wheel selector passed **168 tests**; direct RouteB Ruff and MyPy checks passed; all 12 wheels match source and import from the isolated app venv, whose 69 dependencies are compatible. Evidence: `docs/audit_evidence/20261022/query_intent_input_contract_20261022.json`. Next continue with the first remaining locally actionable audit item; Hosted CI and research certification inputs remain external.
+
+### A04 frozen candidate-set uniqueness — 2026-10-22
+
+The project-level formal query intent API now rejects duplicate candidate IDs itself, keeping the frozen query identity unambiguous even if a caller bypasses the WFO runner. The pre-fix regression demonstrated acceptance and now passes. Final installed-wheel selector: **169 passed**; 12 wheels source-match; 12 modules/6 entry points load from RouteB's isolated app venv; 69 dependencies compatible. Evidence: `docs/audit_evidence/20261022/query_intent_input_contract_20261022.json`.
+
+### A05 trial-recipe JSON identity — 2026-10-22
+
+Canonical project-registry serialization now rejects non-string JSON object keys recursively before candidate recipe hashing and persistence, preventing Python's integer-key coercion from aliasing two distinct inputs into the same trial identity. Top-level and nested key regressions pass. Installed-wheel regression selector: **171 passed**; 12 wheels match source, the RouteB app dependency check and package provenance pass, Ruff/MyPy pass. Historical unregistered trials remain unrecoverable, so effective project-wide trial count stays `not_estimated`. Evidence: `docs/audit_evidence/20261022/query_intent_input_contract_20261022.json`.
+
+### A04 legacy-inventory schema and import boundary — 2026-10-22
+
+Strict parser and registry-level import now validate the exact historical access entry schema, timestamp types/range, allowed purpose, identity object, and lowercase source SHA-256 before import. This prevents malformed tracked inventory rows from escaping as raw `TypeError` or producing partial import state. Synthetic malformed-shape tests pass; the real tracked inventory parses read-only as 67 entries/0 unresolved. Final installed-wheel suite across access/WFO/CLI/fresh-fold/reconciler: **197 passed**. 12 wheels source-match; RouteB app dependencies/provenance, Ruff and MyPy pass. Evidence: `docs/audit_evidence/20261022/query_intent_input_contract_20261022.json`.
+
+### A04 paired Test component validation — 2026-10-22
+
+Malformed `component` JSON values in the paired Test identity path now return a normal reservation conflict instead of leaking `TypeError`. Regression was confirmed against the previous implementation. Final installed-wheel access/WFO/CLI/fresh-fold/reconciler suite: **198 passed**; 12 wheels source-match, import provenance and 69-package dependency checks pass, Ruff/MyPy pass. Evidence: `docs/audit_evidence/20261022/query_intent_input_contract_20261022.json`.
+
+### A04 registry read/verify/consume entry points — 2026-10-22
+
+`consume`, `verify_report`, and `development_result` now validate parameter types and SHA shape before SQLite. Previously malformed list arguments leaked `ProgrammingError`, while malformed report SHA values looked like ordinary receipt mismatches. Seven new negative cases cover these boundaries. Latest installed-wheel selector: **205 passed**; source/wheel match, package provenance, 69 dependencies, Ruff/MyPy pass. A proposed candidate-ID-wide identity rule was not retained because RouteB R4 legitimately scopes the same label across folds/seeds; attempt identity remains immutable. Evidence: `docs/audit_evidence/20261022/query_intent_input_contract_20261022.json`.
+
+### A05 deterministic trial attempt ordering — 2026-10-22
+
+The registry trial summary now uses an explicit `candidate_id, seed, attempt_key` order. A reverse-seed insertion regression showed the old output followed insertion order; the summary is now stable. Final installed-wheel access/WFO/CLI/fresh-fold/reconciler suite: **206 passed**; 12 source-matched wheels, app provenance/dependency checks, Ruff and MyPy pass. Evidence: `docs/audit_evidence/20261022/query_intent_input_contract_20261022.json`.
+
+
+### A04 duplicate legacy inventory access keys — 2026-10-22
+
+Repeated identical access keys in the strict legacy inventory were silently collapsed by idempotent registry insertion. The parser and direct registry import now both reject duplicate keys before import; malformed non-string keys fail with the registry's stable validation error. Regression first reproduced against the previous installed wheels. Final RouteB installed-wheel access/WFO/CLI/fresh-fold/reconciler selector: **209 passed**; Ruff/MyPy pass; 12 wheels/12 sdists build, all wheels match package sources, 12-package/6-entry-point provenance and 69-dependency checks pass. Source identity `b4b71e568a20e7d715e2c02693bb5755f656231d9d6d0efbe3e5b3b40d0268d4`. Evidence: `docs/audit_evidence/20261022/legacy_inventory_duplicate_access_keys_20261022.json`. No project ledger or market/evaluation data was accessed.
+
+### A10 world-model artifact JSON ambiguity — 2026-10-22
+
+World-model CLI requests, the repository base-commit marker, bundle manifests, JAX checkpoint sidecars, and research ArtifactStore JSON records reject duplicate keys recursively. Focused checks: **32 passed / 2 JAX-only skipped**; full app `tests/world_model`: **211 passed / 14 JAX-only skipped**; the exact dedicated CPU/JAX workflow selector **11 passed**; research artifact source and installed-wheel selectors **2 passed each**. Final wheel imports, Ruff/MyPy, and 571-file source manifest verification pass. Evidence: `docs/audit_evidence/20261022/world_model_duplicate_json_keys_20261022.json`. A10 remains `PARTIAL` until clean Hosted Linux/Windows CI is available.
+
+### A10 orchestrator and WFO JSON inputs — 2026-10-22
+
+Application config, resume state, WFO bundle/report/receipt/selection/baseline/Holdout readers now use the same recursive duplicate-key rejection policy. Source and installed-wheel application CLI/WFO selectors each pass **78 tests**; combined world-model + CLI + WFO source selector passes **289 tests / 14 app-environment JAX skips**; dedicated CPU/JAX selector passes 11. Ruff/MyPy pass; 571-file source manifest verifies. Evidence: `docs/audit_evidence/20261022/orchestrator_wfo_duplicate_json_keys_20261022.json`.
+
+### A10 SB3 checkpoint and frozen actor JSON — 2026-10-22
+
+SB3 checkpoint manifest/state JSON and L0 actor integrity/metadata now reject duplicate object keys recursively. Synthetic boundary regressions **2 passed**, restore parity **2 passed**, actor export/load parity **1 passed**; final RL wheel installed in RouteB app venv, 69 dependencies compatible, Ruff/MyPy pass. Source manifest: 573 files, `4c68bdf12bf3f90ca5ce88eb818a5e352da29681735c48b4b1af0aa1640c9f67`. Evidence: `docs/audit_evidence/20261022/sb3_checkpoint_actor_duplicate_json_20261022.json`.
+
+### A10 curated data and Binance archive JSON — 2026-10-22
+
+Curated markers/rows and Binance cached receipts/REST funding rows now reject duplicate JSON keys recursively. Source data selector **36 passed**; installed-wheel data + CLI + WFO selector **114 passed**; combined current-source world-model/CLI/WFO/SB3 JSON selector **291 passed, 14 app-JAX skipped**; exact CPU/JAX CI selector **11 passed**; Ruff/MyPy pass. 574-file manifest verifies at `aa24bc738e2a7db3a9cf1bd71e555910f404c6fca6e5492a608d3ec9f2cda8a5`. Evidence: `docs/audit_evidence/20261022/data_marker_archive_duplicate_json_20261022.json`.
+
+
+### A04 canonical research-scope namespace — 2026-10-22
+
+Registry overlap protection previously compared raw market/family strings, allowing an overlapping same-market development reservation under a padded market alias. Scope keys/owners/markets/families now reject surrounding whitespace; market identifiers must be uppercase and family identifiers lowercase. The strict inventory parser and direct registry import enforce identical normalization. Six alias regressions failed against the previous installed wheels. Final installed-wheel access/WFO/CLI/fresh-fold/reconciler suite: **215 passed**; Ruff/MyPy pass; 12 wheels/12 sdists build and all wheels match package source; provenance checks verify 12 packages/6 entry points and 69 dependencies. Source identity `1df7998039047073208d001fd97fa8e10f04ec9dfe1ac35e5677b546634a45b6`. Evidence: `docs/audit_evidence/20261022/registry_scope_namespace_canonicalization_20261022.json`. No project ledger or market/evaluation payload was accessed.
+
+
+### A04/A05 formal query and trial identifier contracts — 2026-10-22
+
+Formal candidate IDs, project trial IDs, lifecycle event keys, and protocol summary IDs now reject whitespace-only or surrounding-whitespace aliases before registration/lookup. Five regressions failed against the prior installed wheels. Final installed-wheel access/WFO/CLI/fresh-fold/reconciler selector: **220 passed**; Ruff/MyPy pass; 12 wheels/12 sdists match source, updated research wheel installed in RouteB's isolated app venv, provenance verifies 12 packages/6 entry points, and 69 dependencies are compatible. Source identity `978cbf8723d42aa28c0496f869d4e8119aa0237bdd51229d8ca4de81b6893d16`. Evidence: `docs/audit_evidence/20261022/research_identifier_contracts_20261022.json`. Synthetic identifiers and temporary SQLite only; no project ledger or market/evaluation data was accessed.
+
+
+### A04 duplicate legacy inventory access keys — 2026-10-22
+
+Repeated identical access keys in the strict legacy inventory were silently collapsed by idempotent registry insertion. The parser and direct registry import now both reject duplicate keys before import; malformed non-string keys fail with the registry's stable validation error. Regression first reproduced against the previous installed wheels. Final RouteB installed-wheel access/WFO/CLI/fresh-fold/reconciler selector: **209 passed**; Ruff/MyPy pass; 12 wheels/12 sdists build, all wheels match package sources, 12-package/6-entry-point provenance and 69-dependency checks pass. Source identity `b4b71e568a20e7d715e2c02693bb5755f656231d9d6d0efbe3e5b3b40d0268d4`. Evidence: `docs/audit_evidence/20261022/legacy_inventory_duplicate_access_keys_20261022.json`. No project ledger or market/evaluation data was accessed.
+
+
+## 2026-10-22 — A09/M0.1 positionless fill multiplier guard
+
+**Finding:** the account-row path could see fills without any position snapshots, then silently assume multiplier 1. For supported linear contracts with a multiplier above 1, turnover and slippage were understated. The main native report often caught this later through equity reconciliation, but direct account-row reports and compact reports without reconciliation could return wrong values.
+
+**Change:** account rows, native reports, and equity reconciliation accept the frozen rule multiplier. Production application, the zero-target probe, and F7 profile pass the multiplier from the historical factory. If fills exist and no position facts establish a multiplier, omitting the frozen multiplier now raises MetricsError; when both sources exist they must agree. Added multiplier-2 positionless round-trip coverage and a conflicting-rule regression.
+
+**Verification:** source and installed-wheel metrics/liquidation selectors each pass **96 tests**. The preceding cross-package source and installed-wheel selector each passed **246 tests** (18 upstream warnings). Ruff passed; MyPy passed packages qa (**224 source files**); RouteB .venv-win-app reports **69 compatible packages**. The Research and Orchestrator wheel modules match source byte-for-byte. Source manifest verifies **594 files**, identity 0f02c4421cb6da5db27a662bc6872c545b7f7a1ff36b5b53678c650858d6b670. Evidence: docs/audit_evidence/20261022/a09_m01_positionless_fill_multiplier_20261022.json.
+
+Only synthetic data was used. No market, account, ledger, Validation, Test, or Holdout payload was accessed. Authenticated rules, complete cashflow provenance, and hosted CI remain open. Continue the local A01–A14 audit.
+
+## 2026-10-22 — A09/M2 Bar Base/Stress multiplier-aware notional
+
+The Train-inner comparison's `filled_quote_notional` omitted the frozen contract multiplier. Its report now applies and records the multiplier supplied by `HistoricalEnvironmentFactory`; the combined synthetic/frozen-plan regression passes (**9 passed**), as do Ruff, py_compile, targeted MyPy, and the verified source manifest. No study data was accessed. Evidence: `docs/audit_evidence/20261022/a09_bar_cost_multiplier_20261022.json`.
+
+## 2026-10-22 — A08 aggTrades finite numeric boundary
+
+USD-M aggTrades now reject NaN/Infinity in price and quantity before Decimal comparisons or aggregation. Four synthetic ZIP regressions passed after reproducing the prior parser behavior. Archive + data-event tests: **34 passed** from source and **34 passed** against the isolated installed wheel. Ruff, py_compile, targeted MyPy, 12-wheel source matching, installed-module SHA equality, and the 69-package dependency check pass. No market archive was accessed. Evidence: `docs/audit_evidence/20261022/a08_aggtrade_nonfinite_values_20261022.json`.
+
+## 2026-10-22 — A08 archive CSV UTF-8 normalization
+
+Malformed UTF-8 in aggTrades, bookTicker, and kline CSVs now fails with the data package's stable `DataError`; streaming behavior is preserved. Synthetic source and installed-wheel selectors each pass **37 tests**. Ruff, py_compile, MyPy, 12-wheel source matching, installed module hash equality, and 69-package dependency check pass. No exchange archives were accessed. Evidence: `docs/audit_evidence/20261022/a08_archive_csv_utf8_errors_20261022.json`.
+
+## 2026-10-22 — A08 archive integer-field errors
+
+Malformed integer IDs/timestamps in bookTicker, fundingRate, and kline rows now fail with stable `DataError`. Synthetic archive/data-event selector: **40 source passed** and **40 installed-wheel passed**. Ruff, py_compile, MyPy, 12-wheel source match, installed module SHA equality, and 69-package dependency check pass. Only temporary synthetic ZIPs were used. Evidence: `docs/audit_evidence/20261022/a08_archive_integer_fields_20261022.json`.
+
+## 2026-10-22 — A08 aggTrades strict decimal lexemes
+
+aggTrades price/quantity now accept only ASCII unsigned fixed-point notation; underscores and Unicode digits can no longer normalize into apparently valid trade values. The archive/data-event selector passes **44 source tests** and **44 installed-wheel tests**. Ruff, MyPy, 12-wheel source matching, installed parser hash equality, and the 69-package dependency check pass. No exchange archives were read. Evidence: `docs/audit_evidence/20261022/a08_aggtrade_ascii_decimal_20261022.json`.
+
+## 2026-10-22 — A08 archive ASCII integer lexemes
+
+Archive IDs/timestamps now require unsigned ASCII digits; underscores, Unicode digits, and explicit plus signs fail with `DataError`. The archive/data-event selector passes **49 source tests** and **49 installed-wheel tests**. Ruff, py_compile, MyPy, 12-wheel source matching, installed parser hash equality, and the 69-package dependency check pass. Synthetic ZIPs only. Evidence: `docs/audit_evidence/20261022/a08_archive_ascii_integer_lexemes_20261022.json`.
+
+## 2026-10-22 — A08 archive ASCII decimal lexemes
+
+Archive market numeric CSV fields now reject underscore and Unicode-digit spellings that Python float() accepts. Source and installed-wheel selectors pass 53 tests each; all 12 wheels match current source, and the RouteB venv dependency check passes. The change limits malformed external tokens before training/backtest ingestion; it does not certify the correctness or provenance of exchange archives. Evidence: docs/audit_evidence/20261022/a08_archive_ascii_decimal_lexemes_20261022.json.
+
+## 2026-10-22 — A08 shared Event ASCII decimal lexemes
+
+Extended strict decimal-token checks from archive readers to the shared Event schema, closing equivalent malformed-string acceptance through other data ingestion paths. Source and installed-wheel selectors each pass 75 tests; all 12 wheels match current package source and RouteB's isolated venv checks clean. Evidence: docs/audit_evidence/20261022/a08_shared_event_ascii_decimal_lexemes_20261022.json.
+
+## 2026-10-22 — F7 compact report position-fact reuse
+
+Compact report snapshots share immutable position facts across barriers when unchanged. One-, 30-, and 90-day synthetic full native runs preserve trajectory and metrics; the 90-day retained RSS peak delta improved by 74 MB (15.68%). Current evidence is saved in the F7 audit JSON and paired profile reports. Snapshot retention remains linear, so F7 is still partial.
+
+## 2026-10-22 F7 online native return metrics
+
+The native report path with account-row output disabled no longer stores the complete return array. It now accumulates compounding, drawdown, dispersion, downside statistics, and exact lower-tail VaR/CVaR online. The tail heap uses a snapshot-derived upper bound and is trimmed on a copy, preserving exact final quantiles and safe intermediate result calls.
+
+Source and installed-wheel history/metric regression each pass **188 tests**; Ruff, py_compile, MyPy, all-12-wheel source matching, 12-module/6-entry-point import smoke, and the 69-package dependency check pass. The final synthetic 90-day native run covers 129,597 steps and has trajectory and native-metric hashes identical to the pre-change profile. Its RSS measurement is recorded as a single observation because repeated-run absolute peaks varied. Evidence: docs/audit_evidence/20261022/f7_online_native_metrics_20261022.json and f7_synthetic_native_growth_final_20261022.json.
+
+F7 remains **partial**: compact per-barrier snapshots are still retained in an O(n) sequence, and include_account_rows=true intentionally materializes report rows. A full real-history Train RSS/trajectory profile remains outstanding.
+
+### M0.1 online accumulator failure closure — 2026-10-22
+
+A malformed or conflicting snapshot could raise after partially mutating `NativeReportAccumulator`, but the same object still accepted later snapshots or finalization. Two regression cases reproduced both unsafe continuations against the old implementation. The accumulator now stores the original failure and refuses subsequent `add_snapshot()` and `finish()` calls, preserving the failure cause. The four-file M0.1 source selector and installed RouteB wheel selector each pass **197 tests**; Ruff, targeted MyPy, py_compile and diff checks pass. The rebuilt `rles-research` wheel is installed only in `.venv-win-app`; its module SHA matches source, all **12 wheels** match package sources, and **69 dependencies** are compatible. Source identity: 600 files, `348f837f699634f23d3d48891c6225c60ba4b0bafe9e6e9ec95912f8241403e3`. Evidence: `docs/audit_evidence/20261022/m01_online_accumulator_fail_closed_20261022.json`. Synthetic facts only. Real authenticated cashflow provenance remains an M0.1 external gate.
+
+### M0.2 reusable CI lane fail-closed validation — 2026-10-22
+
+The reusable workflow previously accepted arbitrary lane strings while every real job was conditionally restricted to `pr`, `nightly`, `gpu`, or `release`; a caller typo could therefore make all jobs skip. The new unconditional `validate-lane` job rejects unknown values, and CPU, JAX, GPU, and release jobs all depend on it. The dispatch options and validator's allowed set are regression-checked together. The new contract suite passes **12 tests**; Ruff, targeted MyPy, YAML parsing and diff checks pass. The built `rles-l6-ci-release` wheel contains the exact validator source; the current 12 RLES workspace wheels match their package sources. Source manifest: **602 files**, `73470b5f5c08dc4a744c70849320a47c61d967462f4fac2d526b8e061513c934`. Evidence: `docs/audit_evidence/20261022/m02_ci_lane_fail_closed_20261022.json`. This is local engineering evidence only; clean hosted Linux/Windows CI remains unrun.
+
+
+### M0.3 registry SQLite foreign-key enforcement — 2026-10-22
+
+`ProjectResearchRegistry` declared foreign keys for development-result receipts and trial-attempt events, but its per-transaction SQLite connections left enforcement disabled. A new raw-transaction regression proved an orphan receipt could be inserted before the fix. `_tx()` now enables `PRAGMA foreign_keys=ON` before opening each write transaction. Access/WFO/fresh-fold source and installed-wheel selectors each pass **167 tests**; Ruff, targeted MyPy, py_compile and diff checks pass. The existing RouteB registry was checked read-only and has **0 current foreign-key violations**. The rebuilt research wheel matches source, all **12 workspace wheels** match, and **69 app dependencies** are compatible. Source identity: 602 files, `9e4730fd2a0130f2c041a7a28fe50723b27b766eff5a80414b23682dbe6b181e`. Evidence: `docs/audit_evidence/20261022/m03_sqlite_foreign_key_enforcement_20261022.json`. This improves future registry integrity but cannot reconstruct unrecorded pre-registry access history; M0.3 remains partial.
+
+
+**A08 / 2026-10-22 archive importer instrument identity:** both Binance importer APIs reject a supplied empty or whitespace-padded instrument before output creation/fetch. The synthetic no-side-effect regression is included in the 97-test source and installed-wheel selector. All 12 rebuilt wheels match package source; installed provenance and 69-package compatibility pass. This closes only this ingress defect; the broader A08/M0.1 authenticated cashflow evidence remains partial.
+
+
+**A08 / 2026-10-22 archive ingress boundaries:** both Binance importer APIs reject supplied empty or whitespace-padded instrument IDs before output creation/fetch, and non-ASCII remote `.CHECKSUM` bytes map to contextual `DataError`. Both fixes are covered by the 98-test source and installed-wheel selector. All 12 rebuilt wheels match package source; installed module hash and provenance pass, as does the 69-package dependency check. This closes two importer error-boundary defects; authenticated cashflow evidence remains partial.
+
+
+**A08 / 2026-10-22 archive decode error boundaries:** malformed instrument IDs now fail before archive side effects; non-ASCII checksum content and invalid ZIP containers now become contextual `DataError`. The combined synthetic archive/data-event selector passes **100 tests against source and installed wheel**. All 12 rebuilt wheels match source; module hash, provenance, and 69-package dependency checks pass. These engineering fixes do not close authenticated account cashflow evidence.
+
+
+**A08 / 2026-10-22 archive cache size boundary:** an existing archive without a source receipt could bypass the size cap and be read fully before verification. The importer now checks the shared stream-specific limit via file metadata before reading. A synthetic regression proves rejection before `read_bytes`; the combined source and installed-wheel selector passes **100 tests**. The same wheelhouse has all 12 package wheels matching source.
+
+
+**M0.1 / 2026-10-22 canonical transfer identity inputs:** the paged and single-response importer now reject padded account scope and currency IDs before parsing, avoiding silent source-ID aliasing. Twelve regressions cover both APIs and surrounding/blank whitespace. The cashflow/metrics/liquidation source and installed-wheel selectors each pass **140 tests**; all 12 rebuilt wheels match source. This validates input semantics only; authenticated account export provenance remains outstanding.
+
+**M0.1 / 2026-10-22 exact cashflow amount strings:** batch native reporting and the online accumulator now use one parser for exact `int`/`Decimal` values and unsigned ASCII fixed-point strings. Separators, Unicode digits, `+`, surrounding whitespace, and exponent strings fail before accounting. Source and installed research-wheel combined selectors each pass **245 tests, 18 dependency warnings**; Ruff, targeted MyPy, py_compile, 12-wheel source matching, 12-module/6-entry-point provenance, and the 69-package dependency check pass. Evidence: `docs/audit_evidence/20261022/m01_native_cashflow_amount_lexemes_20261022.json`. M0.1 remains `PARTIAL`: parser correctness cannot authenticate the source account or prove the completeness of real transfer history.
+
+
+**2026-10-23 M0.1 续审：** 批量与在线路径现以精确 Decimal 累加同屏障现金流，低环境精度不再舍入；提款符号翻转不受环境精度影响；超出 4096 位对齐上限或 Decimal 算术范围时明确失败。源码与安装 wheel 联合选择器各 **249 passed / 18 warnings**，12-wheel manifest、安装 provenance 和 69 项依赖检查均通过。该工程缺口已修；M0.1 仍为 PARTIAL，等待已认证账户来源及可证明完整的真实转账历史。见 `docs/audit_evidence/20261023/m01_native_cashflow_sum_overflow_20261023.json`。
+
+
+**2026-10-23 F7 rollout 接口续审：** PR selector 首次发现普通报告分支不应读取 `factory.rows`，该访问已限制在无账户行在线摘要路径；mock factory 同时补齐必要的 `contract_multiplier`。Windows PR selector 现为 **855 passed / 4 skipped / 597 deselected**，RouteB 已安装 wheel 的 CLI/Native accumulator 定向选择器 **57 passed**。全仓 Ruff 与 MyPy（225 个源码文件）、12 wheel 源码匹配、导入 provenance、依赖检查通过。见 `docs/audit_evidence/20261023/f7_rollout_factory_interface_20261023.json`。Hosted clean CI 仍为 M0.2 外部验证门。
+
+**2026-10-23 M0.1 Decimal arithmetic follow-up:** the new precision-3 regression found native batch and online fill summary arithmetic could still round turnover/slippage. Both paths now use exact bounded Decimal operations. The 16-test native accumulator parity selector passes against source and a freshly rebuilt rles-research wheel; source and installed module SHA-256 match (966287f6cc96d7b3677894acbaf2cfe9d21083db5c316fc362aa18762aadd2a2). Source manifest: **604 files**, identity 6d723b79436a79535f10ef6e8efe326e7f300b662781d756cda1a4c35ddf5607. The broad Windows selector has not been rerun after this focused change. Evidence: docs/audit_evidence/20261023/m01_native_fill_decimal_context_20261023.json.
+
+
+**2026-10-23 M0.1 reconciliation follow-up:** low caller Decimal precision also rounded native position quantity and linear-equity reconciliation. Batch and online reconciliation now use exact bounded operations throughout the ledger and valuation. The combined Native/accounting/history selector passes **251 tests in source and 251 against the rebuilt research wheel**, with 18 upstream warnings in each run; targeted Ruff/MyPy pass and installed/source module hashes match. Source manifest: **604 files**, identity `eae1a07e7bdb04d4c9ae7fed5c90d1a22cb925bb4e109b683d645e24b7992b24`. Evidence: docs/audit_evidence/20261023/m01_native_equity_reconciliation_decimal_context_20261023.json. Real authenticated transfer provenance and complete account history remain external M0.1 gates.
+
+
+**2026-10-23 M0.1 exponent-boundary follow-up:** exact Decimal helpers now avoid underflowing representable values and clear inherited rounding flags; any unavoidable rounding fails explicitly. The five-file Native/accounting/history selector passes **252 tests against source and 252 against the rebuilt research wheel**, with 18 upstream warnings each. Ruff, target MyPy and diff checks pass; source/wheel module SHA-256 matches. Source manifest: **604 files**, identity `b9d91a34cbc084e995e42ddd6d5aa93135e93b0b73c757051787f93d05030292`. Evidence: docs/audit_evidence/20261023/m01_native_decimal_range_boundaries_20261023.json. Authenticated account source and transfer completeness remain external M0.1 gates.

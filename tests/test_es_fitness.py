@@ -76,6 +76,9 @@ def test_constraint_priority_ranks_profitable_flat_and_losing_episodes_after_fea
             split="train_inner", initial_equity=100.0, final_equity=final_equity,
             step_log_returns=(step_return,), drawdowns=(max(0.0, -step_return),),
             risk_intervention_rate=intervention_rate, tail_fraction=1.0,
+            insolvency=final_equity <= 0, margin_facts_known=True,
+            maintenance_margin_breach=False,
+            native_liquidation_detected=False,
         )
 
     profitable = decide(110.0, 0.1)
@@ -90,7 +93,9 @@ def test_constraint_priority_ranks_profitable_flat_and_losing_episodes_after_fea
     transiently_insolvent = spec.evaluate_episode(
         split="train_inner", initial_equity=100.0, final_equity=105.0,
         step_log_returns=(0.05,), drawdowns=(0.0,), risk_intervention_rate=0.0,
-        tail_fraction=1.0, insolvency=True,
+        tail_fraction=1.0, insolvency=True, margin_facts_known=True,
+        maintenance_margin_breach=False,
+        native_liquidation_detected=False,
     )
     assert transiently_insolvent.feasible is False
     assert transiently_insolvent.score == -2.0
@@ -98,22 +103,58 @@ def test_constraint_priority_ranks_profitable_flat_and_losing_episodes_after_fea
     margin_breach = spec.evaluate_episode(
         split="train_inner", initial_equity=100.0, final_equity=100.0,
         step_log_returns=(0.0,), drawdowns=(0.0,), risk_intervention_rate=0.0,
-        tail_fraction=1.0, maintenance_margin_breach=True,
+        tail_fraction=1.0, insolvency=False, margin_facts_known=True,
+        maintenance_margin_breach=True,
+        native_liquidation_detected=False,
     )
     liquidation = spec.evaluate_episode(
         split="train_inner", initial_equity=100.0, final_equity=100.0,
         step_log_returns=(0.0,), drawdowns=(0.0,), risk_intervention_rate=0.0,
-        tail_fraction=1.0, native_liquidation_detected=True,
+        tail_fraction=1.0, insolvency=False, margin_facts_known=True,
+        maintenance_margin_breach=False,
+        native_liquidation_detected=True,
     )
     assert margin_breach.score == liquidation.score == -2.0
     assert margin_breach.rejection_reason == "maintenance_margin_breach_detected"
     assert liquidation.rejection_reason == "native_liquidation_detected"
 
 
+@pytest.mark.parametrize("omitted", [
+    "insolvency", "maintenance_margin_breach", "native_liquidation_detected",
+])
+def test_constraint_priority_rejects_missing_native_feasibility_facts(omitted: str) -> None:
+    spec = ConstraintPriorityFitnessSpec()
+    facts = {
+        "split": "train_inner", "initial_equity": 100.0, "final_equity": 101.0,
+        "step_log_returns": (0.01,), "drawdowns": (0.0,),
+        "risk_intervention_rate": 0.0, "tail_fraction": 1.0,
+        "insolvency": False, "margin_facts_known": True,
+        "maintenance_margin_breach": False,
+        "native_liquidation_detected": False,
+    }
+    facts.pop(omitted)
+    with pytest.raises(ValueError, match="explicit Boolean values"):
+        spec.evaluate_episode(**facts)
+
+
+@pytest.mark.parametrize("margin_facts_known", [None, False])
+def test_constraint_priority_rejects_unknown_native_margin_facts(margin_facts_known: bool | None) -> None:
+    with pytest.raises(ValueError, match="explicit Boolean values|must be known"):
+        ConstraintPriorityFitnessSpec().evaluate_episode(
+            split="train_inner", initial_equity=100.0, final_equity=101.0,
+            step_log_returns=(0.01,), drawdowns=(0.0,), risk_intervention_rate=0.0,
+            tail_fraction=1.0, insolvency=False, margin_facts_known=margin_facts_known,
+            maintenance_margin_breach=False, native_liquidation_detected=False,
+        )
+
+
 def test_constraint_priority_is_bounded_and_does_not_penalize_hard_risk_interventions():
     spec = ConstraintPriorityFitnessSpec()
     facts = dict(split="train_inner", initial_equity=100.0, final_equity=1e100,
-                 step_log_returns=(1e100,), drawdowns=(0.0,), tail_fraction=1.0)
+                 step_log_returns=(1e100,), drawdowns=(0.0,), tail_fraction=1.0,
+                 insolvency=False, margin_facts_known=True,
+                 maintenance_margin_breach=False,
+                 native_liquidation_detected=False)
     no_intervention = spec.evaluate_episode(**facts, risk_intervention_rate=0.0)
     many_interventions = spec.evaluate_episode(**facts, risk_intervention_rate=1.0)
     assert no_intervention.score == many_interventions.score == pytest.approx(1.0)
@@ -126,7 +167,9 @@ def test_constraint_priority_classifies_negative_terminal_equity_as_insolvency(s
     decision = spec.evaluate_episode(
         split="train_inner", initial_equity=100.0, final_equity=-5.0,
         step_log_returns=(-1.0,), drawdowns=(1.0,), risk_intervention_rate=0.0,
-        tail_fraction=1.0,
+        tail_fraction=1.0, insolvency=True, margin_facts_known=True,
+        maintenance_margin_breach=False,
+        native_liquidation_detected=False,
     )
 
     assert decision.feasible is False
@@ -149,12 +192,16 @@ def test_feasibility_first_scores_stay_strictly_inside_selection_bounds() -> Non
     profitable = spec.evaluate_episode(
         split="train_inner", initial_equity=100.0, final_equity=1e100,
         step_log_returns=(1e100,), drawdowns=(0.0,), risk_intervention_rate=0.0,
-        tail_fraction=1.0,
+        tail_fraction=1.0, insolvency=False, margin_facts_known=True,
+        maintenance_margin_breach=False,
+        native_liquidation_detected=False,
     )
     losing = spec.evaluate_episode(
         split="train_inner", initial_equity=100.0, final_equity=1.0,
         step_log_returns=(-1e100,), drawdowns=(1.0,), risk_intervention_rate=0.0,
-        tail_fraction=1.0,
+        tail_fraction=1.0, insolvency=False, margin_facts_known=True,
+        maintenance_margin_breach=False,
+        native_liquidation_detected=False,
     )
 
     assert profitable.feasible and losing.feasible
@@ -184,7 +231,10 @@ def test_three_fitness_protocols_compare_the_same_deterministic_episode_facts():
     no_intervention_scores = legacy_scores(no_intervention_penalty)
     constraint_scores = {
         name: constraint_priority.evaluate_episode(
-            split="train_inner", initial_equity=100.0, tail_fraction=0.5, **facts,
+            split="train_inner", initial_equity=100.0, tail_fraction=0.5,
+            insolvency=name == "insolvent", margin_facts_known=True,
+            maintenance_margin_breach=False,
+            native_liquidation_detected=False, **facts,
         ).score for name, facts in candidates.items()
     }
     assert legacy_scores_by_candidate["flat"] > legacy_scores_by_candidate["profitable"]

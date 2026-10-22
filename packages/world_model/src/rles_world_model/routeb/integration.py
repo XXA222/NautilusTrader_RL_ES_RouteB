@@ -180,7 +180,8 @@ def prepare_forecast_context(*,visible_history:tuple[Candle,...],
 def prepare_fold_forecast_batch(*,fold_replay:MarketReplay,fold,
         frozen_scaler:TrainOnlyStandardizer,train_scope_id:str,train_npz_sha256:str,
         output_context_npz:Path,output_request_json:Path,horizon:int,n_paths:int,
-        seed:int,anchor_interval_minutes:int=15,context_lookback:int=128)->dict:
+        seed:int,anchor_interval_minutes:int=15,context_lookback:int=128,
+        anchor_start_ns:int|None=None)->dict:
     """Materialize one causal, ordered Validation-anchor batch for the JAX worker.
 
     ``fold_replay`` must come from the registered Fold reader and end at
@@ -207,7 +208,9 @@ def prepare_fold_forecast_batch(*,fold_replay:MarketReplay,fold,
             or type(n_paths) is not int or not 2<=n_paths<=1024
             or type(seed) is not int or seed<0
             or type(anchor_interval_minutes) is not int or anchor_interval_minutes<1
-            or type(context_lookback) is not int or context_lookback<3):
+            or type(context_lookback) is not int or context_lookback<3
+            or (anchor_start_ns is not None and
+                (type(anchor_start_ns) is not int or anchor_start_ns%MINUTE_NS))):
         raise ValueError("forecast batch size or Validation protocol is outside supported bounds")
     output_context_npz=Path(output_context_npz).resolve()
     output_request_json=Path(output_request_json).resolve()
@@ -219,8 +222,11 @@ def prepare_fold_forecast_batch(*,fold_replay:MarketReplay,fold,
     times=np.asarray([frame.ts_close_ns for frame in frames],dtype=np.int64)
     by_time={int(timestamp):index for index,timestamp in enumerate(times)}
     max_horizon=horizon
-    first_anchor=fold.validation.score_start_ns-MINUTE_NS
+    first_anchor=(fold.validation.score_start_ns-MINUTE_NS
+                  if anchor_start_ns is None else anchor_start_ns)
     last_anchor=fold.validation.score_end_ns-max_horizon*MINUTE_NS
+    if anchor_start_ns is not None and first_anchor<fold.validation.score_start_ns:
+        raise ValueError("explicit anchor grid cannot precede the Validation scoring interval")
     stride=anchor_interval_minutes*MINUTE_NS
     anchors=np.arange(first_anchor,last_anchor+1,stride,dtype=np.int64)
     if anchors.size<1:

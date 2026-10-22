@@ -348,12 +348,16 @@ def test_full_hierarchy_train_tensors_have_causal_indices():
     assert sample.day_index[0,2878] == 1
     assert sample.minute_mask[0,63] == 0
     assert sample.minute_mask[0,64] == 1
+    assert sample.dataset_id == seq.dataset_id
+    assert sample.scaler_fingerprints == (
+        fitted.minute.fingerprint, fitted.hour.fingerprint, fitted.day.fingerprint)
     for indices, availability in ((sample.hour_index[0],sample.hour_available_at),
                                   (sample.day_index[0],sample.day_available_at)):
         active=indices>=0
         assert np.all(availability[indices[active]]<=sample.minute_available_at[active])
     same, other = build_train_hierarchy(seq, burn_in=64, frozen_scalers=fitted)
     assert np.array_equal(same.hour_x,sample.hour_x)
+    assert same.scaler_fingerprints == sample.scaler_fingerprints
     assert other.day.fingerprint == fitted.day.fingerprint
 
 
@@ -419,6 +423,77 @@ def test_worker_rejects_tampered_context_before_forward(tmp_path, monkeypatch, c
     assert status==2
     err=json.loads(capsys.readouterr().err)
     assert err['status']=='BLOCKED' and 'checksum' in err['detail']
+    assert not (tmp_path/'out.npz').exists()
+
+
+@pytest.mark.parametrize(('field','value','message'),[
+    ('instrument',' ','instrument'),
+    ('instrument','ETHUSDT-PERP.SIM ','instrument'),
+    ('anchor_close',float('nan'),'anchor close'),
+    ('anchor_close',False,'anchor close'),
+    ('anchor_close',0.0,'anchor close'),
+])
+def test_worker_rejects_invalid_anchor_or_instrument_before_forward(
+        tmp_path, monkeypatch, capsys, field, value, message):
+    import rles_world_model.routeb.worker_cli as cli
+    from dataclasses import asdict
+
+    bars, _, scaler = prepared()
+    prepare_forecast_context(
+        visible_history=bars, frozen_scaler=scaler, anchor_ns=bars[-1].ts_close_ns,
+        train_scope_id='train-boundary', train_npz_sha256='f'*64,
+        output_context_npz=tmp_path/'context.npz',
+        output_request_json=tmp_path/'request.json', horizon=2, n_paths=2, seed=17)
+    request_path=tmp_path/'request.json'
+    request=json.loads(request_path.read_text())
+    request[field]=value
+    request_path.write_text(json.dumps(request))
+    (tmp_path/'config.json').write_text(json.dumps({
+        'model':asdict(RSSMConfig()),'training':asdict(TrainingConfig())}))
+    monkeypatch.setattr(cli,'forecast_standardized',lambda **_kwargs: (_ for _ in ()).throw(
+        AssertionError('invalid request must fail before model inference')))
+
+    status=cli.main(['forecast','--request',str(request_path),
+                     '--checkout',str(tmp_path/'unused'),
+                     '--checkpoint',str(tmp_path/'unused.npz'),
+                     '--output',str(tmp_path/'out.npz'),
+                     '--configuration',str(tmp_path/'config.json')])
+    assert status==2
+    error=json.loads(capsys.readouterr().err)
+    assert error['status']=='BLOCKED' and message in error['detail']
+    assert not (tmp_path/'out.npz').exists()
+
+
+@pytest.mark.parametrize(('source','duplicate'),[
+    ('configuration','{"model":{},"model":{},"training":{}}'),
+    ('request','{"schema":"bad","schema":"routeb.forecast-request.v2"}'),
+])
+def test_worker_cli_rejects_duplicate_json_keys_before_inference(
+        tmp_path, monkeypatch, capsys, source, duplicate):
+    import rles_world_model.routeb.worker_cli as cli
+    from dataclasses import asdict
+    bars, _, scaler = prepared()
+    request_path=tmp_path/'request.json'
+    if source=='request':
+        prepare_forecast_context(
+            visible_history=bars, frozen_scaler=scaler, anchor_ns=bars[-1].ts_close_ns,
+            train_scope_id='train-duplicate-json', train_npz_sha256='e'*64,
+            output_context_npz=tmp_path/'context.npz', output_request_json=request_path,
+            horizon=2, n_paths=2, seed=13)
+        request_path.write_text(duplicate,encoding='utf-8')
+        config={'model':asdict(RSSMConfig()),'training':asdict(TrainingConfig())}
+        (tmp_path/'config.json').write_text(json.dumps(config),encoding='utf-8')
+    else:
+        request_path.write_text('{}',encoding='utf-8')
+        (tmp_path/'config.json').write_text(duplicate,encoding='utf-8')
+    monkeypatch.setattr(cli,'forecast_standardized',lambda **_kwargs: (_ for _ in ()).throw(
+        AssertionError('ambiguous JSON must fail before model inference')))
+    status=cli.main(['forecast','--request',str(request_path),
+        '--checkout',str(tmp_path/'unused'),'--checkpoint',str(tmp_path/'unused.npz'),
+        '--output',str(tmp_path/'out.npz'),'--configuration',str(tmp_path/'config.json')])
+    assert status==2
+    error=json.loads(capsys.readouterr().err)
+    assert error['status']=='BLOCKED' and 'duplicate JSON object key' in error['detail']
     assert not (tmp_path/'out.npz').exists()
 
 
@@ -617,6 +692,20 @@ def test_worker_client_requires_genuine_artifact(tmp_path, monkeypatch):
     with pytest.raises(client.WorkerFailure,match='failed to produce'):
         c.forecast(request=tmp_path/'request.json',checkpoint=tmp_path/'checkpoint.npz',
                    output=tmp_path/'unwritten.npz',configuration=tmp_path/'config.json')
+
+
+def test_worker_client_rejects_duplicate_keys_in_worker_response(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    import rles_world_model.routeb.worker_client as client
+    worker=client.WorkerClient(client.WorkerConfig(
+        python_executable=Path(sys.executable),upstream_checkout=tmp_path))
+    stdout='{"status":"COMPLETED","kind":"F1_PRIOR_PATHS","kind":"E1_PRIOR_PATHS"}'
+    monkeypatch.setattr(client.subprocess,'run',lambda *args,**kwargs:
+        SimpleNamespace(returncode=0,stdout=stdout,stderr=''))
+    with pytest.raises(client.WorkerFailure,match='duplicate JSON object key: kind'):
+        worker.forecast(request=tmp_path/'request.json',checkpoint=tmp_path/'checkpoint.npz',
+                        output=tmp_path/'out.npz',configuration=tmp_path/'config.json')
 
 
 def test_worker_client_accepts_only_valid_three_dimensional_forecast(tmp_path, monkeypatch):

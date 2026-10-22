@@ -1,0 +1,32 @@
+{
+  "schema": "rles.routeb.audit-evidence.archive-ascii-decimal-lexemes.v1",
+  "date": "2026-10-22",
+  "finding": "Python float() accepts noncanonical archive numeric tokens such as underscore separators, Unicode digits, leading plus signs, and surrounding whitespace. bookTicker, fundingRate, kline, and mark/index-price kline fields could therefore normalize malformed CSV values.",
+  "change": "Added archive-specific signed/unsigned ASCII fixed-point validation for quote prices and sizes, funding rates, and kline price fields before event construction; shared event schema behavior remains unchanged.",
+  "verification": {
+    "regression_before_fix": "Four synthetic ZIP cases using underscore and Arabic-digit lexemes were accepted before the archive boundary was hardened",
+    "source_archive_and_event_tests": "53 passed",
+    "installed_wheel_archive_and_event_tests": "53 passed with PYTHONPATH unset",
+    "ruff": "passed",
+    "py_compile": "passed",
+    "targeted_mypy": "Success: no issues found in the changed parser",
+    "source_manifest": {
+      "files": 595,
+      "source_identity_sha256": "d68b5f7c5a00f8e6cd5fb60154334826930910afbed71b7cd30e4dcacd66d21e",
+      "verified": true
+    },
+    "distribution": {
+      "wheelhouse": "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-wheels-a08-all-archive-decimals-20261022",
+      "wheels_built": 12,
+      "sdists_built": 12,
+      "source_matches_all_wheels": true,
+      "data_wheel_sha256": "d9240f91393691167eb52c6e048b7eb6786e3d4bf2ebbe582db5634ba50b08cc",
+      "source_data_module_sha256": "a8c1ac48283fd6741d3747421dfcc31033c0a7c88551b24d6931162226eea7dd",
+      "installed_data_module_sha256": "a8c1ac48283fd6741d3747421dfcc31033c0a7c88551b24d6931162226eea7dd",
+      "installed_module_matches_source": true,
+      "dependency_check": "69 packages compatible"
+    },
+    "wheel_import_smoke": "12 distribution modules and 6 entry points passed"
+  },
+  "scope_limit": "Synthetic temporary ZIP fixtures only. No exchange archive, market payload, or research data was downloaded or read."
+}

@@ -168,6 +168,36 @@ def test_prepare_fold_forecast_batch_exports_only_causal_common_anchor_contexts(
     assert report["test_payload_decoded"] is False
 
 
+def test_prepare_fold_forecast_batch_accepts_explicit_validation_anchor_grid(tmp_path):
+    fold, replay = make_fold_replay()
+    train_frames = tuple(frame for frame in replay.frames
+                         if frame.ts_close_ns < fold.train.score_end_ns)
+    train_candles = tuple(Candle(
+        frame.ts_close_ns, frame.available_at_ns, frame.instrument, frame.open,
+        frame.high, frame.low, frame.close, frame.volume) for frame in train_frames)
+    scaler = TrainOnlyStandardizer.fit(
+        OHLCVCodec.encode(train_candles[1:], previous_close=train_candles[0].close),
+        dataset_id=fold.dataset_hash, scope="train")
+    report = prepare_fold_forecast_batch(
+        fold_replay=replay, fold=fold, frozen_scaler=scaler,
+        train_scope_id="routeb-fold-explicit-anchor", train_npz_sha256="2" * 64,
+        output_context_npz=tmp_path / "explicit-contexts.npz",
+        output_request_json=tmp_path / "explicit-request.json", horizon=15,
+        n_paths=8, seed=31, anchor_interval_minutes=15, context_lookback=32,
+        anchor_start_ns=fold.validation.score_start_ns)
+    expected = np.arange(fold.validation.score_start_ns,
+                         fold.validation.score_end_ns - 15 * MINUTE_NS + 1,
+                         15 * MINUTE_NS, dtype=np.int64)
+    with np.load(tmp_path / "explicit-contexts.npz", allow_pickle=False) as contexts:
+        np.testing.assert_array_equal(contexts["anchor_timestamps_ns"], expected)
+        assert contexts["anchor_timestamps_ns"][0] == fold.validation.score_start_ns
+        assert contexts["anchor_timestamps_ns"][-1] == 285 * MINUTE_NS
+    request = json.loads((tmp_path / "explicit-request.json").read_text())
+    assert request["anchor_timestamps_ns"] == expected.tolist()
+    assert report["anchors"] == len(expected)
+    assert report["test_payload_decoded"] is False
+
+
 def test_run_fold_experiment_uses_one_replay_for_train_and_validation(tmp_path):
     fold, replay = make_fold_replay()
 

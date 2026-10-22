@@ -2,15 +2,18 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import asdict
-from decimal import Decimal
+from collections.abc import Mapping, Sequence as SequenceABC
+from array import array
+from dataclasses import asdict, dataclass
+from decimal import Decimal, InvalidOperation
 from hashlib import sha256
+import marshal
 from bisect import bisect_left, bisect_right
-import json
 from math import gcd
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Any
+from tempfile import TemporaryFile
+from typing import Any, Callable, Iterator, overload
+from types import MappingProxyType
 
 from rles_contracts.dto import DataQualityGrade, ExecutionPlan
 from rles_data.contracts import to_market_event
@@ -18,6 +21,7 @@ from rles_data.core import Availability, CuratedStore, DataError, Event, Feature
 from rles_data.coverage import CoveragePolicy
 from rles_data.features import Scaler, fit_train, make_feature_row
 from rles_data.io import read_curated
+from rles_data.json_utils import loads_unique_json
 from rles_execution import InstrumentRules, PendingOrder, ResolvedExecutionConfig, TargetQuantityPlanner, to_contract_plan
 from rles_nautilus_adapter.perpetual import QUOTE_MAX_AGE_NS, make_perpetual_session
 from rles_nautilus_adapter.session import VisibleBatch
@@ -31,6 +35,411 @@ from .reward import RewardConfig
 
 
 _FUNDING_TIME_HORIZON_NS = 24 * 60 * 60 * 1_000_000_000
+
+
+@dataclass(frozen=True, slots=True)
+class _CompactReportSnapshot:
+    """Per-barrier native report facts without a per-instance attribute dictionary."""
+
+    equity: Any
+    currency: Any
+    positions: Any
+    orders: Any
+    account: Any
+    account_events: Any
+    fills: Any
+    funding: Any
+    all_orders: Any
+    liquidation_orders: Any
+    margins: Any
+    mark: Any
+    liquidation_capability: Any
+    decision_ts_ns: Any
+    cumulative_submitted_qty: Any
+    cumulative_filled_qty: Any
+
+
+_EMPTY_COMPACT_REPORT_ACCOUNT: Mapping[Any, Any] = MappingProxyType({})
+_NO_COMPACT_COLUMN_VALUE = object()
+
+
+def _compact_column_values_equal(left: Any, right: Any) -> bool:
+    """Compare retained facts without collapsing Decimal representation details."""
+    if left is right:
+        return True
+    if isinstance(left, Decimal) and isinstance(right, Decimal):
+        return left.as_tuple() == right.as_tuple()
+    if isinstance(left, Mapping) and isinstance(right, Mapping):
+        return (left.keys() == right.keys()
+                and all(_compact_column_values_equal(left[key], right[key]) for key in left))
+    if isinstance(left, (tuple, list)) and isinstance(right, (tuple, list)):
+        return (len(left) == len(right)
+                and all(_compact_column_values_equal(a, b) for a, b in zip(left, right)))
+    return left == right
+
+
+class _CompactDecimalColumn:
+    """Store common finite Decimal values as compact coefficient/exponent arrays."""
+
+    __slots__ = ("_coefficients", "_exponents", "_signs", "_fallback")
+
+    def __init__(self) -> None:
+        self._coefficients = array("q")
+        self._exponents = array("q")
+        self._signs = bytearray()
+        self._fallback: dict[int, Any] = {}
+
+    def append(self, value: Any) -> None:
+        index = len(self._signs)
+        if not isinstance(value, Decimal):
+            self._coefficients.append(0)
+            self._exponents.append(0)
+            self._signs.append(0)
+            self._fallback[index] = value
+            return
+        parts = value.as_tuple()
+        exponent = parts.exponent
+        coefficient = 0
+        for digit in parts.digits:
+            coefficient = coefficient * 10 + digit
+        if (not isinstance(exponent, int) or not value.is_finite()
+                or coefficient > (1 << 63) - 1
+                or not -(1 << 63) <= exponent <= (1 << 63) - 1):
+            self._coefficients.append(0)
+            self._exponents.append(0)
+            self._signs.append(0)
+            self._fallback[index] = value
+            return
+        self._coefficients.append(coefficient)
+        self._exponents.append(exponent)
+        self._signs.append(parts.sign)
+
+    def __len__(self) -> int:
+        return len(self._signs)
+
+    def __getitem__(self, index: int) -> Any:
+        fallback = self._fallback.get(index, _NO_COMPACT_COLUMN_VALUE)
+        if fallback is not _NO_COMPACT_COLUMN_VALUE:
+            return fallback
+        digits = tuple(int(digit) for digit in str(self._coefficients[index]))
+        return Decimal((self._signs[index], digits, self._exponents[index]))
+
+
+class _CompactIntegerColumn:
+    """Use signed 64-bit storage for ordinary timestamps and preserve outliers."""
+
+    __slots__ = ("_values", "_fallback")
+
+    def __init__(self) -> None:
+        self._values = array("q")
+        self._fallback: dict[int, Any] = {}
+
+    def append(self, value: Any) -> None:
+        index = len(self._values)
+        if type(value) is not int or not -(1 << 63) <= value <= (1 << 63) - 1:
+            self._values.append(0)
+            self._fallback[index] = value
+            return
+        self._values.append(value)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    def __getitem__(self, index: int) -> Any:
+        return self._fallback.get(index, self._values[index])
+
+
+class _CompactRunColumn:
+    """Retain only value changes when consecutive report facts are equal."""
+
+    __slots__ = ("_indices", "_values", "_length", "_last")
+
+    def __init__(self) -> None:
+        self._indices: list[int] = []
+        self._values: list[Any] = []
+        self._length = 0
+        self._last: Any = _NO_COMPACT_COLUMN_VALUE
+
+    def append(self, value: Any) -> None:
+        if (self._last is _NO_COMPACT_COLUMN_VALUE
+                or not _compact_column_values_equal(value, self._last)):
+            self._indices.append(self._length)
+            self._values.append(value)
+            self._last = value
+        self._length += 1
+
+    def __len__(self) -> int:
+        return self._length
+
+    def __getitem__(self, index: int) -> Any:
+        change_index = bisect_right(self._indices, index) - 1
+        if change_index < 0:
+            raise IndexError(index)
+        return self._values[change_index]
+
+
+class _CompactReportSnapshotView:
+    """Lazy read-only row view; decode a column only when a report asks for it."""
+
+    __slots__ = ("_series", "_index")
+
+    def __init__(self, series: _CompactReportSnapshotSeries, index: int) -> None:
+        self._series = series
+        self._index = index
+
+    @property
+    def equity(self) -> Any:
+        return self._series._equity[self._index]
+
+    @property
+    def currency(self) -> Any:
+        return self._series._currency
+
+    @property
+    def positions(self) -> Any:
+        return self._series._positions[self._index]
+
+    @property
+    def orders(self) -> Any:
+        return self._series._orders[self._index]
+
+    @property
+    def account(self) -> Any:
+        return _EMPTY_COMPACT_REPORT_ACCOUNT
+
+    @property
+    def account_events(self) -> tuple[()]:
+        return ()
+
+    @property
+    def fills(self) -> Any:
+        return self._series._fills[self._index]
+
+    @property
+    def funding(self) -> Any:
+        return self._series._funding[self._index]
+
+    @property
+    def all_orders(self) -> Any:
+        return self._series._all_orders[self._index]
+
+    @property
+    def liquidation_orders(self) -> Any:
+        return self._series._liquidation_orders[self._index]
+
+    @property
+    def margins(self) -> tuple[()]:
+        return ()
+
+    @property
+    def mark(self) -> Any:
+        return self._series._mark[self._index]
+
+    @property
+    def liquidation_capability(self) -> Any:
+        return self._series._liquidation_capability
+
+    @property
+    def decision_ts_ns(self) -> Any:
+        return self._series._decision_ts_ns[self._index]
+
+    @property
+    def cumulative_submitted_qty(self) -> Any:
+        return self._series._cumulative_submitted_qty[self._index]
+
+    @property
+    def cumulative_filled_qty(self) -> Any:
+        return self._series._cumulative_filled_qty[self._index]
+
+    def __eq__(self, other: object) -> bool:
+        if not all(hasattr(other, name) for name in _COMPACT_SNAPSHOT_FIELDS):
+            return NotImplemented
+        return all(getattr(self, name) == getattr(other, name)
+                   for name in _COMPACT_SNAPSHOT_FIELDS)
+
+
+_COMPACT_SNAPSHOT_FIELDS = (
+    "equity", "currency", "positions", "orders", "account", "account_events",
+    "fills", "funding", "all_orders", "liquidation_orders", "margins", "mark",
+    "liquidation_capability", "decision_ts_ns", "cumulative_submitted_qty",
+    "cumulative_filled_qty",
+)
+
+
+class _CompactReportSnapshotSeries(SequenceABC):
+    """Column-store report facts and reconstruct compact snapshots on access."""
+
+    __slots__ = (
+        "_equity", "_currency", "_positions", "_orders", "_fills", "_funding",
+        "_all_orders", "_liquidation_orders", "_mark", "_decision_ts_ns",
+        "_liquidation_capability", "_cumulative_submitted_qty",
+        "_cumulative_filled_qty",
+    )
+
+    def __init__(self) -> None:
+        self._equity = _CompactDecimalColumn()
+        self._currency: Any = None
+        self._positions = _CompactRunColumn()
+        self._orders = _CompactRunColumn()
+        self._fills = _CompactRunColumn()
+        self._funding = _CompactRunColumn()
+        self._all_orders = _CompactRunColumn()
+        self._liquidation_orders = _CompactRunColumn()
+        self._mark = _CompactDecimalColumn()
+        self._decision_ts_ns = _CompactIntegerColumn()
+        self._liquidation_capability: Any = None
+        self._cumulative_submitted_qty = _CompactRunColumn()
+        self._cumulative_filled_qty = _CompactRunColumn()
+
+    def append(self, snapshot: _CompactReportSnapshot) -> None:
+        if not self._equity:
+            self._currency = snapshot.currency
+            self._liquidation_capability = snapshot.liquidation_capability
+        elif (snapshot.currency != self._currency
+              or snapshot.liquidation_capability is not self._liquidation_capability):
+            raise DataError("compact native snapshot currency or liquidation capability changed")
+        self._equity.append(snapshot.equity)
+        self._positions.append(snapshot.positions)
+        self._orders.append(snapshot.orders)
+        self._fills.append(snapshot.fills)
+        self._funding.append(snapshot.funding)
+        self._all_orders.append(snapshot.all_orders)
+        self._liquidation_orders.append(snapshot.liquidation_orders)
+        self._mark.append(snapshot.mark)
+        self._decision_ts_ns.append(snapshot.decision_ts_ns)
+        self._cumulative_submitted_qty.append(snapshot.cumulative_submitted_qty)
+        self._cumulative_filled_qty.append(snapshot.cumulative_filled_qty)
+
+    def __len__(self) -> int:
+        return len(self._equity)
+
+    def __iter__(self) -> Iterator[_CompactReportSnapshotView]:
+        for index in range(len(self)):
+            yield _CompactReportSnapshotView(self, index)
+
+    @overload
+    def __getitem__(self, index: int) -> _CompactReportSnapshotView: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[_CompactReportSnapshotView, ...]: ...
+
+    def __getitem__(self, index: int | slice) -> _CompactReportSnapshotView | tuple[_CompactReportSnapshotView, ...]:
+        if isinstance(index, slice):
+            return tuple(self[item] for item in range(*index.indices(len(self))))
+        index = range(len(self))[index]
+        return _CompactReportSnapshotView(self, index)
+
+
+def _encode_spooled_value(value: Any) -> list[Any]:
+    """Encode supported report facts into an exact, data-only disk record."""
+    if isinstance(value, Decimal):
+        parts = value.as_tuple()
+        exponent = parts.exponent if isinstance(parts.exponent, int) else str(parts.exponent)
+        return ["decimal", parts.sign, list(parts.digits), exponent]
+    if isinstance(value, Mapping):
+        return ["mapping", [[_encode_spooled_value(key), _encode_spooled_value(item)]
+                            for key, item in value.items()]]
+    if isinstance(value, tuple):
+        return ["tuple", [_encode_spooled_value(item) for item in value]]
+    if isinstance(value, list):
+        return ["list", [_encode_spooled_value(item) for item in value]]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return ["value", value]
+    raise DataError(f"unsupported report fact type for summary spool: {type(value).__name__}")
+
+
+def _decode_spooled_value(encoded: Any) -> Any:
+    if not isinstance(encoded, list) or not encoded or not isinstance(encoded[0], str):
+        raise DataError("malformed report fact in summary spool")
+    kind = encoded[0]
+    if kind == "value" and len(encoded) == 2:
+        return encoded[1]
+    if kind == "decimal" and len(encoded) == 4:
+        _tag, sign, digits, exponent = encoded
+        if (type(sign) is not int or sign not in {0, 1}
+                or not isinstance(digits, list)
+                or any(type(digit) is not int or not 0 <= digit <= 9 for digit in digits)
+                or not (type(exponent) is int or isinstance(exponent, str))):
+            raise DataError("malformed Decimal report fact in summary spool")
+        if isinstance(exponent, str):
+            special = {"F": "Infinity", "n": "NaN", "N": "sNaN"}.get(exponent)
+            if special is None or (exponent == "F" and digits not in ([], [0])):
+                raise DataError("invalid special Decimal report fact in summary spool")
+            payload = "" if exponent == "F" else "".join(map(str, digits))
+            return Decimal(("-" if sign else "") + special + payload)
+        return Decimal((sign, tuple(digits), exponent))
+    if kind in {"tuple", "list"} and len(encoded) == 2 and isinstance(encoded[1], list):
+        values = [_decode_spooled_value(item) for item in encoded[1]]
+        return tuple(values) if kind == "tuple" else values
+    if kind == "mapping" and len(encoded) == 2 and isinstance(encoded[1], list):
+        result = {}
+        for pair in encoded[1]:
+            if not isinstance(pair, list) or len(pair) != 2:
+                raise DataError("malformed mapping report fact in summary spool")
+            key, value = (_decode_spooled_value(item) for item in pair)
+            try:
+                result[key] = value
+            except TypeError as exc:
+                raise DataError("unhashable report fact key in summary spool") from exc
+        return result
+    raise DataError("unknown report fact encoding in summary spool")
+
+
+class _SpooledReportSnapshotSequence(SequenceABC):
+    """Disk-backed random-access sequence for summary-only economic reports."""
+
+    __slots__ = ("_file", "_offsets", "_closed")
+
+    def __init__(self) -> None:
+        self._file = TemporaryFile(mode="w+b")
+        self._offsets = array("Q")
+        self._closed = False
+
+    def append(self, snapshot: _CompactReportSnapshot) -> None:
+        if self._closed:
+            raise DataError("cannot append to a closed summary snapshot spool")
+        values = tuple(getattr(snapshot, field) for field in _COMPACT_SNAPSHOT_FIELDS)
+        payload = marshal.dumps(_encode_spooled_value(values), 4)
+        self._offsets.append(self._file.tell())
+        self._file.write(len(payload).to_bytes(8, "big"))
+        self._file.write(payload)
+
+    def __len__(self) -> int:
+        return len(self._offsets)
+
+    def __iter__(self) -> Iterator[_CompactReportSnapshot]:
+        for index in range(len(self)):
+            yield self[index]
+
+    @overload
+    def __getitem__(self, index: int) -> _CompactReportSnapshot: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[_CompactReportSnapshot, ...]: ...
+
+    def __getitem__(self, index: int | slice) -> _CompactReportSnapshot | tuple[_CompactReportSnapshot, ...]:
+        if self._closed:
+            raise DataError("summary snapshot spool has been closed")
+        if isinstance(index, slice):
+            return tuple(self[item] for item in range(*index.indices(len(self))))
+        index = range(len(self))[index]
+        self._file.seek(self._offsets[index])
+        size_bytes = self._file.read(8)
+        if len(size_bytes) != 8:
+            raise DataError("truncated summary snapshot spool length")
+        payload = self._file.read(int.from_bytes(size_bytes, "big"))
+        try:
+            values = _decode_spooled_value(marshal.loads(payload))
+        except (EOFError, TypeError, ValueError) as exc:
+            raise DataError("invalid summary snapshot spool record") from exc
+        if not isinstance(values, tuple) or len(values) != len(_COMPACT_SNAPSHOT_FIELDS):
+            raise DataError("summary snapshot spool record has invalid shape")
+        return _CompactReportSnapshot(**dict(zip(_COMPACT_SNAPSHOT_FIELDS, values, strict=True)))
+
+    def close(self) -> None:
+        if not self._closed:
+            self._closed = True
+            self._file.close()
 
 
 def scheduled_funding_time_features(decision_ts_ns: int, settlement_times_ns: tuple[int, ...]) -> dict[str, float]:
@@ -52,10 +461,18 @@ def scheduled_funding_time_features(decision_ts_ns: int, settlement_times_ns: tu
     }
 
 
-def _money(value: Any) -> Decimal:
+def _money(value: Any, currency: str | None = None) -> Decimal:
     # Native Money strings carry a currency suffix; account balance dicts may
-    # instead carry bare decimal strings. No market-derived balance estimates.
-    result = Decimal(str(value).replace(",", "").split()[0])
+    # instead carry bare decimal strings. Never strip separators: doing so can
+    # silently reinterpret malformed native facts (for example, 1,2 as 12).
+    parts = str(value).split()
+    if (len(parts) not in (1, 2)
+            or (len(parts) == 2 and currency is not None and parts[1] != currency)):
+        raise DataError("native account amount has unexpected currency or format")
+    try:
+        result = Decimal(parts[0])
+    except (InvalidOperation, ValueError) as exc:
+        raise DataError("invalid native account amount") from exc
     if not result.is_finite():
         raise DataError("nonfinite native account amount")
     return result
@@ -71,7 +488,8 @@ def native_balances(snapshot) -> tuple[Decimal, Decimal]:
     matches = [b for b in balances if b["currency"] == snapshot.currency]
     if len(matches) != 1:
         raise DataError("exactly one settlement-currency native balance required")
-    return _money(matches[0]["total"]), _money(matches[0]["free"])
+    return (_money(matches[0]["total"], snapshot.currency),
+            _money(matches[0]["free"], snapshot.currency))
 
 
 def load_rules(path: str | Path) -> tuple[Event, ...]:
@@ -79,8 +497,13 @@ def load_rules(path: str | Path) -> tuple[Event, ...]:
     source = Path(path).resolve()
     if not source.is_file():
         raise DataError(f"historical instrument rules unavailable: {source}")
-    document = json.loads(source.read_text(encoding="utf-8"))
-    if set(document) != {"sources", "events"} or not document["sources"] or not document["events"]:
+    try:
+        document = loads_unique_json(source.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        raise DataError("historical rules manifest contains invalid or ambiguous JSON") from exc
+    if (not isinstance(document, dict) or set(document) != {"sources", "events"}
+            or not isinstance(document["sources"], list) or not document["sources"]
+            or not isinstance(document["events"], list) or not document["events"]):
         raise DataError("rules manifest requires source documents and normalized events")
     verified = set()
     for evidence in document["sources"]:
@@ -99,7 +522,29 @@ def load_rules(path: str | Path) -> tuple[Event, ...]:
     return tuple(events)
 
 
-def historical_feature_spec(maximum_age_ns: dict[str, int], *, profile: str = "legacy") -> FeatureSpec:
+def instrument_units_from_rules(rule_events: tuple[Event, ...], instrument: str) -> tuple[str, str]:
+    """Return stable linear-contract base/quote units across a frozen rule set."""
+    if not isinstance(instrument, str) or not instrument:
+        raise DataError("instrument identity required for rule units")
+    matching = [event for event in rule_events
+                if event.kind == "instrument_rule" and event.payload.get("instrument") == instrument]
+    if not matching:
+        raise DataError("instrument rule units unavailable")
+    units = {
+        (event.payload.get("quantity_unit"), event.payload.get("quote_currency"))
+        for event in matching
+    }
+    if len(units) != 1:
+        raise DataError("instrument base/quote units change within the frozen rule set")
+    quantity_unit, quote_currency = next(iter(units))
+    if (not isinstance(quantity_unit, str) or not isinstance(quote_currency, str)
+            or not quantity_unit or not quote_currency):
+        raise DataError("instrument rule has invalid quantity or quote unit")
+    return quantity_unit, quote_currency
+
+
+def historical_feature_spec(maximum_age_ns: dict[str, int], *, quantity_unit: str,
+                             quote_currency: str, profile: str = "legacy") -> FeatureSpec:
     """Return a frozen causal feature recipe selected by the run configuration.
 
     ``legacy`` preserves the original observation identity for existing bundles.
@@ -114,10 +559,15 @@ def historical_feature_spec(maximum_age_ns: dict[str, int], *, profile: str = "l
         raise DataError("historical feature recipe requires complete freshness limits")
     if not isinstance(profile, str) or profile not in {"legacy", "causal_mtf_v1", "causal_mtf_v2", "causal_mtf_v3"}:
         raise DataError("unsupported historical feature profile")
+    if (not isinstance(quantity_unit, str) or not quantity_unit
+            or quantity_unit != quantity_unit.strip() or quantity_unit != quantity_unit.upper()
+            or not isinstance(quote_currency, str) or not quote_currency
+            or quote_currency != quote_currency.strip() or quote_currency != quote_currency.upper()):
+        raise DataError("historical feature units must be canonical currency codes")
     fields: tuple[FeatureField, ...] = (
         FeatureField("return_1m", "float64", "ratio", "ohlcv_1m", 1, 1, "return"),
         FeatureField("volatility_5m", "float64", "ratio", "ohlcv_1m", 5, 1, "volatility"),
-        FeatureField("volume_5m", "float64", "ETH", "ohlcv_1m", 5, 1, "volume_mean"),
+        FeatureField("volume_5m", "float64", quantity_unit, "ohlcv_1m", 5, 1, "volume_mean"),
         FeatureField("basis", "float64", "ratio", "mark", 1, 1, "basis", maximum_age_ns["mark"]),
         FeatureField("last_settled_funding", "float64", "ratio", "funding_update", 1, 1,
                      "latest", maximum_age_ns["funding_update"]),
@@ -256,7 +706,12 @@ class HistoricalEnvironmentFactory:
         if any(dict(self.store.latest_rule(t, instrument).payload) != dict(self.rule.payload)
                for t in (end_ns - 1,)):
             raise DataError("split episode at historical instrument-rule changes")
-        self.features = historical_feature_spec(dict(self.coverage.maximum_age_ns), profile=self.feature_profile)
+        self.contract_multiplier = Decimal(self.rule.payload["contract_multiplier"])
+        self.features = historical_feature_spec(
+            dict(self.coverage.maximum_age_ns), profile=self.feature_profile,
+            quantity_unit=self.rule.payload["quantity_unit"],
+            quote_currency=self.rule.payload["quote_currency"],
+        )
         account = ("equity", "peak_equity", "drawdown", "cash", "free_margin", "initial_margin",
                    "maintenance_margin", "unrealized_pnl", "net_exposure", "position_quantity")
         execution_names = (
@@ -264,7 +719,12 @@ class HistoricalEnvironmentFactory:
             "pending_signed_exposure", "pending_gross_exposure", "fill_rate",
         )
         names = tuple("market." + f.name for f in self.features.fields) + tuple("account." + n for n in account)
-        units = tuple(f.unit for f in self.features.fields) + ("USDT", "USDT", "ratio", "USDT", "USDT", "USDT", "USDT", "USDT", "ratio", "ETH")
+        units = tuple(f.unit for f in self.features.fields) + (
+            self.rule.payload["quote_currency"], self.rule.payload["quote_currency"], "ratio",
+            self.rule.payload["quote_currency"], self.rule.payload["quote_currency"],
+            self.rule.payload["quote_currency"], self.rule.payload["quote_currency"],
+            self.rule.payload["quote_currency"], "ratio", self.rule.payload["quantity_unit"],
+        )
         time_names = (("time.funding_settlement_within_24h",
                        "time.funding_settlement_time_to_event_24h")
                       if self.feature_profile == "causal_mtf_v3" else ())
@@ -453,9 +913,10 @@ class HistoricalEnvironmentFactory:
         cash, free = native_balances(snapshot)
         if snapshot.mark is None:
             raise DataError("native mark required for exposure observations")
-        notional = signed_quantity(snapshot) * snapshot.mark
-        initial = sum((_money(m["initial"]) for m in snapshot.margins), Decimal(0))
-        maintenance = sum((_money(m["maintenance"]) for m in snapshot.margins), Decimal(0))
+        notional = self._position_notional(snapshot)
+        initial = sum((_money(m["initial"], snapshot.currency) for m in snapshot.margins), Decimal(0))
+        maintenance = sum((_money(m["maintenance"], snapshot.currency)
+                           for m in snapshot.margins), Decimal(0))
         submitted = Decimal(str(getattr(snapshot, "cumulative_submitted_qty", 0)))
         filled = Decimal(str(getattr(snapshot, "cumulative_filled_qty", 0)))
         if not hasattr(snapshot, "cumulative_submitted_qty"):
@@ -469,13 +930,14 @@ class HistoricalEnvironmentFactory:
             if side not in {"BUY", "SELL"} or not leaves.is_finite() or leaves < 0:
                 raise DataError("native pending order side/quantity invalid for observation")
             signed = leaves if side == "BUY" else -leaves
-            pending_signed += signed * snapshot.mark / self.budget
-            pending_gross += leaves * snapshot.mark / self.budget
+            pending_signed += signed * snapshot.mark * self.contract_multiplier / self.budget
+            pending_gross += leaves * snapshot.mark * self.contract_multiplier / self.budget
         cap = min(self.hard.max_notional, snapshot.equity * self.hard.max_leverage)
         return {
             "account": {"cash": float(cash), "free_margin": float(free), "initial_margin": float(initial),
                         "maintenance_margin": float(maintenance), "unrealized_pnl": float(snapshot.equity - cash),
-                        "net_exposure": float(notional / self.budget), "position_quantity": float(signed_quantity(snapshot))},
+                        "net_exposure": float(notional / self.budget),
+                        "position_quantity": float(signed_quantity(snapshot) * self.contract_multiplier)},
             "risk": {"headroom": float(max(Decimal(0), cap - abs(notional)) / self.budget)},
             "execution": {"pending_order_count": float(len(snapshot.orders)),
                           "pending_signed_exposure": float(pending_signed),
@@ -483,11 +945,34 @@ class HistoricalEnvironmentFactory:
                           "fill_rate": float(filled / submitted) if submitted else 0.0},
         }
 
+    def _position_notional(self, snapshot) -> Decimal:
+        """Value native contract quantity in quote currency using frozen rule units."""
+        if snapshot.mark is None:
+            raise DataError("native mark required for exposure calculations")
+        value = signed_quantity(snapshot) * snapshot.mark * self.contract_multiplier
+        if not value.is_finite():
+            raise DataError("native position notional is non-finite")
+        return value
+
     def make_env(self, transition_hash: str | None = None, *, replay: EpisodeReplay | None = None,
                  soft_multipliers: dict | None = None, episode_rank: int = 0,
-                 episode_count: int = 1, episode_steps: int | None = None) -> NautilusBarrierEnv:
+                 episode_count: int = 1, episode_steps: int | None = None,
+                 retain_report_snapshots: bool = True,
+                 spool_report_snapshots: bool = False,
+                 report_snapshot_sink: Callable[[Any, Mapping[str, Decimal]], None] | None = None
+                 ) -> NautilusBarrierEnv:
         transition = transition_hash or self.transition_hash
         pending_replay = replay
+        if type(retain_report_snapshots) is not bool or type(spool_report_snapshots) is not bool:
+            raise DataError("report snapshot retention and spool flags must be Boolean")
+        if report_snapshot_sink is not None and not callable(report_snapshot_sink):
+            raise DataError("report snapshot sink must be callable")
+        if report_snapshot_sink is not None and not retain_report_snapshots:
+            raise DataError("report snapshot sink requires native report callbacks")
+        if report_snapshot_sink is not None and spool_report_snapshots:
+            raise DataError("report snapshot sink and disk spooling are mutually exclusive")
+        if spool_report_snapshots and not (retain_report_snapshots and self.compact_report_snapshots):
+            raise DataError("summary snapshot spooling requires retained compact report snapshots")
         full_steps = len(self.rows) - 3
         selected_steps = full_steps if episode_steps is None else episode_steps
         if (type(episode_rank) is not int or type(episode_count) is not int
@@ -528,7 +1013,11 @@ class HistoricalEnvironmentFactory:
                                      "episode_index": episode_index,
                                      "start_offset": start_offset,
                                  }))
-            self.snapshots = []
+            self.snapshots = ([] if report_snapshot_sink is not None else
+                _SpooledReportSnapshotSequence() if spool_report_snapshots else
+                _CompactReportSnapshotSeries()
+                if self.compact_report_snapshots and retain_report_snapshots else []
+            )
             self.fill_references = {}
             seen_fills: dict[str, dict] = {}
             seen_funding: dict[str, dict] = {}
@@ -537,6 +1026,8 @@ class HistoricalEnvironmentFactory:
             order_filled: dict[str, Decimal] = {}
             cumulative_submitted = Decimal(0)
             cumulative_filled = Decimal(0)
+            last_report_position_key = None
+            last_report_positions: tuple[Any, ...] = ()
 
             def unique_delta(records, seen, identity_field="event_id"):
                 delta = []
@@ -556,6 +1047,7 @@ class HistoricalEnvironmentFactory:
 
             def record_snapshot(snapshot):
                 nonlocal cumulative_submitted, cumulative_filled
+                nonlocal last_report_position_key, last_report_positions
                 for order in snapshot.all_orders:
                     identity = str(order.get("client_order_id", ""))
                     if not identity:
@@ -589,15 +1081,25 @@ class HistoricalEnvironmentFactory:
                     # grow with every fill and are not required by the report.
                     position_fields = ("position_id", "side", "quantity", "multiplier", "is_inverse",
                                        "settlement_currency")
-                    report_positions = tuple({key: row.get(key) for key in position_fields}
-                                              for row in snapshot.positions)
+                    position_key = tuple(
+                        tuple(row.get(key) for key in position_fields)
+                        for row in snapshot.positions
+                    )
+                    if position_key != last_report_position_key:
+                        last_report_positions = tuple(
+                            MappingProxyType(dict(zip(position_fields, values, strict=True)))
+                            for values in position_key
+                        )
+                        last_report_position_key = position_key
+                    report_positions = last_report_positions
                 else:
                     report_positions = snapshot.positions
-                compact = SimpleNamespace(
+                compact = _CompactReportSnapshot(
                     equity=snapshot.equity, currency=snapshot.currency,
                     positions=report_positions,
                     orders=(snapshot.orders if not self.compact_report_snapshots or final_boundary else ()),
-                    account=(snapshot.account if not self.compact_report_snapshots else {}),
+                    account=(snapshot.account if not self.compact_report_snapshots
+                             else _EMPTY_COMPACT_REPORT_ACCOUNT),
                     account_events=(snapshot.account_events[-1:] if not self.compact_report_snapshots else ()),
                     fills=tuple(seen_fills.values()) if final_boundary else fills,
                     funding=tuple(seen_funding.values()) if final_boundary else funding,
@@ -612,7 +1114,10 @@ class HistoricalEnvironmentFactory:
                     cumulative_submitted_qty=cumulative_submitted,
                     cumulative_filled_qty=cumulative_filled,
                 )
-                self.snapshots.append(compact)
+                if report_snapshot_sink is None:
+                    self.snapshots.append(compact)
+                else:
+                    report_snapshot_sink(compact, self.fill_references)
 
             def record_reference(client_id, reference):
                 previous = self.fill_references.get(client_id)
@@ -621,13 +1126,19 @@ class HistoricalEnvironmentFactory:
                 self.fill_references[client_id] = reference
 
             session = make_perpetual_session(rule=self.rule.payload, execution=self.execution, mode=self.mode,
-                                             starting_balance=self.capital, record_snapshot=record_snapshot,
-                                             record_fill_reference=record_reference,
+                                             starting_balance=self.capital,
+                                             record_snapshot=(record_snapshot if retain_report_snapshots else None),
+                                             record_fill_reference=(record_reference if retain_report_snapshots else None),
                                              compact_native_history=self.compact_native_history)
             planner = TargetQuantityPlanner(self.execution)
+            quantity_unit = self.rule.payload.get("quantity_unit")
+            if (not isinstance(quantity_unit, str) or not quantity_unit
+                    or quantity_unit != quantity_unit.strip()):
+                raise DataError("historical instrument rule has no canonical quantity unit")
             rules = InstrumentRules(self.instrument, Decimal(self.rule.payload["step_size"]),
                                     Decimal(self.rule.payload["min_qty"]), Decimal(self.rule.payload["min_notional"]),
-                                    Decimal(1), self.rule.payload.get("reduce_only_min_notional_exempt", False))
+                                    Decimal(self.rule.payload["contract_multiplier"]),
+                                    self.rule.payload.get("reduce_only_min_notional_exempt", False))
             soft = SoftRiskTransform(self.soft if not soft_multipliers else self.soft.with_multipliers(soft_multipliers))
             hard = HardRiskGuard(self.hard)
 
@@ -641,7 +1152,7 @@ class HistoricalEnvironmentFactory:
                 )
                 contract_plan = to_contract_plan(
                     decision, ExecutionPlan, latency_model_id=self.execution.latency(self.mode).model_id,
-                    quantity_unit="ETH",
+                    quantity_unit=quantity_unit,
                 )
                 rounded_exposure = (decision.target_qty * snapshot.mark * rules.contract_multiplier
                                     / self.budget)
@@ -652,12 +1163,13 @@ class HistoricalEnvironmentFactory:
                                           force_reduce=force_reduce)[0]
 
             def plan_action(action, snapshot, drawdown):
-                current = signed_quantity(snapshot) * snapshot.mark / self.budget
+                position_notional = self._position_notional(snapshot)
+                current = position_notional / self.budget
                 known = self.store.visible(snapshot.decision_ts_ns, "funding_update")
                 rate = Decimal(str(known[-1].payload["rate"])) if known else None
                 softened = soft.apply(action, current_exposure=current, drawdown=drawdown, funding_abs=rate)
                 adjusted = hard.apply(softened.adjusted, budget_notional=self.budget, equity=snapshot.equity,
-                                      free_margin=native_balances(snapshot)[1], current_notional=current * self.budget,
+                                      free_margin=native_balances(snapshot)[1], current_notional=position_notional,
                                       mark_available=True, funding_available=rate is not None,
                                       liquidation_capability=True, data_quality_grade=self.quality.grade.value)
                 contract_plan, rounded_exposure = plan_with_rounding(
@@ -686,7 +1198,7 @@ class HistoricalEnvironmentFactory:
                                  "config_hash": self.config_hash},
                 transition_hash=transition, frames=frames, scoring_frames=len(frames) - 2,
                 plan_action=plan_action, plan_terminal=lambda s: plan(Decimal(0), s, terminal=True),
-                executed_exposure=lambda s: signed_quantity(s) * s.mark / self.budget,
+                executed_exposure=lambda s: self._position_notional(s) / self.budget,
                 reward_config=self.reward_config, replay=current_replay,
                 episode_index=episode_index, episode_start_offset=start_offset,
                 observation_state=self.observation_state,
@@ -700,6 +1212,12 @@ class HistoricalEnvironmentFactory:
                                                                         split="train" if self.split == "train_inner" else self.split),
                                   reward_config=self.reward_config, max_steps=selected_steps,
                                   transition_hash=transition)
+
+    def release_spooled_report_snapshots(self) -> None:
+        """Close temporary summary storage after its final report has been built."""
+        if isinstance(self.snapshots, _SpooledReportSnapshotSequence):
+            self.snapshots.close()
+            self.snapshots = []
 
     def metadata(self) -> dict:
         return {
@@ -737,4 +1255,5 @@ def make_historical_es_env(*, env_config: dict, candidate_context: dict,
         **env_config["recipe"], "fit_scaler": False, "scaler": Scaler(**raw),
         "prepared_store": prepared_store,
     })
-    return factory.make_env(env_config["transition_hash"], soft_multipliers=soft_risk_multipliers)
+    return factory.make_env(env_config["transition_hash"], soft_multipliers=soft_risk_multipliers,
+                            retain_report_snapshots=False)

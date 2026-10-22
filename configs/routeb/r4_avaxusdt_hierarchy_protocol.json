@@ -1,0 +1,45 @@
+{
+  "schema": "routeb.r4-hierarchy-protocol.v1",
+  "training": {
+    "steps": 1000,
+    "window_length": 1024,
+    "burn_in": 32,
+    "hour_context_steps": 20,
+    "day_context_steps": 3,
+    "learning_rate": 0.0003,
+    "grad_clip": 100.0,
+    "report_interval": 100
+  },
+  "minute_model": {},
+  "hour_model": {
+    "deter": 128,
+    "hidden": 96,
+    "stoch": 8,
+    "classes": 8,
+    "blocks": 8
+  },
+  "day_model": {
+    "deter": 64,
+    "hidden": 64,
+    "stoch": 4,
+    "classes": 8,
+    "blocks": 4
+  },
+  "training_seeds": [31, 102, 20261018],
+  "anchor_interval_minutes": 360,
+  "paths_per_seed": 32,
+  "horizon": 15,
+  "bootstrap_block_length": 12,
+  "bootstrap_replicates": 2000,
+  "forecast_seeds": [
+    2026102100, 2026102101, 2026102102, 2026102103,
+    2026102104, 2026102105, 2026102106, 2026102107,
+    2026102108, 2026102109, 2026102110, 2026102111,
+    2026102112, 2026102113, 2026102114, 2026102115,
+    2026102116, 2026102117, 2026102118, 2026102119,
+    2026102120, 2026102121, 2026102122, 2026102123,
+    2026102124, 2026102125, 2026102126, 2026102127,
+    2026102128, 2026102129, 2026102130, 2026102131
+  ],
+  "warmup_days": 2
+}

@@ -16,9 +16,9 @@
 5. **双 Python worker 防错**：worker 返回预测产物 SHA，client 检查产物存在、SHA、张量形状和 OHLCV 几何；对失败结果不静默继续。
 6. **三级因果样本接口**：新增 `hierarchy_dataset.py`，形成 1m/1h/1d 的训练坐标与慢状态可见索引，分钟编码与 B2 的首 bar 锚点语义保持一致。
 7. **F2 边界与想象执行**：缺历史前缀导致整点/日线无法组成完整合成 bar 时拒绝。账户禁止反向回放/倒填动作；限价单在下一 bar 开盘即市价可成交的情况下按 taker 场景费率计费，触价在 bar 内仅按简化 maker 假设。
-8. **验证**：本运行环境 Python 3.13.5 + numpy/pytest + JAX 0.9.0.1 的 **35 项确定性测试全部通过**，涵盖参数/Optax树形式序列化（使用轻量树）、NPZ篡改、worker 请求等；Python 语法检查通过。
+8. **当前验证状态**：RouteB Python 3.14 主环境全量 world-model suite 为 **155 passed / 10 skipped**（仅因主环境没有 JAX）；隔离 Python 3.12.10 + JAX/JAXlib 0.11.2 CPU 专项为 **14 passed**，另有模型级 R2 λ=0/0.01/0.05 loss/gradient 和 Train-only optimizer/reporting smoke 通过。Ruff、compileall、E3/E3b/E4 合成训练/恢复和 JAX F2 集成 smoke 通过。历史 v2.2 源码包的 35 项结果见下方历史交付记录，不代表当前回归范围。
 
-**重要限制**：锁定的 Python 3.12.10 + JAX 0.11.2 + Ninjax/Optax 环境已通过 B2 和 B3 合成数据 CPU smoke。B3 的新 smoke 执行三层 RSSM 梯度更新，并逐数组确认“中断后续训”与“连续训练”的模型参数/优化器状态完全一致。它只证明工程机制和因果输入拒绝逻辑，不代表真实行情拟合、E3/E4 消融或预测技能。B3 已支持固定长度分钟窗口和受可见时钟约束的小时/日线上下文采样；注册式 E3/E4 运行器与 F2 三尺度 state feedback 仍未完成。
+**重要限制**：锁定的 Python 3.12.10 + JAX 0.11.2 + Ninjax/Optax 环境已通过 E3、E3b、E4 合成训练、先验 rollout 和 checkpoint-bound JAX F2 state-feedback smoke。F2 使用 frozen Train scalers，将生成分钟 bar 重新编码为观察值，并把完整合成小时/日线送入对应 RSSM；slow-only 和 full-filter 是不同状态推进模式。检查点绑定训练数据身份及三个尺度的 scaler fingerprints。上述结果只证明机制，不代表真实行情拟合、注册 E3/E3b/E4 消融或预测技能。
 
 ### 升级影响（必须注意）
 
@@ -26,7 +26,7 @@
 - `routeb.jax-checkpoint.v1` → **v2**（PyTree 结构与 scaler 元数据绑定）；旧研究检查点不能冒充新模型，应重新训练或显式实现经过验证的迁移工具。
 - 预报上下文与模型权重不能跨不一致的 scaler 使用；任何 Validation/Test/Holdout 读取授权仍由原项目的 ResearchRegistry 负责，worker **不提供**独立数据访问 API。
 - `return_paths` 不再允许省略 `previous_close`。这是一项故意的 fail-closed API 变化。
-- `hierarchy_dataset.py` 构造 Train-only 因果张量；`jax_hierarchy.py` 与 `jax_hierarchy_train.py` 已通过固定 JAX 环境的合成梯度/恢复 smoke，但尚不构成真实数据 R3 训练或 E3/E4 验证。
+- `hierarchy_dataset.py` 构造 Train-only 因果张量；`jax_hierarchy.py` 与 `jax_hierarchy_train.py` 已实现 E3/E3b/E4 的不同生成语义并通过固定 JAX 环境的合成梯度/恢复 smoke，但尚无注册的独立数据消融或预测技能验证。
 
 ## 测试
 
@@ -59,8 +59,8 @@ $env:JAX_PLATFORMS = 'cpu'
 | B2 JAX 训练 | `jax_model.py`、`jax_train.py` | 锁定 JAX CPU 环境下合成训练、恢复、forecast smoke PASS；真实 Train/Validation 研究验证受 B0 门禁阻塞 |
 | B2 IPC + checkpoint | `worker_cli.py`、`worker_client.py`、`checkpoint.py`、`integration.py` | 真实双 Python 子进程和 float32 NPZ 分布工件端到端 smoke PASS；仅合成未来标签 |
 | B3 多尺度数据 | `clock.py`、`hierarchy.py`、`hierarchy_dataset.py` | 因果张量单测 PASS |
-| B3 RSSM/optimizer | `jax_hierarchy.py`、`jax_hierarchy_train.py` | 三层梯度更新、Fail-closed 因果索引验证、checkpoint 续训 | 合成 CPU smoke PASS；真实 R3/E3/E4 未运行 |
-| F2 未来周期事件 | `synthetic_feedback.py` | 确定性边界测试 PASS，不含真实 B3 state feedback |
+| E3/E3b/E4 RSSM/optimizer | `jax_hierarchy.py`、`jax_hierarchy_train.py` | 三种模型图、因果高周期条件、prior 直接监督、scaler provenance checkpoint | 三路合成 CPU smoke PASS；真实注册消融未运行 |
+| F2 未来周期事件 | `synthetic_feedback.py`、`jax_hierarchy_f2.py` | JAX minute/hour/day carry；生成 OHLCV 回流；日线先于同刻小时；slow-only/full-filter | E3/E3b/E4 同刻日/小时边界 smoke PASS；真实 Validation 未运行 |
 | B4 想象账户 | `imagined_account.py` | 简化情景单测 PASS，经济结果绝不可替代 NautilusTrader |
 
 详细缺陷、验证条件与待办见 `docs/ROUTEB_V22_CODE_AUDIT.md`。
@@ -87,13 +87,15 @@ $env:JAX_PLATFORMS = 'cpu'
 | B2 JAX RSSM learner | `jax_model.py`, `jax_train.py` | 固定 DreamerV3 RSSM + 独立金融预测头、KL、训练/预测算法 | **仅静态/语法检查；缺固定 JAX 环境的集成实测** |
 | B2 参数、优化器完整恢复 | `checkpoint.py` | 参数/optimizer leaf + step/seed + 配置/数据身份、无 pickle | JAX 树序列化测试通过；中断训练数值等价待验 |
 | 双 Python 环境通信 | `worker_client.py`, `worker_cli.py`, `integration.py` | 3.14 host → 3.12 worker；Train 已授权 NPZ | 静态/接口测试；真实子进程回归待验 |
-| B3 三级状态模型 | `jax_hierarchy.py`、`jax_hierarchy_train.py` | Train-only 三层梯度训练和身份绑定 checkpoint；无 F2 三尺度 state feedback | **合成 CPU 梯度/续训 smoke PASS；真实 R3/E3/E4 未验证，默认不得启用** |
-| B3/F2 合成时钟 | `synthetic_feedback.py` | 合成未来产生完整 1h/1d bar，禁止真实未来混入 | 本地测试通过；未接三层 RSSM inference |
+| E3/E3b/E4 三级模型 | `jax_hierarchy.py`、`jax_hierarchy_train.py` | Train-only 三路训练；E4 的 D→H/M 与 H→M prior conditions、prior 下一根监督、身份绑定 checkpoint | **三路合成 CPU smoke PASS；真实消融未验证，默认不得启用** |
+| F2 合成反馈 | `synthetic_feedback.py`、`jax_hierarchy_f2.py` | JAX minute/hour/day carries；生成 OHLCV 回流；日线先于同刻小时；slow-only/full-filter 分离 | E3/E3b/E4 合成同刻日/小时边界 smoke 通过；真实 Validation 未运行 |
 | B4 想象账户原型 | `imagined_account.py` | 单净仓、market/limit、下根 1m 生效、撤单、费用/MTM | 本地单元测试通过；**非原生交易事实** |
 | 验证 | `tests/world_model/test_routeb_additive.py` | 数据、时间、数值、检查点、账户验证 | 35 passed |
-| JAX 专项 smoke | `qa/world_model/routeb_b2_cpu_smoke.py` | 真正执行两步梯度更新、模型恢复及短预测 | 用户固定隔离环境待执行 |
+| JAX 专项 smoke | `qa/world_model/routeb_b3_cpu_smoke.py` | E3/E3b/E4 更新/恢复、先验预测、checkpoint-bound F2 carry loop | Python 3.12.10/JAX 0.11.2 CPU smoke PASS |
 
-**特意不实现为“已完成”的事项**：三级 RSSM 的正式训练/消融、B3 真实 F2 世界状态联动、Actor-Critic 策略训练、挂单/原生账户逐事件 parity、历史手续费/资金费/清算认证、独立 Validation/Test/Holdout 授权，以及盈利结论。它们按 v2.1 设计文档后续阶段完成。
+**尚未验收的事项**：注册的 R3 λ={0,0.01,0.05} 真实数据消融与 Validation 校准、R4 E3/E3b/E4 真实数据对照、Actor-Critic 策略训练、挂单/原生账户逐事件 parity、历史手续费/资金费/清算认证、独立 Test/Holdout 授权，以及任何盈利结论。
+
+**2026-10-21 回归记录**：隔离 Python 3.12.10/JAX 0.11.2 CPU smoke 对 E3/E3b/E4 三路均完成有限梯度更新，参数量依次为 1,248/3,158/3,478，断点恢复逐数组一致。checkpoint-bound JAX F2 对 E3/E3b/E4 运行了生成分钟回流与同刻日/小时 latent 更新；E4 另测 slow-only；full-filter prior/posterior logits 差异非零。全量 world-model 测试 **155 passed / 10 skipped**（跳过项仅因主 Python 3.14 主环境没有 JAX），隔离 JAX 专项 **14 passed**，模型级 R2 λ=0/0.01/0.05 loss/gradient + Train-only optimizer/reporting smoke、Ruff 与 compileall 通过。F2 和 R3 工程证据来自合成数据；真实注册 R3 消融和 R4 Validation 尚未运行。
 
 ## 安装方式（增量代码）
 
@@ -168,7 +170,7 @@ report=client.train(
 
 1. 先在**已固定的 JAX 环境**运行上述 B2 CPU 专项 smoke，解决上游 API/依赖差异，并固定真实 optimizer checkpoint 中途恢复等价性；通过前不可在路线 B 上声称“B2 已验收”。
 2. 在正式授权数据上训练 E2 单尺度模型，完成单步、多步 open-loop CRPS/覆盖率/极端风险评价，和已有 S0/S1/S2 及概率 GRU 比较；不得直接跳过 E1。
-3. E2 有增量价值后再建立 `jax_hierarchy.py` 的正式训练、索引不泄漏证明与 E3/E4 消融；`synthetic_feedback.py` 仅提供 F2 时钟，不等于完整高尺度 imagination。
+3. E2 的最新独立 Fold 已通过注册门槛。E3/E3b/E4 的模型机制及 checkpoint-bound JAX F2 合成循环已实现；下一步先在未消费 scope 上冻结独立 Fold、预算/种子/指标，再运行正式训练和 Validation 消融。
 4. 与 NautilusTrader 做差分执行回归。`imagined_account.py` 不是原生撮合系统，**不包含资金费、强平、保证金阶梯、价差和 bar 内价格先后顺序**，因此不能用于最终收益认证。
 
 ## 编码边界说明

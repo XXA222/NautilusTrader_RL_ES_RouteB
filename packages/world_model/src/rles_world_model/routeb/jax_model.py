@@ -5,8 +5,8 @@ current reconstruction, next-bar conditional OHLCV and multi-horizon risk
 distributions, plus Dreamer RSSM KL. Market actions are constant zero even
 when trading actions change.
 
-Training is single-scale B2. The B3 hierarchy plan is a separate, currently
-untrained component and MUST NOT be advertised as a learned 3-scale model.
+Training is single-scale. Optional R3 representation regularization is off by
+default; the B3 hierarchy has a separate Train-tensor-only learner.
 """
 from __future__ import annotations
 from dataclasses import dataclass
@@ -41,6 +41,9 @@ class RSSMConfig:
     path_log_rv_crps_horizons: tuple[int,...]=()
     path_log_rv_crps_paths: int=8
     path_log_rv_crps_scale: float=1.0
+    r2_regularizer_scale: float=0.0
+    r2_regularizer_alpha: float=0.005
+    r2_regularizer_interval: int=60
     forecast_student_t_df: float=5.0
     rollout_risk_conditioning: bool=False
     rollout_risk_sampling: bool=False
@@ -66,7 +69,15 @@ class RSSMConfig:
                 self.reconstruction_scale,self.prediction_scale,
                 self.posterior_auxiliary_scale,self.risk_prediction_scale,
                 self.forecast_student_t_df,self.min_scale,
-                self.path_log_rv_crps_scale))
+                self.path_log_rv_crps_scale,self.r2_regularizer_alpha))
+            or isinstance(self.r2_regularizer_alpha,bool)
+            or not isinstance(self.r2_regularizer_alpha,(int,float))
+            or isinstance(self.r2_regularizer_scale,bool)
+            or not isinstance(self.r2_regularizer_scale,(int,float))
+            or not math.isfinite(self.r2_regularizer_scale)
+            or self.r2_regularizer_scale<0
+            or type(self.r2_regularizer_interval) is not int
+            or self.r2_regularizer_interval<1
             or (isinstance(self.rollout_risk_conditioning_strength,bool)
                 or not isinstance(self.rollout_risk_conditioning_strength,(int,float))
                 or not math.isfinite(self.rollout_risk_conditioning_strength)
@@ -257,6 +268,12 @@ def make_model(checkout:str|Path,config:RSSMConfig):
             barrier=self.sub("prior_risk_barrier",nn.Linear,horizons*2)(z).reshape(
                 (*z.shape[:-1],horizons,2))
             return mu,scale,barrier
+
+        def _r2_projection(self,z):
+            # Same feature width makes the frozen target coordinate-wise
+            # interpretable; the projector is present in every R3 arm so the
+            # lambda=0 control has identical model capacity and initialization.
+            return self.sub("r2_projector",nn.Linear,z.shape[-1])(nn.cast(z))
 
         def _prior_next_state(self,dyn,feat):
             """Sample p(z[t+1] | posterior[t]) without observing x[t+1]."""
@@ -468,6 +485,10 @@ def make_model(checkout:str|Path,config:RSSMConfig):
             prior_distribution=self._prior_head(prior_z)
             prior_mean,prior_scale=self._prior_moments(prior_distribution)
             risk_mean,risk_scale,risk_logits=self._risk_head(prior_z)
+            # Project only the frozen-spaced rows; avoid a dense projector on
+            # every adjacent minute token when the regularizer is active.
+            r2_z=z[:,::config.r2_regularizer_interval]
+            r2_prediction=self._r2_projection(r2_z)
             posterior_mean,posterior_scale=self._head(z[:,:-1],"posterior_aux")
             rec_mean,rec_scale=self._head(z,"reconstruct")
             nll_prior=self._prior_forecast_nll(features[:,1:,:],prior_distribution)
@@ -546,12 +567,21 @@ def make_model(checkout:str|Path,config:RSSMConfig):
             risk_barrier_by_h=(barrier_bce*valid_risk).sum((0,1))/jnp.maximum(horizon_counts,1.0)
             loss_risk=_weighted_risk_loss(
                 risk_cont_by_h,risk_barrier_by_h,config.risk_horizon_weights)
+            from .r2_regularizer import cross_correlation_regularizer
+            r2_metrics=cross_correlation_regularizer(
+                r2_prediction,jax.lax.stop_gradient(r2_z),
+                mask[:,::config.r2_regularizer_interval]*
+                (~reset[:,::config.r2_regularizer_interval]).astype(mask.dtype),
+                interval=1,
+                alpha=config.r2_regularizer_alpha)
+            loss_r2=r2_metrics["loss"]
             total=(config.prediction_scale*objective_prior +
                    config.posterior_auxiliary_scale*loss_posterior +
                    config.reconstruction_scale*loss_rec +
                    config.dynamics_scale*loss_dyn+
                    config.representation_scale*loss_rep+
-                   config.risk_prediction_scale*loss_risk)
+                   config.risk_prediction_scale*loss_risk+
+                   config.r2_regularizer_scale*loss_r2)
             return {"loss":total,"prior_forecast_nll":loss_prior,
                     "prior_forecast_crps":loss_crps,
                     "open_loop_prior_crps":open_loop_crps,
@@ -566,6 +596,13 @@ def make_model(checkout:str|Path,config:RSSMConfig):
                     "latent_feature_variance":jnp.var(z,axis=(0,1)).mean(),
                     "posterior_aux_nll":loss_posterior,"pred_nll":loss_prior,"rec_nll":loss_rec,
                     "dyn_kl":loss_dyn,"rep_kl":loss_rep,
+                    "r2_regularizer_loss":loss_r2,
+                    "r2_valid_samples":r2_metrics["valid_samples"],
+                    "r2_condition_number":r2_metrics["condition_number"],
+                    "r2_prediction_variance":r2_metrics["prediction_variance"],
+                    "r2_target_variance":r2_metrics["target_variance"],
+                    "r2_identity_loss":r2_metrics["identity_loss"],
+                    "r2_redundancy_loss":r2_metrics["redundancy_loss"],
                     "valid_predictions":valid_pair.sum(),
                     "mean_prior_scale":prior_scale.mean()}
 

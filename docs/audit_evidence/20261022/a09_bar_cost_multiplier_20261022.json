@@ -1,0 +1,27 @@
+{
+  "schema": "rles.routeb.audit-evidence.bar-cost-contract-multiplier.v1",
+  "date": "2026-10-22",
+  "finding": "The Train-inner Bar Base/Stress diagnostic computed filled_quote_notional as native fill quantity times price and omitted the frozen contract multiplier. Reports for multiplier-above-one instruments therefore understated simulated fill notional.",
+  "changes": [
+    "The diagnostic order summarizer now requires one finite positive Decimal contract multiplier and applies it to every fill's quote notional.",
+    "Each mode passes HistoricalEnvironmentFactory.contract_multiplier from the frozen instrument rule and records the multiplier alongside the computed notional.",
+    "Added synthetic multiplier-2 and invalid-multiplier regressions."
+  ],
+  "verification": {
+    "regression_before_fix": "failed because the old summarizer had no contract_multiplier input",
+    "combined_source_tests": "9 passed, including existing frozen-plan reader tests",
+    "ruff_changed_files": "passed",
+    "py_compile": "passed",
+    "mypy_changed_script": "Success: no issues found in 1 source file",
+    "source_manifest": {
+      "files": 595,
+      "source_identity_sha256": "28127481828a9f40b96de186643190c07e741fc8dfc6662e852338e5edcfc859",
+      "verified": true
+    },
+    "changed_file_sha256": {
+      "qa/compare_bar_cost_modes_20261017.py": "ef2f4914573cfcd1f183c1ceb98ac0e9219003bdbba01bd99ee196dc8f0890e3",
+      "tests/test_bar_cost_modes_multiplier.py": "9e8a21fd1d87c2d6dc40ca437acfcd8a2867def675ab8088869124fa3335a674"
+    }
+  },
+  "scope_limit": "Synthetic fills only. The diagnostic was not run against a market window; this does not authenticate instrument rules, simulated liquidity, or economic performance. No market, account, ledger, Validation, Test, or Holdout payload was accessed."
+}

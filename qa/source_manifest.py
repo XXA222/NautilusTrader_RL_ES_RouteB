@@ -26,6 +26,36 @@ _EXCLUDED_PARTS = {"__pycache__", "build", "dist", ".pytest_cache", ".mypy_cache
 _EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
 
 
+class _DuplicateManifestKey(ValueError):
+    """A manifest JSON object repeats a field and is ambiguous."""
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateManifestKey(key)
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise json.JSONDecodeError(f"non-standard JSON constant: {value}", "", 0)
+
+def _read_manifest(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"),
+                            object_pairs_hook=_unique_json_object,
+                            parse_constant=_reject_json_constant)
+    except _DuplicateManifestKey as exc:
+        raise ValueError(f"duplicate JSON manifest key in {path}: {exc}") from exc
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"cannot read JSON manifest: {path}") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"expected JSON object: {path}")
+    return value
+
+
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -45,7 +75,7 @@ def _source_files(root: Path) -> list[Path]:
     files: set[Path] = set()
     for relative in _ROOT_FILES:
         path = root / relative
-        if path.is_file() and not path.is_symlink():
+        if not path.is_symlink() and path.is_file():
             files.add(path)
     for relative in _SOURCE_ROOTS:
         directory = root / relative
@@ -63,7 +93,7 @@ def _source_files(root: Path) -> list[Path]:
                 files.add(path)
     workflow_dir = root / ".github" / "workflows"
     if workflow_dir.is_dir() and not workflow_dir.is_symlink():
-        files.update(path for path in workflow_dir.rglob("*") if path.is_file() and not path.is_symlink())
+        files.update(path for path in workflow_dir.rglob("*") if not path.is_symlink() and path.is_file())
     for relative in ("qa/source_manifest.py", "qa/wheel_manifest.py"):
         tool = root / relative
         if tool.is_file() and not tool.is_symlink():
@@ -149,7 +179,11 @@ def main(argv: list[str] | None = None) -> int:
         if not output.is_file():
             print(f"manifest not found: {output}", file=sys.stderr)
             return 2
-        previous = json.loads(output.read_text(encoding="utf-8"))
+        try:
+            previous = _read_manifest(output)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
         matches = (
             previous.get("source_identity_sha256") == fresh["source_identity_sha256"]
             and previous.get("files") == fresh["files"]

@@ -1,0 +1,41 @@
+{
+  "allow_legacy_isolated_snapshot": false,
+  "config": {
+    "environment": {
+      "instrument": "ADAUSDT-PERP.BINANCE",
+      "market_path": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB/.artifacts/world_model/fresh-adausdt-r4-e2-e3-20261021/source/curated/market.parquet"
+    }
+  },
+  "fold": {
+    "dataset_hash": "4cd497b1eb4ae773cb8ebbf2f866941c31afe111f41d0e2657d5e325e51666bb",
+    "embargo_ns": 82800000000000,
+    "feature_hash": "fc7c4373d2a4e5d802f9c0663d37ecf89d900e73afc7742d2d6ea76258540890",
+    "freeze_validation_scaler": true,
+    "purge_ns": 3600000000000,
+    "reset_orders": true,
+    "reset_positions": true,
+    "reset_replay": true,
+    "scaler_hash": null,
+    "schema_version": "0.4.0",
+    "terminal_policy": "force_flatten_with_cost",
+    "test": {
+      "score_end_ns": 1724716860000000000,
+      "score_start_ns": 1723420860000000000,
+      "warmup_start_ns": 1723248060000000000
+    },
+    "train": {
+      "score_end_ns": 1721952060000000000,
+      "score_start_ns": 1690848060000000000,
+      "warmup_start_ns": 1690675260000000000
+    },
+    "validation": {
+      "score_end_ns": 1723334460000000000,
+      "score_start_ns": 1722038460000000000,
+      "warmup_start_ns": 1721865660000000000
+    }
+  },
+  "instrument": "ADAUSDT-PERP.BINANCE",
+  "label": "routeb-fold-adausdt-r4-e2-e3-20261021-v1",
+  "marker_sha256": "e00300266d9ffb47d42074746c70634edb0aa9e8afec485888eff6821f44f088",
+  "schema_version": "rles.world_model.registered_fold_baseline.v0"
+}

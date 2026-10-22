@@ -1,0 +1,46 @@
+{
+  "schema": "rles.routeb-audit-evidence.v1",
+  "audit_item": "A04 project interval authorization namespace integrity",
+  "date": "2026-10-22",
+  "finding": {
+    "before": "ProjectResearchRegistry compared market/family identifiers as raw strings without requiring canonical form. A second same-interval development record using market='ETHUSDT ' was accepted beside market='ETHUSDT', bypassing overlap detection for the same economic market.",
+    "reproduction": "The original registry accepted the padded-market overlap. Six newly parameterized installed-wheel cases failed before the fix: padded/lowercase market aliases and padded/mixed-case family aliases at both Registry and legacy-inventory import boundaries."
+  },
+  "fix": {
+    "registry_scope": "Scope key/owner/market/family identifiers now reject surrounding whitespace; market must be uppercase and family lowercase before any database lookup or reservation.",
+    "legacy_inventory_parser": "The parser rejects noncanonical key, market, and family values as malformed rows.",
+    "legacy_inventory_import": "The direct import API independently validates key, market, and family canonical form before beginning its transaction."
+  },
+  "verification": {
+    "installed_wheel_tests": {
+      "selector": [
+        "tests/test_research_access.py",
+        "tests/test_application_cli.py",
+        "tests/test_routeb_fresh_fold_access.py",
+        "tests/test_research_wfo.py",
+        "tests/world_model/test_reconcile_routeb_research_ledger.py"
+      ],
+      "passed": 215,
+      "failed": 0
+    },
+    "ruff": "passed for changed source and tests",
+    "mypy": "passed for 2 changed source modules with RouteB workspace source paths",
+    "build": {
+      "wheels": 12,
+      "sdists": 12,
+      "wheel_source_match": true,
+      "source_identity_sha256": "1df7998039047073208d001fd97fa8e10f04ec9dfe1ac35e5677b546634a45b6"
+    },
+    "installed_environment": {
+      "updated_routeb_wheels": ["rles-orchestrator", "rles-research"],
+      "import_provenance": "12 packages and 6 entry points resolved from RouteB isolated application venv",
+      "dependency_check": "69 packages compatible"
+    },
+    "source_manifest": {
+      "file_count": 569,
+      "identity_sha256": "1df7998039047073208d001fd97fa8e10f04ec9dfe1ac35e5677b546634a45b6",
+      "verified": true
+    }
+  },
+  "scope_boundary": "Synthetic identifiers and temporary SQLite only. No project research ledger was mutated; no market, account, Validation, Test, or Holdout payload was read."
+}

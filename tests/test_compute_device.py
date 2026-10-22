@@ -163,3 +163,43 @@ def test_application_cuda_allocator_fraction_requires_cuda() -> None:
     assert application._rl_gpu_memory_fraction(0.75, "cuda") == 0.75
     with pytest.raises(DataError, match="requires rl_device=cuda"):
         application._rl_gpu_memory_fraction(0.75, "cpu")
+
+
+def test_gpu_lease_keeps_duplicate_owner_json_fail_closed(tmp_path):
+    lock_file = tmp_path / "gpu-0.owner"
+    payload = b'{"lock_protocol":"rles.gpu-lease.v2","lock_protocol":"legacy"}'
+    lock_file.write_bytes(payload)
+
+    with pytest.raises(ComputeError, match="legacy or corrupted GPU owner file"):
+        GPULearnerLease(tmp_path, 0).acquire(attempt_id="new-owner")
+    assert lock_file.read_bytes() == payload
+
+
+def test_gpu_lease_release_keeps_lock_when_owner_json_has_duplicate_keys(tmp_path, monkeypatch):
+    import rles_compute_runtime.resources as resources
+
+    lease = GPULearnerLease(tmp_path, 0)
+    lease.acquire(attempt_id="current-owner")
+    duplicate = b'{"lock_protocol":"rles.gpu-lease.v2","token":"a","token":"b"}'
+    with monkeypatch.context() as patch:
+        patch.setattr(resources.os, "read", lambda _fd, _size: duplicate)
+        with pytest.raises(ComputeError, match="GPU lease corrupted; manual recovery required"):
+            lease.release()
+    assert lease.token is not None
+    lease.release()
+
+
+def test_quota_inspection_rejects_duplicate_recovery_receipt_json(tmp_path):
+    from rles_compute_runtime.recovery import inspect_quota
+
+    database = tmp_path / "quota.sqlite"
+    ResourceQuota(database, cpu_cores=1, ram_bytes=1024, gpus=0)
+    import sqlite3
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO lease_recovery_log VALUES (?,?,?,?,?)",
+            ("t" * 32, "owner", 1.0, "test", '{"schema":"a","schema":"b"}'),
+        )
+
+    with pytest.raises(ComputeError, match="invalid or ambiguous JSON"):
+        inspect_quota(database)

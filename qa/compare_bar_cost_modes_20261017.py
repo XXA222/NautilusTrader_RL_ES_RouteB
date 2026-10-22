@@ -10,11 +10,14 @@ import numpy as np
 
 from rles_data.core import CuratedStore, DataError
 from rles_data.io import read_curated
+from rles_data.json_utils import loads_unique_json
 from rles_gym_bridge.historical import HistoricalEnvironmentFactory, load_rules
 from rles_orchestrator.application import _file_hash, _verify_file, _write_verified, rollout
 from rles_orchestrator.research_access import record_development
 from rles_orchestrator.wfo_application import _scaler
-from profile_native_history_growth_20261016 import available_memory, coverage_for_window
+from profile_native_history_growth_20261016 import (
+    _routeb_path, available_memory, coverage_for_window,
+)
 
 DAY_NS = 86_400 * 1_000_000_000
 TARGET = 0.25
@@ -37,7 +40,20 @@ def _predict(_batch: np.ndarray) -> np.ndarray:
     return np.full((1, 1), TARGET, dtype=np.float32)
 
 
-def _order_metrics(orders, fills) -> dict:
+def _load_json_object(path: Path) -> dict:
+    try:
+        value = loads_unique_json(path.read_bytes())
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise DataError(f"cannot read unambiguous bar-cost JSON: {path}") from exc
+    if not isinstance(value, dict):
+        raise DataError(f"bar-cost JSON root must be an object: {path}")
+    return value
+
+
+def _order_metrics(orders, fills, *, contract_multiplier: Decimal) -> dict:
+    if (not isinstance(contract_multiplier, Decimal)
+            or not contract_multiplier.is_finite() or contract_multiplier <= 0):
+        raise DataError("bar-cost contract multiplier must be a finite positive Decimal")
     fills_by_order: dict[str, list[dict]] = {}
     for fill in fills:
         client_order_id = str(fill.get("client_order_id", ""))
@@ -76,7 +92,8 @@ def _order_metrics(orders, fills) -> dict:
         raise DataError("native fills exceed submitted order quantity")
     fill_count = len(fills)
     filled_notional = sum(
-        (Decimal(str(fill["last_qty"])) * Decimal(str(fill["last_px"])) for fill in fills),
+        (Decimal(str(fill["last_qty"])) * Decimal(str(fill["last_px"])) * contract_multiplier
+         for fill in fills),
         Decimal(0),
     )
     return {
@@ -89,25 +106,40 @@ def _order_metrics(orders, fills) -> dict:
         "filled_qty": str(filled_qty),
         "quantity_fill_ratio": str(filled_qty / ordered_qty) if ordered_qty else None,
         "fill_count": fill_count,
+        "contract_multiplier": str(contract_multiplier),
         "filled_quote_notional": str(filled_notional),
     }
 
 
 def run(plan_path: Path, output: Path) -> dict:
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
-    if plan.get("split") != "train_inner" or output.exists():
+    plan_path = _routeb_path(plan_path, "bar-cost plan", must_exist=True)
+    output = _routeb_path(output, "bar-cost output", must_exist=False)
+    if output.exists() or not output.parent.is_dir():
+        raise DataError("bar-cost output must be new and its parent must exist")
+    plan = _load_json_object(plan_path)
+    if plan.get("split") != "train_inner":
         raise DataError("requires frozen Train-inner inputs and a new output directory")
-    source_plan_path = Path(plan["source_plan"])
+    source_plan_path = _routeb_path(plan["source_plan"], "frozen Train plan", must_exist=True)
     if _file_hash(source_plan_path) != plan["source_plan_sha256"]:
         raise DataError("frozen Train-inner source plan checksum changed")
-    source_plan = json.loads(source_plan_path.read_text(encoding="utf-8"))
-    bundle_root = Path(source_plan["bundle"])
+    source_plan = _load_json_object(source_plan_path)
+    bundle_root = _routeb_path(source_plan["bundle"], "frozen policy bundle", must_exist=True)
     if _verify_file(bundle_root / "bundle.json") != plan["bundle_sha256"]:
         raise DataError("frozen policy bundle checksum changed")
-    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = _load_json_object(bundle_root / "bundle.json")
     source = plan["source"]
+    source_paths = {
+        key: _routeb_path(source[f"{key}_path"], f"{key} source", must_exist=True)
+        for key in ("market", "rules")
+    }
+    environment = bundle["environment"]
     for key in ("market", "rules"):
-        if _file_hash(Path(source[f"{key}_path"])) != source[f"{key}_sha256"]:
+        environment_path = _routeb_path(
+            environment[f"{key}_path"], f"bundle {key} source", must_exist=True,
+        )
+        if environment_path != source_paths[key]:
+            raise DataError(f"bundle {key} source differs from the bar-cost plan")
+        if _file_hash(source_paths[key]) != source[f"{key}_sha256"]:
             raise DataError(f"frozen {key} source checksum changed")
 
     start_ns = int(source_plan["windows"][0]["start_ns"])
@@ -116,13 +148,14 @@ def run(plan_path: Path, output: Path) -> dict:
         raise DataError("Base/Stress comparison exceeds frozen Train boundary")
     window = {"start_ns": start_ns, "end_ns": end_ns}
     seed = int(plan.get("seed", source_plan["seed"]))
-    environment = bundle["environment"]
     config = {"environment": environment, "output": str(output), "seed": seed}
     record_development(config, window, label="bar-cost-base-stress-train-inner")
 
     output.mkdir(parents=True)
+    root = Path(__file__).resolve().parents[1]
     source_code_hashes = {
-        path: _file_hash(Path(path)) for path in SOURCE_FILES
+        path: _file_hash(_routeb_path(root / path, "bar-cost source code", must_exist=True))
+        for path in SOURCE_FILES
     }
     _write_verified(output / "plan.json", {
         "schema": "rles.bar-cost-comparison-plan.v1",
@@ -147,8 +180,8 @@ def run(plan_path: Path, output: Path) -> dict:
         "liquidity_assumption": "Bar model provides order-sized simulated depth; not historical depth evidence",
     })
 
-    rules = load_rules(source["rules_path"])
-    store = CuratedStore((*read_curated(source["market_path"]).events, *rules))
+    rules = load_rules(source_paths["rules"])
+    store = CuratedStore((*read_curated(source_paths["market"]).events, *rules))
     if store.snapshot_hash != bundle["preprocessing"]["identities"]["dataset"]:
         raise DataError("frozen market/rule sources differ from the policy dataset identity")
     scaler = _scaler(bundle_root)
@@ -184,7 +217,10 @@ def run(plan_path: Path, output: Path) -> dict:
             raise DataError(f"{mode} run did not produce a flat terminal account")
         initial = Decimal(str(snapshots[0].equity))
         final = Decimal(str(snapshots[-1].equity))
-        order_metrics = _order_metrics(snapshots[-1].all_orders, report["fills"])
+        order_metrics = _order_metrics(
+            snapshots[-1].all_orders, report["fills"],
+            contract_multiplier=factory.contract_multiplier,
+        )
         metrics = report["metrics"]
         results[mode] = {
             "decision_steps": report["action_diagnostics"]["count"],

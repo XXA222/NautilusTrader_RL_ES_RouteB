@@ -1,0 +1,30 @@
+{
+  "schema": "rles.routeb.audit-evidence.archive-ascii-integer-lexemes.v1",
+  "date": "2026-10-22",
+  "finding": "Python int() silently accepts underscore separators, Unicode digits, and explicit plus signs. Archive timestamps and IDs across bookTicker, fundingRate, klines, and aggTrades could therefore be normalized from noncanonical CSV tokens.",
+  "change": "The shared archive integer parser now accepts only unsigned ASCII digits and maps malformed tokens to field-specific DataError. aggTrades IDs/timestamps use the same parser.",
+  "verification": {
+    "regression_before_fix": "5 synthetic ZIP cases with underscore, Arabic-digit, and plus-sign lexemes were accepted",
+    "source_archive_and_event_tests": "49 passed",
+    "installed_wheel_archive_and_event_tests": "49 passed with PYTHONPATH unset",
+    "ruff": "passed",
+    "py_compile": "passed",
+    "targeted_mypy": "Success: no issues found in 1 source file",
+    "source_manifest": {
+      "files": 595,
+      "source_identity_sha256": "246deaf2f0296dd2ceafef840db955fc96db87c6bcb183061d91fb427081680a",
+      "verified": true
+    },
+    "distribution": {
+      "wheelhouse": "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-wheels-a08-archive-ascii-integer-20261022",
+      "wheels_built": 12,
+      "sdists_built": 12,
+      "source_matches_all_wheels": true,
+      "data_wheel_sha256": "6b650de5919080d820ddfb89512fb7c41698f7f6700090bc4d36839668c09253",
+      "installed_data_module_sha256": "b0111bb441aff8fc44708ca991cdeb95d47b7a2ed66245f4016af83befcb2302",
+      "installed_module_matches_source": true,
+      "dependency_check": "69 packages compatible"
+    }
+  },
+  "scope_limit": "Synthetic temporary ZIP fixtures only. No exchange archive or research payload was downloaded or read."
+}

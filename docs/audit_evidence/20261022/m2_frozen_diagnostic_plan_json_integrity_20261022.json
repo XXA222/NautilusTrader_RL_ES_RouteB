@@ -1,0 +1,25 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A03/A06 / frozen M2 episode-horizon and cost comparison input integrity",
+  "finding": "The Train-inner episode-horizon and Bar Base/Stress comparison runners used permissive JSON parsing for frozen plans, source plans, and actor bundles. Duplicate fields could change Train scope, source paths, or cost controls while the raw file still matched its frozen SHA.",
+  "change": "Both runners now recursively reject duplicate JSON keys, invalid UTF-8/JSON/IO, and non-object roots before consuming frozen plan, source-plan, or bundle fields. Added temporary-file regressions for both readers.",
+  "source_files": {
+    "qa/compare_bar_cost_modes_20261017.py": "a98a5f93b11cd1470d3c61e3700600ea822719cb9917f0cfab0a3df1498378e3",
+    "qa/compare_episode_horizon_20261017.py": "1e6589125b507bf1bc54347e1d27745648b924977890ccfa8cb6d8cfb560eca2"
+  },
+  "test_files": {
+    "tests/test_m2_frozen_plan_json_integrity.py": "e27cb6b455fd149e3e7676b5f713b416be496d72f0687c1cb37c23d7ded0c2dd"
+  },
+  "verification": {
+    "pytest": "frozen M2 plan + M3.3 baseline + Stage prereg + M3 analyzer strict-reader selector: 36 passed",
+    "ruff": "passed for both M2 runners and regression test",
+    "py_compile": "passed for both M2 runners",
+    "mypy": "packages qa: 224 source files, no issues; installed untyped-wheel diagnostic disabled",
+    "source_manifest": {
+      "file_count": 586,
+      "source_identity_sha256": "849c557ff6bf8d02417b83a21c25db039d5a0ed012bcbe9d4be76c6d28ea7bc6",
+      "verified": true
+    }
+  },
+  "scope": "Synthetic JSON only. Historical Train windows, market data, bundles, and ledgers were not opened or replayed."
+}

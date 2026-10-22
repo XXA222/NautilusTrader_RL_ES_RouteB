@@ -1,0 +1,75 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "date": "2026-10-22",
+  "audit_item": "A08 Binance archive ingress, decode, and cache-size boundaries",
+  "finding": "The optional instrument argument accepted empty or whitespace-padded strings. Those values could proceed past public ingress and fail only after archive fetch or event decoding. In addition, non-ASCII bytes in the downloaded .CHECKSUM response escaped as a raw UnicodeDecodeError instead of a contextual DataError. Invalid ZIP container bytes also leaked BadZipFile after the expected content hash passed. A pre-existing archive cache without a verified source receipt was also read fully before checking the importer size limit.",
+  "reproduction_before_fix": {
+    "input": "three spaces",
+    "observed": "_archive_instrument returned the same invalid value",
+    "network_or_market_data_access": false,
+    "checksum_response": {
+      "input": "synthetic byte 0xff",
+      "observed": "fetch_archive leaked UnicodeDecodeError",
+      "network_or_market_data_access": false
+    },
+    "zip_container": {
+      "input": "synthetic non-ZIP bytes with matching SHA-256",
+      "observed": "archive_events leaked zipfile.BadZipFile",
+      "network_or_market_data_access": false
+    },
+    "preexisting_cache": {
+      "input": "synthetic cache larger than patched test size limit without source receipt",
+      "observed": "fetch_archive read and accepted the cached bytes after SHA match",
+      "network_or_market_data_access": false
+    }
+  },
+  "change": {
+    "file": "packages/data/src/rles_data/binance_archive.py",
+    "behavior": "A supplied instrument must be a nonempty trimmed string; rejection occurs before output directory creation or fetch in both import_day and import_range. None continues to select the documented default instrument.",
+    "checksum_response": "Non-ASCII checksum content now raises contextual DataError before checksum parsing.",
+    "zip_container": "archive_events now normalizes malformed or unreadable ZIP container errors to contextual DataError while preserving existing DataError validations.",
+    "preexisting_cache": "The shared archive size limit is applied to receipt-backed and unreceipted cache files; unreceipted cache size is checked from stat before read_bytes."
+  },
+  "regression": {
+    "file": "tests/test_archive_ingress_errors.py",
+    "cases": [
+      "non-string",
+      "empty",
+      "whitespace-only",
+      "leading whitespace",
+      "trailing whitespace",
+      "non-ASCII remote checksum response becomes DataError",
+      "invalid ZIP container with matching content SHA becomes DataError",
+      "oversized preexisting cache rejected before read_bytes"
+    ],
+    "assertion": "fetch is not called and output directory is not created",
+    "source_selector": {
+      "result": "passed",
+      "tests": 100
+    },
+    "installed_wheel_selector": {
+      "result": "passed",
+      "tests": 100
+    }
+  },
+  "distribution": {
+    "workspace_wheels_built": 12,
+    "workspace_sdists_built": 12,
+    "all_wheels_match_source": true,
+    "installed_module_sha256": "557e81b945f0983f02f3b1c7834319eec4ce2ccdcc784a6b6f09c7e928d9ed0d",
+    "source_module_sha256": "557e81b945f0983f02f3b1c7834319eec4ce2ccdcc784a6b6f09c7e928d9ed0d",
+    "installed_provenance": "12/12 packages and 6/6 declared entry points resolve from RouteB app venv wheels",
+    "dependency_check": "69 packages compatible",
+    "source_manifest": {
+      "file_count": 604,
+      "identity_sha256": "91715791405993ba1d4a89954356a9e48443cf4a8450a79819ff3169a0826099"
+    }
+  },
+  "static_checks": {
+    "ruff": "passed",
+    "mypy": "passed for changed source and test files",
+    "py_compile": "passed",
+    "git_diff_check": "passed; Git emitted only configured LF-to-CRLF notice"
+  },
+  "scope": "Synthetic inputs only. No archive network request, market history, account, ledger, Validation, Test, or Holdout payload was accessed."
+}

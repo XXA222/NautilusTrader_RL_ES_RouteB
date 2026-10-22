@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from rles_data.json_utils import loads_unique_json
+
 
 ROOT = Path(__file__).resolve().parents[1]
 STAGE58 = ROOT / ".tmp/rl-stage58-train-window-coverage-20261016"
@@ -29,7 +31,10 @@ def sha(path: Path) -> str:
 
 
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        value = loads_unique_json(path.read_bytes())
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ValueError(f"cannot read unambiguous JSON object: {path}") from exc
     if not isinstance(value, dict):
         raise ValueError(f"expected JSON object: {path}")
     return value

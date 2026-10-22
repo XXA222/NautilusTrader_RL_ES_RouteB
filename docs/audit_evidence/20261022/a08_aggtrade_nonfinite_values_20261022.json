@@ -1,0 +1,30 @@
+{
+  "schema": "rles.routeb.audit-evidence.aggtrade-nonfinite-values.v1",
+  "date": "2026-10-22",
+  "finding": "USD-M aggTrades parsed price and quantity as Decimal but checked positivity without first requiring finiteness. Positive Infinity reached Event construction, and NaN leaked Decimal.InvalidOperation from comparisons instead of the parser's stable DataError contract.",
+  "change": "The archive parser now rejects non-finite price or quantity before comparisons or aggregation, using its normal identity/order/value DataError path.",
+  "verification": {
+    "regression_before_fix": "4 synthetic cases failed: Infinity was rejected only later by Event validation, while NaN leaked decimal.InvalidOperation",
+    "source_archive_and_event_tests": "34 passed",
+    "installed_wheel_archive_and_event_tests": "34 passed with PYTHONPATH unset",
+    "ruff": "passed",
+    "py_compile": "passed",
+    "targeted_mypy": "Success: no issues found in 1 source file",
+    "source_manifest": {
+      "files": 595,
+      "source_identity_sha256": "42726740515c92e3a5244c6980ae8c046f7cedafe3217a37fd0d056475f6ad33",
+      "verified": true
+    },
+    "distribution": {
+      "wheelhouse": "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-wheels-a08-aggtrade-nonfinite-20261022",
+      "wheels_built": 12,
+      "sdists_built": 12,
+      "source_matches_all_wheels": true,
+      "data_wheel_sha256": "c92ce2e75c2a7fececc347bf888a5ccfee033fd4449f743151395028e9f7ae97",
+      "installed_data_module_sha256": "4f33aa0e73757d539706ca4ad5fe8211b8fb6c30c87d9b13f8fef71a8a4865a3",
+      "installed_module_matches_source": true,
+      "dependency_check": "69 packages compatible"
+    }
+  },
+  "scope_limit": "Synthetic in-memory ZIP fixtures only. No Binance archive was downloaded or read; no market, account, ledger, Validation, Test, or Holdout payload was accessed."
+}

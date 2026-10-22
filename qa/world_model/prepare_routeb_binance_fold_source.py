@@ -37,7 +37,13 @@ def main() -> int:
     parser.add_argument('--availability-delay-ms', type=int, default=1000)
     parser.add_argument('--row-group-boundary-available-at-ns', action='append', default=[],
                         type=int, help='split Parquet row groups before the first event at this availability timestamp')
+    parser.add_argument('--market-payload-cutoff-ns', type=int,
+                        help='seal OHLCV values at/after this close timestamp while preserving timestamp-only coverage')
+    parser.add_argument('--market-event-end-ns', type=int,
+                        help='last event timestamp retained for a sealed Fold source')
     args = parser.parse_args()
+    if (args.market_payload_cutoff_ns is None) != (args.market_event_end_ns is None):
+        raise SystemExit('sealed market payload cutoff and event end must be supplied together')
     if args.availability_delay_ms <= 0:
         raise SystemExit('availability delay must be positive')
     if not re.fullmatch(r'[A-Z0-9]{3,24}', args.symbol):
@@ -82,6 +88,12 @@ def main() -> int:
             if archive.testzip() is not None:
                 raise SystemExit(f'corrupt archive member: {archive_path.name}')
         archive_hash = actual_hash
+        archive_options = {}
+        if args.market_payload_cutoff_ns is not None:
+            archive_options = {
+                'market_payload_cutoff_ns': args.market_payload_cutoff_ns,
+                'market_event_end_ns': args.market_event_end_ns,
+            }
         converted = archive_events(
             archive_path,
             stream='klines',
@@ -89,6 +101,7 @@ def main() -> int:
             source_url=source_url,
             expected_sha256=archive_hash,
             delay_ns=delay_ns,
+            **archive_options,
         )
         events.extend(event for event in converted if start_event_ns <= event.ts_event_ns <= end_event_ns)
         source_receipts.append({'file': archive_path.name, 'url': source_url, 'sha256': archive_hash,
@@ -133,6 +146,12 @@ def main() -> int:
         'availability': 'derived_after_closed_bar',
         'availability_delay_ns': delay_ns,
         'bar_count': len(events),
+        'market_payload_cutoff_ns': args.market_payload_cutoff_ns,
+        'last_market_event_ns': args.market_event_end_ns,
+        'sealed_market_rows': sum(
+            event.kind == 'coverage_marker' for event in events
+        ) if args.market_payload_cutoff_ns is not None else 0,
+        'test_ohlcv_values_excluded': args.market_payload_cutoff_ns is not None,
         'row_group_size': 1440,
         'row_group_boundaries': [
             {'event_offset': offset, 'available_at_ns': available_times[offset]}

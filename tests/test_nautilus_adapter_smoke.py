@@ -666,11 +666,18 @@ def test_native_quote_execution_uses_displayed_book_and_records_submission_refer
         FillProfile("native-book-stress", Decimal(0), "quote"),
     )
     rule = {
-        "instrument": "ETHUSDT-PERP.SIM", "tick_size": "0.01", "step_size": "0.001",
+        "instrument": "ETHUSDT-PERP.SIM", "quantity_unit": "ETH", "base_currency": "ETH",
+        "quote_currency": "USDT", "contract_multiplier": "1",
+        "tick_size": "0.01", "step_size": "0.001",
         "min_qty": "0.001", "min_notional": "10", "maker_fee": "0.001",
         "taker_fee": "0.001", "initial_margin_rate": "0.01",
         "maintenance_margin_rate": "0.005", "effective_ns": 1,
     }
+    mismatched_rule = {**rule, "quantity_unit": "BTC", "base_currency": "BTC"}
+    with pytest.raises(EngineBoundaryError, match="symbol conflicts"):
+        make_perpetual_session(
+            rule=mismatched_rule, execution=execution, mode="base", starting_balance=Decimal("100000"),
+        )
     references: dict[str, Decimal] = {}
     session = make_perpetual_session(
         rule=rule, execution=execution, mode="base", starting_balance=Decimal("100000"),
@@ -721,7 +728,9 @@ def test_native_bar_depth_stress_limits_fill_size_to_frozen_synthetic_fraction()
         FillProfile("bar-limited-depth", Decimal("2"), simulated_depth_fraction=Decimal("0.4")),
     )
     rule = {
-        "instrument": "ETHUSDT-PERP.SIM", "tick_size": "0.01", "step_size": "0.001",
+        "instrument": "ETHUSDT-PERP.SIM", "quantity_unit": "ETH", "base_currency": "ETH",
+        "quote_currency": "USDT", "contract_multiplier": "1",
+        "tick_size": "0.01", "step_size": "0.001",
         "min_qty": "0.001", "min_notional": "10", "maker_fee": "0.001",
         "taker_fee": "0.001", "initial_margin_rate": "0.01",
         "maintenance_margin_rate": "0.005", "effective_ns": 1,
@@ -742,6 +751,148 @@ def test_native_bar_depth_stress_limits_fill_size_to_frozen_synthetic_fraction()
         assert filled == Decimal("0.200")
         assert filled / Decimal("0.500") == Decimal("0.4")
         assert len(snapshot.orders) == 1
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("symbol", ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+def test_official_usdm_current_rules_drive_precision_funding_and_quote_equity(symbol: str) -> None:
+    """Current public Binance rules feed all three linear-perpetual paths.
+
+    The funding event is a synthetic unit check; the fixture is current exchange
+    metadata and does not claim historical rule or funding interval coverage.
+    """
+    import json
+    from pathlib import Path
+    from dataclasses import replace
+    from rles_execution import FillProfile, LatencyProfile, ResolvedExecutionConfig
+    from rles_nautilus_adapter.perpetual import make_perpetual_session
+
+    snapshot = json.loads((Path(__file__).parent / "fixtures"
+                           / "binance_usdm_exchange_info_20261022.json").read_text(encoding="utf-8"))
+    source_symbol = next(item for item in snapshot["symbols"] if item["symbol"] == symbol)
+    filters = {item["filterType"]: item for item in source_symbol["filters"]}
+    price_filter = filters["PRICE_FILTER"]
+    lot_filter = filters["LOT_SIZE"]
+    min_notional_filter = filters["MIN_NOTIONAL"]
+    base = source_symbol["baseAsset"]
+    quote = source_symbol["quoteAsset"]
+    instrument_id = f"{symbol}-PERP.SIM"
+    step = Decimal(lot_filter["stepSize"])
+    tick = Decimal(price_filter["tickSize"])
+    min_notional = Decimal(min_notional_filter["notional"])
+    rule = {
+        "instrument": instrument_id,
+        "quantity_unit": base,
+        "base_currency": base,
+        "quote_currency": quote,
+        # Binance USDⓈ-M quantities are expressed in base-asset units.
+        "contract_multiplier": "1",
+        "tick_size": str(tick),
+        "step_size": str(step),
+        "min_qty": lot_filter["minQty"],
+        "min_notional": str(min_notional),
+        # Fees are neutralized here; this fixture does not contain account fee tiers.
+        "maker_fee": "0",
+        "taker_fee": "0",
+        "initial_margin_rate": str(Decimal(source_symbol["requiredMarginPercent"]) / 100),
+        "maintenance_margin_rate": str(Decimal(source_symbol["maintMarginPercent"]) / 100),
+        "effective_ns": snapshot["server_time_ms"] * 1_000_000,
+    }
+    assert source_symbol["contractType"] == "PERPETUAL"
+    assert source_symbol["status"] == "TRADING"
+    assert source_symbol["marginAsset"] == quote == "USDT"
+
+    latency = LatencyProfile("cross-asset-zero-latency", 0, 0, 0)
+    stress_latency = LatencyProfile("cross-asset-stress-latency", 0, 0, 0)
+    execution = ResolvedExecutionConfig(
+        "0.4.0", Decimal("0.01"), "wait", "MARKET", "GTC", "force_flatten_with_cost",
+        latency, stress_latency, FillProfile("cross-asset-quote", Decimal(0), "quote"),
+        FillProfile("cross-asset-stress-quote", Decimal(0), "quote"),
+    )
+    session = make_perpetual_session(
+        rule=rule, execution=execution, mode="base", starting_balance=Decimal("100000"),
+    )
+    minute = 60_000_000_000
+
+    def batch(number: int, *extra_events: tuple[str, dict]) -> VisibleBatch:
+        timestamp = number * minute
+        payloads = [("ohlcv_1m", {
+            "instrument": instrument_id, "open": "1000.00", "high": "1000.00",
+            "low": "1000.00", "close": "1000.00", "volume": "1000.000",
+        }), ("best_quote", {
+            "instrument": instrument_id, "bid_price": "1000.00", "bid_qty": "1000",
+            "ask_price": "1000.00", "ask_qty": "1000",
+            "update_id": number, "transaction_time_ns": timestamp,
+        }), *extra_events]
+        events = tuple(MarketEvent(
+            event_id=f"cross-asset-{symbol}-{number}-{index}",
+            ts_event_ns=timestamp, ts_init_ns=timestamp, available_at_ns=timestamp,
+            source_hash=f"{index + 1:064x}", quality_grade=DataQualityGrade.B,
+            event_type=kind, payload=FrozenFields.from_mapping(payload),
+        ) for index, (kind, payload) in enumerate(payloads))
+        return VisibleBatch(timestamp, events, True)
+
+    # Round the minimum notional up to an exchange-valid native order quantity.
+    qty = ((min_notional / Decimal("1000") / step).to_integral_value(rounding="ROUND_CEILING")
+           * step)
+    plan = ExecutionPlan(
+        decision_id=f"cross-asset-entry-{symbol}", plan_id=f"cross-asset-entry-{symbol}",
+        instrument_id=instrument_id, quantity_unit=base, quantity_increment=step,
+        latency_model_id=latency.model_id, execution_spec_hash=execution.fingerprint(),
+        order_type=OrderType.MARKET_LIKE, tif=TimeInForce.GTC,
+        cancel_policy=PendingOrderPolicy.NONE, action="SUBMIT", reason="cross-asset rule acceptance",
+        idempotency_key=f"cross-asset-entry-{symbol}", delta_qty=qty,
+    )
+    observe = replace(
+        plan, decision_id=f"cross-asset-observe-{symbol}", plan_id=f"cross-asset-observe-{symbol}",
+        action="NOOP", reason="cross-asset funding observation",
+        idempotency_key=f"cross-asset-observe-{symbol}", delta_qty=Decimal(0),
+    )
+    try:
+        session.open(SimpleNamespace(dataset_hash="a" * 64, fold_hash="b" * 64,
+                                     config_hash=execution.fingerprint()))
+        native = session._engine.cache.instrument(InstrumentId.from_str(instrument_id))
+        assert native.base_currency.code == base
+        assert native.quote_currency.code == native.settlement_currency.code == quote
+        assert native.price_increment.as_decimal() == tick
+        assert native.size_increment.as_decimal() == step
+        assert native.multiplier.as_decimal() == Decimal("1")
+        assert native.min_quantity.as_decimal() == Decimal(lot_filter["minQty"])
+        assert native.min_notional == Money.from_str(f"{min_notional} {quote}")
+
+        initial = session.bootstrap((batch(1),), decision_ts_ns=minute)
+        assert initial.equity == Decimal("100000.00")
+        assert initial.currency == quote
+        entered = session.advance(plan, batches=(batch(2),), next_decision_ts_ns=2 * minute)
+        assert sum(Decimal(fill["last_qty"]) for fill in entered.fills) == qty
+        assert entered.currency == quote
+
+        funding_boundary = 4 * minute
+        session.advance(
+            observe,
+            batches=(batch(3, ("funding_update", {
+                "instrument": instrument_id, "rate": "0.001",
+                "interval_minutes": 480, "next_funding_ns": funding_boundary,
+            })),),
+            next_decision_ts_ns=3 * minute,
+        )
+        settled = session.advance(
+            replace(observe, decision_id=f"cross-asset-settle-{symbol}",
+                    plan_id=f"cross-asset-settle-{symbol}",
+                    idempotency_key=f"cross-asset-settle-{symbol}"),
+            batches=(batch(4, ("funding_settlement", {
+                "instrument": instrument_id, "rate": "0.001",
+                "interval_minutes": 480, "settlement_ns": funding_boundary,
+            })),),
+            next_decision_ts_ns=funding_boundary,
+        )
+        expected_funding = qty * Decimal("1000") * Decimal("0.001")
+        assert settled.currency == quote
+        assert len(settled.funding) == 1
+        assert Money.from_str(settled.funding[0]["pnl_change"]).currency == Currency.from_str(quote)
+        assert Money.from_str(settled.funding[0]["pnl_change"]).as_decimal() == -expected_funding
+        assert settled.equity == initial.equity - expected_funding
     finally:
         session.close()
 

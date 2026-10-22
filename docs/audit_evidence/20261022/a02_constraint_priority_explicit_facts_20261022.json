@@ -1,0 +1,42 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A02 / M1.2 constraint-priority native facts completeness",
+  "source_file": "packages/es_evotorch/src/rles_es_evotorch/fitness.py",
+  "source_sha256": "66e7e1635b5b62544a186583ba138c449fbca18036fb95cbcab9898c4e1a80ac",
+  "test_file": "tests/test_es_fitness.py",
+  "test_sha256": "9faa4c58229357cb33f71dacc8b016f795bba024d23b8f5e731302b6ef7b97c6",
+  "reproduction": {
+    "environment": "Previous installed RouteB rles_es_evotorch wheel",
+    "input": "Positive final equity with insolvency, maintenance_margin_breach, and native_liquidation_detected omitted",
+    "observed": "FitnessDecision(feasible=True, rejection_reason=None)"
+  },
+  "change": "ConstraintPriorityFitnessSpec requires insolvency, maintenance-margin breach, and native liquidation facts as Python booleans and requires margin_facts_known=True; omitted, None, non-boolean, false, or unknown completeness evidence raises ValueError before a feasible decision can be returned.",
+  "verification": {
+    "pytest_source_and_installed_wheel": "test_es_fitness.py + test_compute_worker_pool.py: 49 passed, 8 warnings against source and final installed RouteB wheel",
+    "native_worker_negative_equity_installed": "1 passed",
+    "ruff": "passed for fitness.py, evaluation.py, and test_es_fitness.py",
+    "mypy": "passed for fitness.py and evaluation.py",
+    "source_manifest": {
+      "files": 569,
+      "identity_sha256": "ad2edeb98ce51a5396194e77405dc73da3ca3c2b65c6a8736984a7b1c07f8e5a"
+    },
+    "wheelhouse": "C:\\Users\\QX\\Documents\\ChatGPT\\RouteB\\routeb-wheels-20261022-a02-known-marker",
+    "wheel_manifest": "C:\\Users\\QX\\Documents\\ChatGPT\\RouteB\\a02-known-marker-wheel-manifest.json",
+    "distribution": {
+      "workspace_wheels": 12,
+      "workspace_sdists": 12,
+      "wheel_manifest_all_match": true,
+      "installed_fitness_sha256_matches_source": true,
+      "compatible_app_packages": 69
+    },
+    "pyarrow": {
+      "cpu_env_version": "25.0.1",
+      "present_before_install": true,
+      "install_needed": false
+    }
+  },
+  "scope": "Synthetic episode/worker fixtures only. No market, account, project ledger, Validation, Test, or Holdout payload was accessed. M1.2 still requires independent Validation evidence.",
+  "companion_source_files": {
+    "packages/es_evotorch/src/rles_es_evotorch/evaluation.py": "63832ca20c91325289af33e5f811d15115098c403fb256c9c0431bca5ff54610"
+  }
+}

@@ -241,3 +241,32 @@ Stage62–68 配方、验证器、模型和大多数证据在 `.tmp`，Git 默�
 ## 7. 本次审计边界
 
 这是源码、测试、反例与现有产物联合审计，不是盈利认证。没有新训练出策略，没有复跑百万步完整历史，没有执行 CUDA、外部 GitHub 权限验证或实盘成交验证。性能历史增长、终端 bootstrap 对收益的具体影响仍需针对性测量；报告已将这些事项与实际复现的缺陷分开。
+
+## 8. 2026-10-21 源码整改复核（历史发现的状态增补）
+
+本节更新审计发现的当前源码状态，不覆盖 2026-10-16 的原始反例与限制：
+
+- F1/F2：当前正式 backtest 要求 `EvaluationAccess`，并由 RouteB 源码 checkout 定位项目级研究登记库；不是按 output 目录隔离。2026-10-21 在 RouteB Python 3.14.7 独立 Windows app 环境运行 `tests/test_research_access.py` **70 passed**，`tests/test_routeb_fresh_fold_access.py` **13 passed**；跨 owner/output、重叠区间、正式授权以及登记先于 Parquet row-group 解码均有实际集成覆盖。相关合并回归见 [2026-10-21 证据](audit_evidence/20261021/routeb_audit_regression_20261021.json)。此前缺 Gymnasium 的 Python 3.12 learner 环境不再作为 F1/F2 集成验收环境。
+- F3：Scaler 与 Event/FeatureSpec/FeatureRow 均绑定构造态哈希并在读取哈希时复核；当前数据身份回归通过。
+- F4：已支持冻结执行身份内的显式 `zero_target_policy="close"`，零目标平仓有测试；向后兼容默认仍为 `deadband`，策略研究是否启用需独立配对结果。
+- F6：实际结算平仓的 episode 标为有限终止、不做 TimeLimit bootstrap；常数 critic 回归存在，收益影响仍未量化。
+- F7：native compact position 避免反复序列化完整持仓历史；account rows 已流式送入累计器。`series_metrics()` 采用单遍归约与有界尾堆，精确 VaR/CVaR 保持一致；`AccountFactsAccumulator` 的收益路径改用 8-byte `array('d')`；ES 训练 worker 现关闭仅用于报告的逐屏障 snapshot/fill-reference 留存，同 seed observation/reward/终止状态/info 与诊断模式逐步一致。native metrics 对已按时间排列的快照直接复用输入 sequence，仅为确实乱序输入稳定排序；历史工厂 **87 passed、18 warnings**，指标 **84 passed**。可复现脚本 [series_metrics_memory_profile.py](../qa/series_metrics_memory_profile.py) 在锁定 Python 3.14.7 对 1,440/43,200/1,000,000 个合成收益点分别观察到峰值 Python 分配比为 **3.04%/2.49%/2.54%**；指标与旧公式逐项匹配，三次运行中位耗时比为 **0.93/1.04/0.99**。原始结果见 [Python 3.14.7 profile](audit_evidence/20261021/series_metrics_memory_profile_py314.json)。报告模式仍保留快照；合成 Python 分配比较不替代长窗原生 RSS/完整轨迹比较，因此 F7 仍为部分整改。
+- F8：缺少可信、完整且有历史有效期的真实账户转账/费率/规则证据，仍是经济认证门槛，不以 scenario 替代。
+- F9：近期世界模型数据/配方/摘要已进入版本管理；早期归档计划保留旧绝对路径作为来源记录，RouteB 准备脚本拒绝工作区外读写。被忽略的大型数据/模型工件仍需持久校验清单与干净 checkout 复现。
+- M0.1/A08：补齐 Gym observation 账户余额/保证金解析的同类金额歧义，禁止删除逗号，并校验账户币种；其新增 selector **7 passed**。真实现金流来源认证和长窗账户对账仍未完成。
+
+上述结果只来自源码、合成 fixtures 与本地隔离回归；不代表真实账户经济认证、Hosted CI、策略收益或独立 OOS 通过。
+
+## 2026-10-22 F7 compact native position-fact reuse and long-window profile
+
+The compact report path now interns unchanged position facts as immutable read-only mappings, avoiding a repeated position dictionary allocation at every barrier. A synthetic native-engine profile compared 1/30/90-day retained and lean runs (1,437 / 43,197 / 129,597 steps). Full trajectory hashes and native metric hashes match before and after. At 90 days, retained-mode RSS peak delta fell from 472,567,808 to 398,458,880 bytes (74,108,928 bytes / 15.68% reduction); 30-day delta fell by 25,395,200 bytes. Ruff, py_compile, targeted MyPy, source tests, installed-wheel tests, 12-wheel source matching, 12/6 import smoke, and the 69-package dependency check pass. Evidence: docs/audit_evidence/20261022/f7_native_growth_position_reuse_20261022.json and the paired profile reports it references.
+
+F7 remains **partial**: compact report snapshots are still retained per barrier, so memory remains O(n). The profile is fixed-action synthetic engineering evidence, not a full real-history Train trace or economic result.
+
+## 2026-10-22 F7 online native return metrics
+
+The native report path with account-row output disabled no longer stores the complete return array. It now accumulates compounding, drawdown, dispersion, downside statistics, and exact lower-tail VaR/CVaR online. The tail heap uses a snapshot-derived upper bound and is trimmed on a copy, preserving exact final quantiles and safe intermediate result calls.
+
+Source and installed-wheel history/metric regression each pass **188 tests**; Ruff, py_compile, MyPy, all-12-wheel source matching, 12-module/6-entry-point import smoke, and the 69-package dependency check pass. The final synthetic 90-day native run covers 129,597 steps and has trajectory and native-metric hashes identical to the pre-change profile. Its RSS measurement is recorded as a single observation because repeated-run absolute peaks varied. Evidence: docs/audit_evidence/20261022/f7_online_native_metrics_20261022.json and f7_synthetic_native_growth_final_20261022.json.
+
+F7 remains **partial**: compact per-barrier snapshots are still retained in an O(n) sequence, and include_account_rows=true intentionally materializes report rows. A full real-history Train RSS/trajectory profile remains outstanding.

@@ -112,6 +112,13 @@ def test_npz_authorized_scope_roundtrip(tmp_path):
     with pytest.raises(ValueError):
         load_worker_batch(artifact,expected_scope='validation',
                           snapshot_sha=SHA,upstream_sha=UP)
+    # Ambiguous provenance must never be resolved by last-key-wins JSON parsing.
+    sidecar=artifact.with_suffix('.json')
+    encoded=json.dumps(meta,sort_keys=True)
+    sidecar.write_text('{"schema":"duplicate",'+encoded[1:],encoding='utf-8')
+    with pytest.raises(ValueError,match='duplicate JSON object key: schema'):
+        load_worker_batch(artifact,expected_scope='reserved-train-1',
+                          snapshot_sha=SHA,upstream_sha=UP)
 
 
 def test_hour_day_close_availability_and_future_mutation():
@@ -214,6 +221,64 @@ def test_checkpoint_roundtrip_full_optimizer_tree(tmp_path):
         load_checkpoint(path,params_template=p,opt_template=o,
                         expected_identity={**identity,'train_scope_id':'not-authorized'},
                         expected_config=cfg)
+
+
+def test_checkpoint_rejects_duplicate_metadata_keys_before_archive_access(tmp_path, monkeypatch):
+    import sys
+    from rles_world_model.routeb.checkpoint import load_checkpoint
+
+    monkeypatch.setitem(sys.modules, "jax", object())
+    path = tmp_path / "state.npz"
+    path.with_suffix(".json").write_text(
+        '{"schema":"routeb.jax-checkpoint.v2","step":1,"step":2}', encoding="utf-8")
+    with pytest.raises(ValueError, match="metadata is unreadable or ambiguous"):
+        load_checkpoint(path, params_template=None, opt_template=None,
+                        expected_identity={}, expected_config={})
+
+
+def test_bundle_rejects_duplicate_manifest_keys(tmp_path):
+    from rles_data.core import DataError
+    from rles_world_model.bundle import load_bundle
+
+    (tmp_path / "manifest.json").write_text(
+        '{"schema_version":"rles.world_model.bundle.v1",'
+        '"schema_version":"attacker-override"}', encoding="utf-8")
+    with pytest.raises(DataError, match="bundle manifest or state archive is unreadable"):
+        load_bundle(tmp_path, object(), expected_feature_spec_hash="a" * 64,
+                    expected_source_code_sha256="b" * 64)
+
+
+def test_checkpoint_forecast_accepts_valid_seed_stream_metadata_but_resume_is_strict(
+        tmp_path):
+    jax=pytest.importorskip("jax")
+    from rles_world_model.routeb.checkpoint import load_checkpoint, save_checkpoint
+    p={"w":jax.numpy.array([1.,2.],dtype=jax.numpy.float32)}
+    o={"count":jax.numpy.array(0,dtype=jax.numpy.int32)}
+    identity={"train_scope_id":"synthetic-train","dataset_id":"synthetic"}
+    expected={"model":{"name":"tiny"},"train":{"lr":0.001}}
+    configured={**expected,"seed_streams":{
+        "initialization_seed":102,"sampler_seed":31,"model_seed":32}}
+    path=tmp_path/'seed-streams.npz'
+    save_checkpoint(path,params=p,opt_state=o,step=1,seed=31,
+                    identity=identity,config=configured)
+
+    with pytest.raises(ValueError,match="identity"):
+        load_checkpoint(path,params_template=p,opt_template=o,
+                        expected_identity=identity,expected_config=expected)
+    weights,_,step,_=load_checkpoint(
+        path,params_template=p,opt_template=o,expected_identity=identity,
+        expected_config=expected,allow_seed_stream_metadata=True)
+    assert step==1
+    assert np.array_equal(weights["w"],p["w"])
+
+    malformed={**expected,"seed_streams":{
+        "initialization_seed":1 << 32,"sampler_seed":31,"model_seed":32}}
+    save_checkpoint(path,params=p,opt_state=o,step=1,seed=31,
+                    identity=identity,config=malformed)
+    with pytest.raises(ValueError,match="identity"):
+        load_checkpoint(path,params_template=p,opt_template=o,
+                        expected_identity=identity,expected_config=expected,
+                        allow_seed_stream_metadata=True)
 
 
 def test_delayed_hourly_bucket_visibility_no_future():

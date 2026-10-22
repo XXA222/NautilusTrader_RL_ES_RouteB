@@ -1,0 +1,13 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "M0.1 / sourced cashflow canonical amount lexemes",
+  "finding": "Batch reporting and online native report accumulation parsed sourced cashflow amounts with Decimal(str(value)) and accepted separators, Unicode digits, explicit plus signs, surrounding whitespace, and exponent notation.",
+  "change": "Both paths now share a strict parser that permits exact integer/Decimal values and unsigned ASCII fixed-point decimal strings only; malformed and ambiguous string forms fail before accounting.",
+  "verification": {
+    "pytest_source": "tests/test_native_report_accumulator_parity.py: 11 passed in RouteB .venv-win-app with PYTHONPATH=packages/research/src",
+    "pytest_combined_source_selector": "Native report accumulator parity, research metrics, Binance cashflows, native liquidation facts, and historical factory: 245 passed, 18 dependency warnings in RouteB .venv-win-app with PYTHONPATH=packages/research/src.",
+    "static_checks": "Ruff passed for native_metrics.py and test_native_report_accumulator_parity.py; MyPy passed for native_metrics.py; py_compile passed for both files.",
+    "coverage": "Five noncanonical lexeme forms rejected by both batch and online cashflow paths; batch/online parity and existing summary tests passed."
+  },
+  "scope": "Synthetic sourced cashflow facts only; no exchange account data or market history was accessed."
+}

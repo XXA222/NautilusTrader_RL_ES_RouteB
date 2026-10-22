@@ -1,0 +1,34 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / historical instrument rules manifest JSON integrity",
+  "finding": "Historical execution-rule manifests were parsed with default JSON semantics. Duplicate source or event fields could be silently overwritten, changing tick/step/fee/margin/effective-time facts consumed by the simulated environment.",
+  "change": "load_rules now uses the data package recursive duplicate-key parser, normalizes invalid/ambiguous JSON to DataError, and validates the root manifest shape before processing sources/events.",
+  "source_files": {
+    "packages/gym_bridge/src/rles_gym_bridge/historical.py": "6622d475fba72f77fc33e9ea4bd085b32a615e11238796dad370d6f1d5fb3971"
+  },
+  "test_files": {
+    "tests/test_historical_factory.py": "7452faa9a1cb64ad8aa2cae5c31dbdc56a53f44274a2ca1db88883de6a1d1152"
+  },
+  "verification": {
+    "pytest_source": "tests/test_historical_factory.py: 88 passed, 18 upstream dependency warnings",
+    "pytest_installed_wheel": "same full suite with PYTHONPATH unset: 88 passed, 18 upstream dependency warnings",
+    "ruff": "passed for historical loader and full factory test module",
+    "mypy": "passed with import-untyped disabled for untyped installed dependencies",
+    "dependency_check": "uv pip check: all 69 RouteB app packages compatible",
+    "installed_source_parity": {
+      "installed_sha256": "6622d475fba72f77fc33e9ea4bd085b32a615e11238796dad370d6f1d5fb3971",
+      "source_sha256": "6622d475fba72f77fc33e9ea4bd085b32a615e11238796dad370d6f1d5fb3971",
+      "matches": true
+    },
+    "source_manifest": {
+      "file_count": 577,
+      "source_identity_sha256": "b1a1bd89ba8125da22ecbe573755b743f494e92c12d9892de5b43e847e2b9115",
+      "verified": true
+    }
+  },
+  "distribution": {
+    "wheel": "C:\\Users\\QX\\Documents\\ChatGPT\\RouteB\\routeb-gym-bridge-wheel-20261022\\rles_gym_bridge-0.4.0.dev2-py3-none-any.whl",
+    "installed_into": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app"
+  },
+  "scope": "Synthetic rules manifest and existing synthetic historical fixtures only; no real market or evaluation payload accessed."
+}

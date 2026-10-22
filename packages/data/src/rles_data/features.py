@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import cached_property
 from itertools import groupby
 from bisect import bisect_left, bisect_right
 import math
 import struct
-from typing import Iterable, cast
+from typing import TYPE_CHECKING, ClassVar, Iterable, cast
 
 from .core import (CuratedStore, DataError, FeatureField, FeatureSpec,
                    MAX_NS, MINUTE_NS, Window, digest, require_ns)
@@ -226,6 +225,9 @@ class FeatureRow:
     instrument: str
     values: tuple[float, ...]
 
+    if TYPE_CHECKING:
+        _bound_hash: ClassVar[str]
+
     def __post_init__(self) -> None:
         from .core import require_hash
 
@@ -236,10 +238,14 @@ class FeatureRow:
                 any(type(value) not in (float, int) or not math.isfinite(value) for value in self.values) or
                 self.available_at_ns > self.decision_ts_ns):
             raise DataError("future or non-finite feature observation")
+        object.__setattr__(self, "_bound_hash", digest(self))
 
-    @cached_property
+    @property
     def hash(self) -> str:
-        return digest(self)
+        current = digest(self)
+        if current != self._bound_hash:
+            raise DataError("feature row mutated after construction")
+        return self._bound_hash
 
 
 def make_feature_row(store: CuratedStore, spec: FeatureSpec, decision_ns: int,

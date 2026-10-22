@@ -1,5 +1,6 @@
 """Strict source event schema validation, shared by DTOs and Parquet ingestion."""
 from __future__ import annotations
+import re
 from typing import Any
 from .core import DataError, KINDS, MINUTE_NS, require_ns
 
@@ -8,8 +9,13 @@ def _number(payload: dict[str, Any], key: str, *, allow_zero: bool = False,
     import math
     if key not in payload or isinstance(payload[key], bool) or not isinstance(payload[key], (str, int, float)):
         raise DataError(f"{key} absent or not numeric")
+    raw = payload[key]
+    if isinstance(raw, str):
+        pattern = r"-?[0-9]+(?:\.[0-9]+)?" if signed else r"[0-9]+(?:\.[0-9]+)?"
+        if re.fullmatch(pattern, raw) is None:
+            raise DataError(f"{key} invalid")
     try:
-        value = float(payload[key])
+        value = float(raw)
     except (ValueError, OverflowError) as exc:
         raise DataError(f"{key} invalid") from exc
     if not math.isfinite(value) or (not signed and (value < 0 if allow_zero else value <= 0)):
@@ -21,9 +27,15 @@ def validate_payload(kind: str, p: dict[str, Any], ts: int) -> None:
     """Validate exchange-normalized payload without inventing default fees/funding."""
     if kind not in KINDS or not isinstance(p, dict):
         raise DataError("invalid event kind or JSON payload")
-    if not p.get("instrument") or not isinstance(p["instrument"], str):
+    instrument = p.get("instrument")
+    if (not isinstance(instrument, str) or not instrument
+            or instrument != instrument.strip()):
         raise DataError("instrument must be explicit in each event")
-    if kind == "ohlcv_1m":
+    if kind == "coverage_marker":
+        if (p.get("coverage_of") != "ohlcv_1m"
+                or p.get("market_payload_decoded") is not False):
+            raise DataError("coverage markers must explicitly exclude market payload values")
+    elif kind == "ohlcv_1m":
         if ts % MINUTE_NS:
             raise DataError("1m candle event timestamp must denote aligned *close*")
         o = _number(p, "open")
@@ -68,12 +80,26 @@ def validate_payload(kind: str, p: dict[str, Any], ts: int) -> None:
             if settlement != ts:
                 raise DataError("funding settlement event time must equal settlement time")
     elif kind == "instrument_rule":
+        quantity_unit = p.get("quantity_unit")
+        base_currency = p.get("base_currency")
+        quote_currency = p.get("quote_currency")
+        if (not isinstance(quantity_unit, str) or not quantity_unit
+                or quantity_unit != quantity_unit.strip()):
+            raise DataError("instrument rule requires a nonempty canonical quantity_unit")
+        for name, value in (("base_currency", base_currency), ("quote_currency", quote_currency)):
+            if (not isinstance(value, str) or not value or value != value.strip()
+                    or value != value.upper()):
+                raise DataError(f"instrument rule requires a canonical {name}")
+        if quantity_unit != base_currency:
+            raise DataError("linear perpetual quantity_unit must equal base_currency")
         if ("reduce_only_min_notional_exempt" in p
                 and type(p["reduce_only_min_notional_exempt"]) is not bool):
             raise DataError("reduce_only_min_notional_exempt must be bool when provided")
-        for key in ("tick_size", "step_size", "min_notional", "min_qty"):
+        for key in ("tick_size", "step_size", "min_notional", "min_qty", "contract_multiplier"):
             _number(p, key)
-        for key in ("maker_fee", "taker_fee", "initial_margin_rate", "maintenance_margin_rate"):
+        for key in ("maker_fee", "taker_fee"):
+            _number(p, key, allow_zero=True, signed=True)
+        for key in ("initial_margin_rate", "maintenance_margin_rate"):
             _number(p, key, allow_zero=True)
         if _number(p, "initial_margin_rate", allow_zero=True) < _number(p, "maintenance_margin_rate", allow_zero=True):
             raise DataError("initial margin rate below maintenance rate")

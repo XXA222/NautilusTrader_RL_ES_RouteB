@@ -8,6 +8,7 @@ import sqlite3
 import sys
 
 from .errors import ComputeError
+from .json_utils import loads_unique_json
 from .resources import Lease, ResourceQuota
 
 
@@ -32,9 +33,12 @@ def inspect_quota(path: str | Path) -> dict:
             lease['recovery_state'] = (enrolled if enrolled in {'application_preparing', 'application_ready'}
                                        else 'unsupported_gpu' if lease['gpu_count']
                                        else enrolled or 'unmanaged_or_legacy')
-        recovered = ([json.loads(row[0]) for row in
-                      connection.execute('SELECT receipt_json FROM lease_recovery_log ORDER BY recovered')]
-                     if 'lease_recovery_log' in tables else [])
+        try:
+            recovered = ([loads_unique_json(row[0]) for row in
+                          connection.execute('SELECT receipt_json FROM lease_recovery_log ORDER BY recovered')]
+                         if 'lease_recovery_log' in tables else [])
+        except (TypeError, ValueError) as exc:
+            raise ComputeError('quota recovery receipt contains invalid or ambiguous JSON') from exc
         return {'schema': 'rles.quota-inspection.v1', 'database': str(database),
                 'limits': dict(zip(('cpu_cores', 'ram_bytes', 'gpus'), limits)),
                 'leases': leases, 'recoveries': recovered,

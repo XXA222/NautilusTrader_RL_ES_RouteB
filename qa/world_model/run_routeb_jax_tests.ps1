@@ -31,11 +31,17 @@ try {
             tests/world_model/test_routeb_hierarchy_weights.py::test_hierarchical_kl_weights_apply_once_per_component `
             tests/world_model/test_routeb_hierarchy_weights.py::test_risk_horizon_weights_emphasize_long_horizon_losses `
             tests/world_model/test_routeb_hierarchy_train.py::test_hierarchical_training_rejects_future_hour_state `
+            tests/world_model/test_routeb_hierarchy_train.py::test_hierarchical_training_rejects_future_day_condition_for_hour `
             tests/world_model/test_routeb_hierarchy_train.py::test_hierarchical_window_keeps_slow_states_causal_and_fixed_shape `
             tests/world_model/test_routeb_quality_v2.py::test_checkpoint_detects_corruption_and_tree_permutation `
-            tests/world_model/test_routeb_quality_v2.py::test_risk_conditioned_return_scale_matches_native_log_rv_in_raw_units
+            tests/world_model/test_routeb_quality_v2.py::test_risk_conditioned_return_scale_matches_native_log_rv_in_raw_units `
+            tests/world_model/test_routeb_r2_regularizer.py
         if ($LASTEXITCODE -ne 0) {
             throw "RouteB JAX-specific world-model tests failed (exit $LASTEXITCODE)."
+        }
+        & $python qa/world_model/routeb_r2_regularizer_smoke.py --checkout .tmp/dreamerv3-route-b
+        if ($LASTEXITCODE -ne 0) {
+            throw "RouteB R2 regularizer integration smoke failed (exit $LASTEXITCODE)."
         }
     }
     finally {

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+from .randomness import validate_jax_seed
 
 
 @dataclass(frozen=True)
@@ -29,8 +30,7 @@ def init_parameters(seed: int, config: GRUConfig):
     import jax
     import jax.numpy as jnp
 
-    if type(seed) is not int or seed < 0:
-        raise ValueError("GRU initialization seed must be a nonnegative integer")
+    validate_jax_seed(seed, name="GRU initialization seed")
     key = jax.random.PRNGKey(seed)
     keys = jax.random.split(key, 6)
     hidden = config.hidden
@@ -134,8 +134,9 @@ def forecast_standardized(params, history, *, steps: int, seed: int,
     if (history.ndim != 3 or history.shape[-1] != config.feature_dim
             or history.shape[1] < 2 or not bool(jnp.isfinite(history).all())
             or type(steps) is not int or not 1 <= steps <= 60
-            or type(seed) is not int or seed < 0):
+            or type(seed) is not int):
         raise ValueError("invalid E1 forecast history, horizon, or seed")
+    validate_jax_seed(seed, name="E1 forecast seed")
     reset = jnp.zeros(history.shape[:2], dtype=jnp.bool_).at[:, 0].set(True)
     carry, _ = _encode(params, history, reset)
     root_key = jax.random.PRNGKey(seed)

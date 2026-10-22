@@ -1,0 +1,22 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "M0.1 / Decimal exponent range, exact fill accounting, and linear-equity reconciliation",
+  "finding": "Exact Decimal helpers set operation precision but originally inherited the caller's narrow exponent bounds, so valid tiny sums/products could underflow to zero. Expanding the exponent range also exposed inherited status flags that could falsely classify a normal operation as rounded.",
+  "change": "Exact addition and multiplication now use the wider supported lower exponent bound, retain the default upper finite exponent bound, clear inherited Decimal flags before each operation, and reject any operation that still signals Rounded or Inexact. Native batch/online fills and linear reconciliation use these helpers for quantity, cash, fee, funding, valuation, equity, residual, tolerance, turnover, and slippage.",
+  "regression": {
+    "tiny_sum": "1E-1000004 + 1E-1000004 remains exactly 2E-1000004.",
+    "tiny_product": "1E-999999 * 1E-5 remains exactly 1E-1000004.",
+    "low_precision_reconciliation": "A 12345-unit open/close at 12.34 under Decimal precision 3 reconciles expected equities 199999.99 and 199999.98 on both paths."
+  },
+  "verification": {
+    "pytest_source": "Native report accumulator parity, research metrics, Binance cashflows, native liquidation facts and historical factory selector: 252 passed, 18 dependency warnings, 132.05 seconds; RouteB source roots on PYTHONPATH.",
+    "pytest_installed_wheel": "Same selector with PYTHONPATH unset and rebuilt rles-research 0.4.1 installed in RouteB .venv-win-app: 252 passed, 18 dependency warnings, 132.60 seconds.",
+    "static_checks": "Ruff check passed for native_metrics.py and test_native_report_accumulator_parity.py; targeted MyPy passed; git diff --check passed for changed source and tests.",
+    "source_and_installed_module_sha256": "0d3c03ae08ab9abff1e65d4a512f0787efc1131c87619b68e6b3ff6d6190e30d",
+    "source_manifest": {
+      "files": 604,
+      "identity_sha256": "b9d91a34cbc084e995e42ddd6d5aa93135e93b0b73c757051787f93d05030292"
+    }
+  },
+  "scope": "Synthetic account and numeric fixtures only. No authenticated account, market, registry, Validation, Test, or Holdout payload was accessed; source authenticity and cashflow-history completeness remain external M0.1 gates."
+}

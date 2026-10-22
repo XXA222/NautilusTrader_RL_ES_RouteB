@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,14 +13,26 @@ from rles_data.core import DAY_NS, MINUTE_NS, DataError, Window, digest
 from rles_data.features import Scaler
 from rles_data.folds import bind_fold_scaler, build_folds
 from rles_orchestrator.wfo_application import (
-    _candidate, _coverage, _dsr_trial_count_evidence, _with_window,
+    _candidate, _coverage, _dsr_trial_count_evidence, _scaler, _with_window,
 )
 from rles_research.wfo import FoldBoundaryError, FoldRequest, plan_folds, validate_l2_manifest
+
+_ETH_RULES_FIXTURE = (Path(__file__).resolve().parents[1]
+                      / "tests/fixtures/real_ethusdt_20240101/scenario_rules.json")
 
 
 def _market_source_identity() -> dict:
     return {"schema_version": "0.4.1", "snapshot_hash": "a" * 64,
             "file_sha256": "b" * 64, "marker_sha256": "c" * 64, "events": 1}
+
+
+def test_wfo_bundle_reader_rejects_duplicate_keys_after_digest_verification(tmp_path):
+    bundle = tmp_path / "bundle.json"
+    payload = b'{"preprocessing":{"scaler":{"mean":[0],"mean":[1],"std":[1]}}}'
+    bundle.write_bytes(payload)
+    bundle.with_suffix(".json.sha256").write_text(sha256(payload).hexdigest(), encoding="ascii")
+    with pytest.raises(json.JSONDecodeError, match="duplicate JSON object key"):
+        _scaler(tmp_path)
 
 pytestmark = pytest.mark.unit
 
@@ -348,8 +361,6 @@ def test_wfo_invalid_worker_policy_cannot_consume_queries(tmp_path, monkeypatch,
         "selection": {}, "bootstrap": {}, "pbo_max_partitions": 0,
         "reviewer_approval_sha": "", "cost_stress_validation": False,
     }
-    monkeypatch.setattr(wfo_application, "read_curated_window",
-                        lambda *_args, **_kwargs: pytest.fail("data read"))
     monkeypatch.setattr(wfo_application, "ResearchLedger", lambda _path: pytest.fail("query ledger opened"))
     output = tmp_path / "must-not-start"
     with pytest.raises(DataError, match="worker memory policy"):
@@ -369,8 +380,6 @@ def test_wfo_invalid_rl_sampling_cannot_read_data_or_open_query_ledger(tmp_path,
         "selection": {}, "bootstrap": {}, "pbo_max_partitions": 0,
         "reviewer_approval_sha": "", "cost_stress_validation": False,
     }
-    monkeypatch.setattr(wfo_application, "read_curated_window",
-                        lambda *_args, **_kwargs: pytest.fail("data read"))
     monkeypatch.setattr(wfo_application, "ResearchLedger", lambda _path: pytest.fail("query ledger opened"))
     output = tmp_path / "must-not-start"
     with pytest.raises(DataError, match="explicit fixed episode steps"):
@@ -402,12 +411,6 @@ def test_wfo_suspends_validation_protocol_on_keyboard_interrupt(tmp_path, monkey
         access_order.append("registered")
         return original_record_development(*args, **kwargs)
 
-    def read_market(_path, start_ns, end_ns, **_kwargs):
-        assert start_ns == settings["data_start_ns"]
-        assert end_ns == settings["holdout_end_ns"]
-        access_order.append("payload")
-        return SimpleNamespace(events=(), snapshot_hash="a" * 64)
-
     def reserve_intent(**kwargs):
         assert kwargs["identity"]["source_sha256"] == source_identity["snapshot_hash"]
         access_order.append("intent-reserved")
@@ -417,20 +420,15 @@ def test_wfo_suspends_validation_protocol_on_keyboard_interrupt(tmp_path, monkey
         access_order.append("intent-started")
         return original_start_intents(**kwargs)
 
-    monkeypatch.setattr(wfo_application, "CuratedStore",
-                        lambda _events: SimpleNamespace(snapshot_hash="a" * 64))
-    monkeypatch.setattr(wfo_application, "read_curated_window", read_market)
     monkeypatch.setattr(wfo_application, "curated_source_identity",
                         lambda _path: (access_order.append("metadata") or source_identity))
     monkeypatch.setattr(wfo_application.research_access, "record_development", record_development)
     monkeypatch.setattr(wfo_application.research_access, "project_registry", lambda: registry)
     monkeypatch.setattr(registry, "reserve_query_intent", reserve_intent)
     monkeypatch.setattr(registry, "start_query_intents", start_intents)
-    monkeypatch.setattr(wfo_application, "load_rules", lambda _path: ())
     monkeypatch.setattr(wfo_application, "historical_feature_spec",
-                        lambda _ages: SimpleNamespace(max_lookback_ns=1, hash="b" * 64))
+                        lambda _ages, **_units: SimpleNamespace(max_lookback_ns=1, hash="b" * 64))
     monkeypatch.setattr(wfo_application, "build_folds", lambda **_kwargs: [manifest])
-    monkeypatch.setattr(wfo_application, "_require_window", lambda *_args: None)
     monkeypatch.setattr(wfo_application, "_source_tree_hash", lambda _root: "c" * 64)
 
     output = tmp_path / "interrupted-wfo"
@@ -453,7 +451,7 @@ def test_wfo_suspends_validation_protocol_on_keyboard_interrupt(tmp_path, monkey
     }
     config = {
         "output": str(output),
-        "environment": {"market_path": "unused", "rules_path": str(Path(__file__).resolve()),
+        "environment": {"market_path": "unused", "rules_path": str(_ETH_RULES_FIXTURE),
                         "instrument": "ETHUSDT-PERP.SIM"},
         "wfo": settings,
     }
@@ -465,7 +463,7 @@ def test_wfo_suspends_validation_protocol_on_keyboard_interrupt(tmp_path, monkey
         run_wfo(config, train_fn=interrupted)
 
     assert access_order == ["metadata", "registered", "intent-reserved",
-                            "intent-reserved", "intent-started", "payload"]
+                            "intent-reserved", "intent-started"]
 
     ledger = ResearchLedger(output / "research.sqlite")
     assert ledger.state("interrupted-wfo")["state"] == "SUSPENDED"
@@ -490,20 +488,14 @@ def test_wfo_persists_validation_rejection_report_without_opening_test_or_holdou
 
     _research, manifests, dataset_hash, feature_hash = _paired_folds()
     manifest = manifests[0]
-    monkeypatch.setattr(wfo_application, "CuratedStore",
-                        lambda _events: SimpleNamespace(snapshot_hash=dataset_hash))
-    monkeypatch.setattr(wfo_application, "read_curated_window",
-                        lambda *_args, **_kwargs: SimpleNamespace(events=(), snapshot_hash="a" * 64))
     monkeypatch.setattr(wfo_application, "curated_source_identity",
                         lambda _path: _market_source_identity())
-    monkeypatch.setattr(wfo_application, "load_rules", lambda _path: ())
-    def feature_spec(_ages, profile="legacy"):
+    def feature_spec(_ages, profile="legacy", **_units):
         selected_hash = feature_hash if profile == "legacy" else "e" * 64
         return SimpleNamespace(max_lookback_ns=MINUTE_NS, hash=selected_hash)
 
     monkeypatch.setattr(wfo_application, "historical_feature_spec", feature_spec)
     monkeypatch.setattr(wfo_application, "build_folds", lambda **_kwargs: (manifest,))
-    monkeypatch.setattr(wfo_application, "_require_window", lambda *_args: None)
     monkeypatch.setattr(wfo_application, "_source_tree_hash", lambda _root: "c" * 64)
 
     output = tmp_path / "rejected-wfo"
@@ -536,7 +528,7 @@ def test_wfo_persists_validation_rejection_report_without_opening_test_or_holdou
     }
     config = {
         "output": str(output),
-        "environment": {"market_path": "unused", "rules_path": str(Path(__file__).resolve()),
+        "environment": {"market_path": "unused", "rules_path": str(_ETH_RULES_FIXTURE),
                         "instrument": "ETHUSDT-PERP.SIM", "execution": _execution_config()},
         "wfo": settings,
     }
@@ -605,17 +597,11 @@ def test_wfo_stress_validation_gate_blocks_candidates_before_test(tmp_path, monk
 
     _research, manifests, dataset_hash, feature_hash = _paired_folds()
     manifest = manifests[0]
-    monkeypatch.setattr(wfo_application, "CuratedStore",
-                        lambda _events: SimpleNamespace(snapshot_hash=dataset_hash))
-    monkeypatch.setattr(wfo_application, "read_curated_window",
-                        lambda *_args, **_kwargs: SimpleNamespace(events=(), snapshot_hash="a" * 64))
     monkeypatch.setattr(wfo_application, "curated_source_identity",
                         lambda _path: _market_source_identity())
-    monkeypatch.setattr(wfo_application, "load_rules", lambda _path: ())
     monkeypatch.setattr(wfo_application, "historical_feature_spec",
-                        lambda _ages: SimpleNamespace(max_lookback_ns=MINUTE_NS, hash=feature_hash))
+                        lambda _ages, **_units: SimpleNamespace(max_lookback_ns=MINUTE_NS, hash=feature_hash))
     monkeypatch.setattr(wfo_application, "build_folds", lambda **_kwargs: (manifest,))
-    monkeypatch.setattr(wfo_application, "_require_window", lambda *_args: None)
     monkeypatch.setattr(wfo_application, "_source_tree_hash", lambda _root: "c" * 64)
 
     output = tmp_path / "stress-gated-wfo"
@@ -648,7 +634,7 @@ def test_wfo_stress_validation_gate_blocks_candidates_before_test(tmp_path, monk
     }
     config = {
         "output": str(output),
-        "environment": {"market_path": "unused", "rules_path": str(Path(__file__).resolve()),
+        "environment": {"market_path": "unused", "rules_path": str(_ETH_RULES_FIXTURE),
                         "instrument": "ETHUSDT-PERP.SIM", "execution": _execution_config()},
         "wfo": settings,
     }
@@ -711,17 +697,11 @@ def test_wfo_resumes_completed_validation_boundary_without_retraining_or_recharg
 
     _research, manifests, dataset_hash, feature_hash = _paired_folds()
     manifest = manifests[0]
-    monkeypatch.setattr(wfo_application, "CuratedStore",
-                        lambda _events: SimpleNamespace(snapshot_hash=dataset_hash))
-    monkeypatch.setattr(wfo_application, "read_curated_window",
-                        lambda *_args, **_kwargs: SimpleNamespace(events=(), snapshot_hash="a" * 64))
     monkeypatch.setattr(wfo_application, "curated_source_identity",
                         lambda _path: _market_source_identity())
-    monkeypatch.setattr(wfo_application, "load_rules", lambda _path: ())
     monkeypatch.setattr(wfo_application, "historical_feature_spec",
-                        lambda _ages: SimpleNamespace(max_lookback_ns=MINUTE_NS, hash=feature_hash))
+                        lambda _ages, **_units: SimpleNamespace(max_lookback_ns=MINUTE_NS, hash=feature_hash))
     monkeypatch.setattr(wfo_application, "build_folds", lambda **_kwargs: (manifest,))
-    monkeypatch.setattr(wfo_application, "_require_window", lambda *_args: None)
     monkeypatch.setattr(wfo_application, "_source_tree_hash", lambda _root: "c" * 64)
 
     output = tmp_path / "resumable-wfo"
@@ -752,7 +732,7 @@ def test_wfo_resumes_completed_validation_boundary_without_retraining_or_recharg
     }
     config = {
         "output": str(output),
-        "environment": {"market_path": "unused", "rules_path": str(Path(__file__).resolve()),
+        "environment": {"market_path": "unused", "rules_path": str(_ETH_RULES_FIXTURE),
                         "instrument": "ETHUSDT-PERP.SIM"},
         "wfo": settings,
     }
@@ -858,17 +838,11 @@ def test_wfo_resumes_after_persisted_fold_test_without_replaying_one_shot_test(
     from rles_research.ledger import ResearchLedger
 
     _research, manifests, dataset_hash, feature_hash = _paired_folds()
-    monkeypatch.setattr(wfo_application, "CuratedStore",
-                        lambda _events: SimpleNamespace(snapshot_hash=dataset_hash))
-    monkeypatch.setattr(wfo_application, "read_curated_window",
-                        lambda *_args, **_kwargs: SimpleNamespace(events=(), snapshot_hash="a" * 64))
     monkeypatch.setattr(wfo_application, "curated_source_identity",
                         lambda _path: _market_source_identity())
-    monkeypatch.setattr(wfo_application, "load_rules", lambda _path: ())
     monkeypatch.setattr(wfo_application, "historical_feature_spec",
-                        lambda _ages: SimpleNamespace(max_lookback_ns=MINUTE_NS, hash=feature_hash))
+                        lambda _ages, **_units: SimpleNamespace(max_lookback_ns=MINUTE_NS, hash=feature_hash))
     monkeypatch.setattr(wfo_application, "build_folds", lambda **_kwargs: manifests)
-    monkeypatch.setattr(wfo_application, "_require_window", lambda *_args: None)
     monkeypatch.setattr(wfo_application, "_source_tree_hash", lambda _root: "c" * 64)
 
     output = tmp_path / "resumable-test-wfo"
@@ -902,7 +876,7 @@ def test_wfo_resumes_after_persisted_fold_test_without_replaying_one_shot_test(
     }
     config = {
         "output": str(output),
-        "environment": {"market_path": "unused", "rules_path": str(Path(__file__).resolve()),
+        "environment": {"market_path": "unused", "rules_path": str(_ETH_RULES_FIXTURE),
                         "instrument": "ETHUSDT-PERP.SIM", "execution": _execution_config()},
         "wfo": settings,
     }

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from hashlib import sha256
-import json
 import os
 from pathlib import Path
 import re
@@ -13,9 +12,18 @@ from typing import Any, Iterable
 from .core import (Availability, AvailabilityPolicy, CuratedStore, DataError, Event,
                    KINDS, canonical_bytes, require_hash, require_ns)
 from .schemas import validate_payload
+from .json_utils import loads_unique_json
 
 SOURCE_RE = re.compile(r"[A-Za-z0-9_-]{1,96}\Z")
 CURATED_ROW_GROUP_SIZE = 16_384
+
+
+def _load_data_json(value: str | bytes | bytearray, *, context: str) -> Any:
+    """Turn strict JSON parser failures into the data package boundary error."""
+    try:
+        return loads_unique_json(value)
+    except (UnicodeError, ValueError, TypeError) as exc:
+        raise DataError(context) from exc
 
 
 def _curated_row_group(events: list[Event] | tuple[Event, ...], index: int) -> dict[str, Any]:
@@ -36,7 +44,10 @@ def _marker_sha(marker: Path) -> str:
     receipt = marker.with_suffix(marker.suffix + ".sha256")
     if not receipt.is_file():
         raise DataError("curated scoped manifest receipt missing")
-    expected = receipt.read_text(encoding="ascii").strip()
+    try:
+        expected = receipt.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError) as exc:
+        raise DataError("curated scoped manifest receipt is unreadable") from exc
     if not re.fullmatch(r"[0-9a-f]{64}", expected) or _file_sha(marker) != expected:
         raise DataError("curated scoped manifest receipt mismatch")
     return expected
@@ -54,10 +65,7 @@ def curated_source_identity(path: str | Path) -> dict[str, Any]:
     if not target.is_file() or not marker.is_file():
         raise DataError("curated snapshot not COMPLETE")
     marker_bytes = marker.read_bytes()
-    try:
-        metadata = json.loads(marker_bytes)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise DataError("invalid curated commit metadata") from exc
+    metadata = _load_data_json(marker_bytes, context="invalid curated commit metadata")
     schema_version = metadata.get("schema_version") if isinstance(metadata, dict) else None
     expected_fields = ({"schema_version", "snapshot_hash", "file_sha256", "events"}
                        if schema_version == "0.4.0" else
@@ -93,7 +101,10 @@ def curated_event_time_bounds(path: str | Path, *,
         import pyarrow.parquet as pq
     except ImportError as exc:
         raise DataError("pyarrow required for curated footer inspection") from exc
-    metadata = json.loads(target.with_name(target.name + ".COMPLETED.json").read_text(encoding="utf-8"))
+    metadata = _load_data_json(
+        target.with_name(target.name + ".COMPLETED.json").read_bytes(),
+        context="invalid curated commit metadata",
+    )
     manifest_groups = metadata["row_groups"]
     parquet = pq.ParquetFile(target)
     if (not isinstance(manifest_groups, list) or not manifest_groups
@@ -119,7 +130,7 @@ def curated_event_time_bounds(path: str | Path, *,
 
 
 def _event_from_row(row: dict[str, Any]) -> Event:
-    payload = json.loads(row["payload_json"])
+    payload = _load_data_json(row["payload_json"], context="invalid curated event payload JSON")
     # Event.__post_init__ performs the strict payload validation after freezing.
     return Event(row["event_id"], row["kind"], row["ts_event_ns"], row["ts_init_ns"],
                  row["available_at_ns"], Availability(row["availability_source"]),
@@ -241,15 +252,6 @@ def ingest_parquet(path: str | Path, source_hash: str, kind: str, provenance: st
     )
 
 
-def _unique_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    obj: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in obj:
-            raise DataError(f"duplicate payload JSON key: {key}")
-        obj[key] = value
-    return obj
-
-
 def _ingest_batches(batches: Iterable[Any], kind: str, source_hash: str,
                     provenance: str, policy: AvailabilityPolicy) -> CuratedStore:
     events: list[Event] = []
@@ -262,8 +264,10 @@ def _ingest_batches(batches: Iterable[Any], kind: str, source_hash: str,
             if not isinstance(payload_json, str):
                 raise DataError("payload_json must be UTF-8 JSON text")
             try:
-                payload = json.loads(payload_json, object_pairs_hook=_unique_json_keys,
-                                     parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite")))
+                payload = loads_unique_json(
+                    payload_json,
+                    parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite")),
+                )
             except (ValueError, TypeError) as exc:
                 raise DataError("invalid payload_json") from exc
             validate_payload(kind, payload, timestamp)
@@ -383,7 +387,7 @@ def read_curated(path: str | Path) -> CuratedStore:
     marker = target.with_name(target.name + ".COMPLETED.json")
     if not target.is_file() or not marker.is_file():
         raise DataError("curated snapshot not COMPLETE")
-    metadata = json.loads(marker.read_text(encoding="utf-8"))
+    metadata = _load_data_json(marker.read_bytes(), context="invalid curated commit metadata")
     schema_version = metadata.get("schema_version") if isinstance(metadata, dict) else None
     expected_fields = ({"schema_version", "snapshot_hash", "file_sha256", "events"}
                        if schema_version == "0.4.0" else
@@ -453,7 +457,7 @@ def read_curated_window(path: str | Path, start_ns: int, end_ns: int, *,
     if not target.is_file() or not marker.is_file():
         raise DataError("curated snapshot not COMPLETE")
     marker_bytes = marker.read_bytes()
-    metadata = json.loads(marker_bytes)
+    metadata = _load_data_json(marker_bytes, context="invalid curated commit metadata")
     schema_version = metadata.get("schema_version") if isinstance(metadata, dict) else None
     actual_marker_sha256 = (_marker_sha(marker) if schema_version == "0.4.1"
                             else sha256(marker_bytes).hexdigest())

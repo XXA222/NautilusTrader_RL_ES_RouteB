@@ -1,0 +1,32 @@
+{
+  "schema": "rles.routeb.audit-evidence.shared-event-ascii-decimal-lexemes.v1",
+  "date": "2026-10-22",
+  "finding": "The shared Event payload validator delegated numeric strings to float(), which accepted underscores, Unicode digits, leading plus signs, surrounding whitespace, and exponent notation. Noncanonical source values could pass through data entry points outside the Binance archive parser.",
+  "change": "The shared numeric validator now accepts string values only in ASCII fixed-point form. Signed fields allow an optional leading minus; unsigned fields do not. Numeric int/float inputs retain their existing behavior, with finite/range checks unchanged.",
+  "verification": {
+    "regression_before_fix": "Five synthetic tokens (underscore, Arabic digits, leading plus, whitespace, exponent) were each accepted before the fix",
+    "source_data_and_routeb_integration_tests": "75 passed",
+    "installed_wheel_data_and_routeb_integration_tests": "75 passed with PYTHONPATH unset",
+    "ruff": "passed",
+    "py_compile": "passed",
+    "targeted_mypy": "Success: no issues found in 1 source file",
+    "source_manifest": {
+      "files": 595,
+      "source_identity_sha256": "66bf9cbff78d9f56e091f32c213562092b1371b657d8524e69a879486432a5f5",
+      "verified": true
+    },
+    "distribution": {
+      "wheelhouse": "C:/Users/QX/Documents/ChatGPT/RouteB/routeb-wheels-a08-shared-event-decimals-20261022",
+      "wheels_present": 12,
+      "sdists_present": 12,
+      "source_matches_all_wheels": true,
+      "data_wheel_sha256": "ad567341c3e4fc8a75ca561d7782f189f1ba5b75dec44ca69971aeb91be43c3f",
+      "source_schema_sha256": "4d3d703c364cb0aa553d64e42764078b3e3ce5e586ceedf2c70d248bf3431d41",
+      "installed_schema_sha256": "4d3d703c364cb0aa553d64e42764078b3e3ce5e586ceedf2c70d248bf3431d41",
+      "installed_module_matches_source": true,
+      "wheel_import_smoke": "12 distributions, 12 modules, 6 entry points",
+      "dependency_check": "69 packages compatible"
+    }
+  },
+  "scope_limit": "Only synthetic malformed numeric tokens and existing RouteB fixtures were used. No market archive, account, research ledger, or formal evaluation payload was accessed."
+}

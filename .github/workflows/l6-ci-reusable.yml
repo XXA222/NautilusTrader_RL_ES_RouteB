@@ -9,7 +9,21 @@ on:
         type: string
         required: true
 jobs:
+  validate-lane:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject unsupported CI lane
+        shell: python
+        env:
+          ROUTEB_CI_LANE: ${{ inputs.lane }}
+        run: |
+          import sys
+          sys.path.insert(0, 'ci/l6/src')
+          from l6_ci_release.workflow_lane import main
+          raise SystemExit(main())
   cpu:
+    needs: validate-lane
     if: ${{ inputs.lane == 'pr' || inputs.lane == 'nightly' || inputs.lane == 'release' }}
     strategy:
       fail-fast: false
@@ -90,6 +104,7 @@ jobs:
         if: ${{ inputs.lane == 'pr' || inputs.lane == 'nightly' || inputs.lane == 'release' }}
         run: uv run --locked --no-sync python -m ruff check packages ci qa tests
   world-model-jax-cpu:
+    needs: validate-lane
     if: ${{ inputs.lane == 'pr' || inputs.lane == 'nightly' || inputs.lane == 'release' }}
     runs-on: ubuntu-latest
     steps:
@@ -118,7 +133,8 @@ jobs:
             tests/world_model/test_routeb_hierarchy_weights.py::test_hierarchical_kl_weights_apply_once_per_component \
             tests/world_model/test_routeb_hierarchy_weights.py::test_risk_horizon_weights_emphasize_long_horizon_losses \
             tests/world_model/test_routeb_quality_v2.py::test_checkpoint_detects_corruption_and_tree_permutation \
-            tests/world_model/test_routeb_quality_v2.py::test_risk_conditioned_return_scale_matches_native_log_rv_in_raw_units
+            tests/world_model/test_routeb_quality_v2.py::test_risk_conditioned_return_scale_matches_native_log_rv_in_raw_units \
+            tests/world_model/test_routeb_r2_regularizer.py
       - name: Run prior-causality and checkpoint-resume JAX smokes
         env:
           PYTHONPATH: packages/world_model/src:packages/data/src:packages/contracts/src
@@ -129,6 +145,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/routeb-jax-smoke"
           uv run --project packages/world_model/environment --locked python qa/world_model/routeb_prior_gradient_smoke.py --output "$RUNNER_TEMP/routeb-jax-smoke/prior-risk-gradient.json"
           uv run --project packages/world_model/environment --locked python qa/world_model/routeb_b2_cpu_smoke.py --checkout "$GITHUB_WORKSPACE/.tmp/dreamerv3-route-b" --output-dir "$RUNNER_TEMP/routeb-jax-smoke/b2"
+          uv run --project packages/world_model/environment --locked python qa/world_model/routeb_b3_cpu_smoke.py --checkout "$GITHUB_WORKSPACE/.tmp/dreamerv3-route-b" --output-dir "$RUNNER_TEMP/routeb-jax-smoke/b3"
+          uv run --project packages/world_model/environment --locked python qa/world_model/routeb_r2_regularizer_smoke.py --checkout "$GITHUB_WORKSPACE/.tmp/dreamerv3-route-b" > "$RUNNER_TEMP/routeb-jax-smoke/r2_regularizer.json"
       - name: Preserve Route B JAX smoke evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -137,6 +155,7 @@ jobs:
           path: ${{ runner.temp }}/routeb-jax-smoke/**/*.json
           if-no-files-found: warn
   gpu:
+    needs: validate-lane
     if: ${{ inputs.lane == 'gpu' }}
     runs-on: [self-hosted, linux, gpu, rles-approved]
     steps:
@@ -156,7 +175,7 @@ jobs:
         run: uv run --no-sync python -m pytest -q tests/ -m gpu
   release:
     if: ${{ inputs.lane == 'release' }}
-    needs: [cpu]
+    needs: [validate-lane, cpu]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

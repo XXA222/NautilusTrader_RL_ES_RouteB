@@ -1,0 +1,38 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / M0.2 source and wheel manifest integrity",
+  "source_files": {
+    "qa/source_manifest.py": "2b7742fb173522bd9b3266383ad6953d0c10c03c75d7589b59ecfe4740a045c6",
+    "qa/wheel_manifest.py": "1db77e567fc6dd65c0ecda9c7148071ea0476a1b4ca5f1f32b8118aaeb5e8213"
+  },
+  "test_files": {
+    "tests/test_source_manifest.py": "d09a5f8dbacf14280dfb368ea35ea6a8ffc5e4e4282e0d738be803462c210bb7",
+    "tests/test_wheel_manifest.py": "373234b5dc31ed0c77aade3be17e711b8dae19d17dada8f90afa05117d03b69a"
+  },
+  "reproduction": {
+    "source_manifest": "--verify used default json.loads, accepting duplicate source_identity_sha256 keys with last-key-wins and leaking UnicodeDecodeError.",
+    "wheel_manifest": "The reader used default json.loads and the wheel module mapping silently collapsed duplicate ZIP member paths. It matched distributions by name only and accepted an old wheel version as the current project version.",
+    "source_traversal": "Workflow traversal called is_file before excluding symlinks, allowing a stat of an external link target.",
+    "wheel_metadata": "A wheel METADATA block could repeat Name or Version and BytesParser.get() silently selected one value; archive duplicates were separately collapsed by the source-file map."
+  },
+  "change": "Both manifest readers recursively reject duplicate JSON keys and normalize invalid UTF-8/JSON/I/O failures. Wheel inspection rejects repeated archive member paths, corrupt archives, repeated Name/Version METADATA headers, and wheel versions differing from pyproject. Source traversal checks symlink status before file stat; wheel/package/project/source-root symlinks are rejected.",
+  "verification": {
+    "pytest": "tests/test_source_manifest.py + tests/test_wheel_manifest.py: 12 passed; one expected zipfile duplicate-name warning from malformed-wheel fixture",
+    "ruff": "passed for both QA scripts and tests",
+    "mypy": "passed for both QA scripts",
+    "source_manifest": {
+      "files": 569,
+      "identity_sha256": "43df4edfc9a9c4a55d83b7d906167a3a033e4b145eee3d4eff71706112de9c11",
+      "generation": "passed",
+      "verify": "passed"
+    },
+    "wheel_manifest": {
+      "wheelhouse": "C:\\Users\\QX\\Documents\\ChatGPT\\RouteB\\routeb-wheels-20261022-a02-known-marker",
+      "manifest": "C:\\Users\\QX\\Documents\\ChatGPT\\RouteB\\m02-manifest-hardening-wheel-manifest.json",
+      "wheels": 12,
+      "all_match": true
+    },
+    "symlink_integration": "Mocked Path.is_symlink/is_file ordering tests passed for source-manifest files and wheel source enumeration; mocked wheelhouse symlink rejection passed. Native OS symlink/junction integration was not exercised."
+  },
+  "scope": "Integrity verification only; no market, account, Validation, Test or Holdout payload was read. Local checks do not replace clean Hosted Linux/Windows CI."
+}

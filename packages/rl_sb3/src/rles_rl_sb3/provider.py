@@ -89,7 +89,7 @@ class TrainingDiagnostics:
     position_state_counts: tuple[tuple[str, int], ...]
     market_feature_summaries: tuple[tuple[str, int, float, float, float, float], ...]
     # (family, feature, scheme, bucket, lower, upper, count, r_econ sum, mean).
-    # Volatility cut points are empirical quartiles from this Train-only learn call.
+    # Volatility cut points are fixed, predeclared absolute thresholds.
     market_regime_economic_bins: tuple[
         tuple[str, str, str, str, float | None, float | None, int, float, float], ...
     ]
@@ -153,6 +153,35 @@ def _count_episode_window_overlap_pairs(windows: Iterable[tuple[int, int]]) -> i
         overlap_pairs += len(active_ends)
         heapq.heappush(active_ends, end_ns)
     return overlap_pairs
+
+
+def _validated_episode_window(window: Any, decision_ts_ns: int) -> tuple[int, int, int, int, int]:
+    """Validate one native decision's immutable inclusive episode-window facts."""
+    expected = {"start_ns", "end_ns", "episode_index", "start_offset", "decision_steps"}
+    if not isinstance(window, dict) or set(window) != expected:
+        raise ContractError("native training info lacks the exact episode window")
+    values = tuple(window[name] for name in (
+        "start_ns", "end_ns", "episode_index", "start_offset", "decision_steps",
+    ))
+    if any(type(value) is not int or value < 0 for value in values):
+        raise ContractError("native training episode window is invalid")
+    start_ns, end_ns, episode_index, start_offset, decision_steps = values
+    if (type(decision_ts_ns) is not int or decision_ts_ns <= 0
+            or start_ns <= 0 or end_ns < start_ns or decision_steps <= 0
+            or not start_ns <= decision_ts_ns <= end_ns):
+        raise ContractError("native training decision falls outside its episode window")
+    return start_ns, end_ns, episode_index, start_offset, decision_steps
+
+
+def _record_episode_window(
+    registry: dict[tuple[int, int, int], tuple[int, int]],
+    identity: tuple[int, int, int],
+    bounds: tuple[int, int],
+) -> None:
+    previous = registry.get(identity)
+    if previous is not None and previous != bounds:
+        raise ContractError("native training episode window changed during one episode")
+    registry[identity] = bounds
 
 
 def _market_regime_bins(
@@ -418,18 +447,12 @@ class RLProvider:
                                          else min(decision_start_ns, decision_ts_ns))
                     decision_end_ns = (decision_ts_ns if decision_end_ns is None
                                        else max(decision_end_ns, decision_ts_ns))
-                    window = info["episode_window"]
-                    if not isinstance(window, dict) or not {
-                        "start_ns", "end_ns", "episode_index", "start_offset", "decision_steps",
-                    } <= set(window):
-                        raise ContractError("native training info lacks the exact episode window")
-                    window_values = tuple(window[key] for key in (
-                        "start_ns", "end_ns", "episode_index", "start_offset", "decision_steps",
-                    ))
-                    if any(type(value) is not int or value < 0 for value in window_values):
-                        raise ContractError("native training episode window is invalid")
-                    window_key = (rank, window["episode_index"], window["start_offset"])
-                    episode_windows[window_key] = (window["start_ns"], window["end_ns"])
+                    window_values = _validated_episode_window(
+                        info["episode_window"], decision_ts_ns,
+                    )
+                    start_ns, end_ns, episode_index, start_offset, _decision_steps = window_values
+                    window_key = (rank, episode_index, start_offset)
+                    _record_episode_window(episode_windows, window_key, (start_ns, end_ns))
                     features = info["market_features"]
                     if not isinstance(features, dict):
                         raise ContractError("native training market features are invalid")

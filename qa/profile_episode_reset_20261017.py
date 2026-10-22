@@ -12,12 +12,13 @@ import numpy as np
 
 from rles_data.core import CuratedStore, DataError
 from rles_data.io import read_curated
+from rles_data.json_utils import loads_unique_json
 from rles_gym_bridge.historical import HistoricalEnvironmentFactory, load_rules
 from rles_orchestrator.application import _file_hash, _verify_file, _write_verified, rollout
 from rles_orchestrator.research_access import record_development
 from rles_orchestrator.wfo_application import _scaler
 from profile_native_history_growth_20261016 import (
-    DAY_NS, RssSampler, available_memory, coverage_for_window, process_rss,
+    DAY_NS, RssSampler, _routeb_path, available_memory, coverage_for_window, process_rss,
 )
 
 START_FLOOR_BYTES = 10 * 1024**3
@@ -48,6 +49,16 @@ def _sha_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def _load_json_object(path: Path) -> dict:
+    try:
+        value = loads_unique_json(path.read_bytes())
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise DataError(f"cannot read unambiguous episode-reset JSON: {path}") from exc
+    if not isinstance(value, dict):
+        raise DataError(f"episode-reset JSON root must be an object: {path}")
+    return value
+
+
 def _check_memory(*, start: bool = False) -> int:
     available = available_memory()
     floor = START_FLOOR_BYTES if start else STOP_FLOOR_BYTES
@@ -57,24 +68,38 @@ def _check_memory(*, start: bool = False) -> int:
 
 
 def run(plan_path: Path, output: Path) -> dict:
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
-    if plan.get("split") != "train_inner" or output.exists():
+    plan_path = _routeb_path(plan_path, "episode-reset plan", must_exist=True)
+    output = _routeb_path(output, "episode-reset output", must_exist=False)
+    if output.exists() or not output.parent.is_dir():
+        raise DataError("episode-reset output must be new and its parent must exist")
+    plan = _load_json_object(plan_path)
+    if plan.get("split") != "train_inner":
         raise DataError("requires the frozen Train-inner plan and a new output directory")
-    profile_plan_path = Path(plan["source_plan"])
+    profile_plan_path = _routeb_path(plan["source_plan"], "native-history profile plan", must_exist=True)
     if _file_hash(profile_plan_path) != plan["source_plan_sha256"]:
         raise DataError("frozen native-history profile plan checksum changed")
-    profile_plan = json.loads(profile_plan_path.read_text(encoding="utf-8"))
-    source_plan_path = Path(profile_plan["source_plan"])
+    profile_plan = _load_json_object(profile_plan_path)
+    source_plan_path = _routeb_path(profile_plan["source_plan"], "frozen Train plan", must_exist=True)
     if _file_hash(source_plan_path) != profile_plan["source_plan_sha256"]:
         raise DataError("frozen Train-inner source plan checksum changed")
-    source_plan = json.loads(source_plan_path.read_text(encoding="utf-8"))
-    bundle_root = Path(source_plan["bundle"])
+    source_plan = _load_json_object(source_plan_path)
+    bundle_root = _routeb_path(source_plan["bundle"], "frozen Train bundle", must_exist=True)
     if _verify_file(bundle_root / "bundle.json") != plan["bundle_sha256"]:
         raise DataError("frozen policy bundle checksum changed")
-    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = _load_json_object(bundle_root / "bundle.json")
     source = profile_plan["source"]
+    source_paths = {
+        key: _routeb_path(source[f"{key}_path"], f"{key} source", must_exist=True)
+        for key in ("market", "rules")
+    }
+    environment = bundle["environment"]
     for key in ("market", "rules"):
-        if _file_hash(Path(source[f"{key}_path"])) != source[f"{key}_sha256"]:
+        environment_path = _routeb_path(
+            environment[f"{key}_path"], f"bundle {key} source", must_exist=True,
+        )
+        if environment_path != source_paths[key]:
+            raise DataError(f"bundle {key} source differs from the profile plan")
+        if _file_hash(source_paths[key]) != source[f"{key}_sha256"]:
             raise DataError(f"frozen {key} source checksum changed")
         if source[f"{key}_sha256"] != plan["source_hashes"][key]:
             raise DataError(f"cost comparison {key} identity differs from frozen source")
@@ -93,7 +118,11 @@ def run(plan_path: Path, output: Path) -> dict:
         record_development(registry_config, window, label="episode-reset-performance-profile")
 
     output.mkdir(parents=True)
-    code_hashes = {path: _file_hash(Path(path)) for path in SOURCE_FILES}
+    code_hashes = {
+        path: _file_hash(_routeb_path(Path(__file__).resolve().parents[1] / path,
+                                      "episode-reset source code", must_exist=True))
+        for path in SOURCE_FILES
+    }
     _write_verified(output / "plan.json", {
         "schema": "rles.episode-reset-profile-plan.v1",
         "source_plan": str(plan_path.resolve()), "source_plan_sha256": _file_hash(plan_path),
@@ -117,8 +146,8 @@ def run(plan_path: Path, output: Path) -> dict:
     records: list[dict] = []
     try:
         load_started = time.perf_counter()
-        market = read_curated(source["market_path"])
-        rules = load_rules(source["rules_path"])
+        market = read_curated(source_paths["market"])
+        rules = load_rules(source_paths["rules"])
         store = CuratedStore((*market.events, *rules))
         load_seconds = time.perf_counter() - load_started
         if store.snapshot_hash != bundle["preprocessing"]["identities"]["dataset"]:
@@ -263,11 +292,13 @@ def run(plan_path: Path, output: Path) -> dict:
 
 def finalize_existing(plan_path: Path, output: Path) -> dict:
     """Finalize already measured windows after validating every persisted artifact."""
+    plan_path = _routeb_path(plan_path, "episode-reset source plan", must_exist=True)
+    output = _routeb_path(output, "episode-reset measured output", must_exist=True)
     if not output.is_dir():
         raise DataError("profile output directory does not exist")
     execution_plan_path = output / "plan.json"
     execution_plan_hash = _verify_file(execution_plan_path)
-    execution_plan = json.loads(execution_plan_path.read_text(encoding="utf-8"))
+    execution_plan = _load_json_object(execution_plan_path)
     if execution_plan["source_plan_sha256"] != _file_hash(plan_path):
         raise DataError("provided frozen input plan differs from the measured output")
     # The runner itself may have a small post-run repair since measurement; all
@@ -275,14 +306,18 @@ def finalize_existing(plan_path: Path, output: Path) -> dict:
     for source_path, expected_hash in execution_plan["source_code_sha256"].items():
         if source_path == "qa/profile_episode_reset_20261017.py":
             continue
-        if _file_hash(Path(source_path)) != expected_hash:
+        code_path = _routeb_path(
+            Path(__file__).resolve().parents[1] / source_path,
+            "episode-reset source code", must_exist=True,
+        )
+        if _file_hash(code_path) != expected_hash:
             raise DataError(f"profile source changed after measurement: {source_path}")
 
     cases = []
     for days in WINDOW_DAYS:
         case_path = output / f"{days}d.json"
         _verify_file(case_path)
-        wrapper = json.loads(case_path.read_text(encoding="utf-8"))
+        wrapper = _load_json_object(case_path)
         profile = wrapper.get("profile")
         if not isinstance(profile, dict) or profile.get("days") != days:
             raise DataError(f"missing or mismatched completed {days}-day profile")
@@ -303,7 +338,7 @@ def finalize_existing(plan_path: Path, output: Path) -> dict:
     failure_path = output / "FAILED.json"
     if failure_path.is_file():
         _verify_file(failure_path)
-        prior_failure = json.loads(failure_path.read_text(encoding="utf-8"))
+        prior_failure = _load_json_object(failure_path)
     summary = {
         "schema": "rles.episode-reset-profile.v1", "split": "train_inner",
         "purpose": "Episode reset and historical factory engineering profile",
@@ -335,7 +370,7 @@ def finalize_existing(plan_path: Path, output: Path) -> dict:
     summary_path = output / "summary.json"
     if summary_path.is_file():
         _verify_file(summary_path)
-        existing_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        existing_summary = _load_json_object(summary_path)
         if (existing_summary.get("schema") != summary["schema"]
                 or existing_summary.get("source_plan_sha256") != summary["source_plan_sha256"]
                 or [row.get("days") for row in existing_summary.get("cases", [])] != list(WINDOW_DAYS)):

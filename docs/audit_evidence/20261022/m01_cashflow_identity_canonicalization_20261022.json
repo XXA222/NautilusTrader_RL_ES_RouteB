@@ -1,0 +1,55 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "date": "2026-10-22",
+  "audit_item": "M0.1/A08 canonical Binance transfer import identity",
+  "finding": "The single-page and paged Binance transfer importers accepted surrounding whitespace in account_scope_id and currency. account_scope_id was stripped when constructing transfer IDs, so distinct caller inputs silently collapsed to one source identity; padded currency could be emitted when matching malformed payload data was supplied.",
+  "reproduction_before_fix": {
+    "test": "test_binance_transfer_import_rejects_noncanonical_scope_and_currency",
+    "cases": 12,
+    "result": "All 12 direct/paged combinations accepted the noncanonical identity values rather than raising MetricsError.",
+    "input": "synthetic JSON TRANSFER rows only",
+    "network_or_account_access": false
+  },
+  "change": {
+    "file": "packages/research/src/rles_research/binance_cashflows.py",
+    "behavior": "Both direct and paged importers require account_scope_id and currency to be nonempty trimmed strings before parsing rows or building event/source identities."
+  },
+  "regression": {
+    "file": "tests/test_binance_cashflows.py",
+    "parameterized_cases": 12,
+    "coverage": [
+      "leading/trailing whitespace",
+      "whitespace-only",
+      "single-page importer",
+      "paged importer"
+    ],
+    "source_selector": {
+      "result": "passed",
+      "tests": 140
+    },
+    "installed_wheel_selector": {
+      "result": "passed",
+      "tests": 140
+    }
+  },
+  "distribution": {
+    "workspace_wheels_built": 12,
+    "workspace_sdists_built": 12,
+    "all_wheels_match_source": true,
+    "source_module_sha256": "6744ec54b524bdc0f27bb343cc1610bec039d1cadf115c90e4730d5139108f80",
+    "installed_module_sha256": "6744ec54b524bdc0f27bb343cc1610bec039d1cadf115c90e4730d5139108f80",
+    "installed_provenance": "12/12 packages, 6/6 declared entry points",
+    "dependency_check": "69 packages compatible",
+    "source_manifest": {
+      "file_count": 604,
+      "identity_sha256": "092cebb4581e871856e9b46d1621f8aa480f9a230c1770bd97fd34e70e4717b9"
+    }
+  },
+  "static_checks": {
+    "ruff": "passed",
+    "mypy_source": "passed",
+    "py_compile": "passed",
+    "git_diff_check": "passed"
+  },
+  "scope": "Synthetic transfer payloads only. No account credentials, real account records, market history, registry, Validation, Test, or Holdout payload was accessed. The input fix does not authenticate the origin or completeness of any future transfer export."
+}

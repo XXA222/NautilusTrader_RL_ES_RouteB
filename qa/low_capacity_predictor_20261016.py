@@ -14,12 +14,15 @@ from rles_data.core import CuratedStore, DataError, MINUTE_NS
 from rles_data.coverage import CoveragePolicy
 from rles_data.features import make_feature_row
 from rles_data.io import read_curated
-from rles_gym_bridge.historical import historical_feature_spec, load_rules
+from rles_data.json_utils import loads_unique_json
+from rles_gym_bridge.historical import historical_feature_spec, instrument_units_from_rules, load_rules
 from rles_orchestrator.application import _file_hash, _verify_file, _write_verified
 from rles_orchestrator.research_access import record_development
 from rles_orchestrator.wfo_application import _scaler
 
-from profile_native_history_growth_20261016 import available_memory, coverage_for_window
+from profile_native_history_growth_20261016 import (
+    _routeb_path, available_memory, coverage_for_window,
+)
 
 
 def corr(left: np.ndarray, right: np.ndarray) -> float | None:
@@ -34,6 +37,16 @@ def rank(values: np.ndarray) -> np.ndarray:
     first = np.cumsum(counts) - counts
     mean_ranks = first + (counts - 1) / 2
     return mean_ranks[inverse]
+
+
+def _load_json_object(path: Path) -> dict:
+    try:
+        value = loads_unique_json(path.read_bytes())
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise DataError(f"cannot read unambiguous forecast JSON: {path}") from exc
+    if not isinstance(value, dict):
+        raise DataError(f"forecast JSON root must be an object: {path}")
+    return value
 
 
 def forecast_metrics(prediction: np.ndarray, target_bp: np.ndarray, cost_bp: float) -> dict:
@@ -106,16 +119,20 @@ def fit_ridge(train_x: np.ndarray, train_y: np.ndarray, test_x: np.ndarray,
 
 
 def run(plan_path: Path, output: Path) -> dict:
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
-    if plan.get("split") != "train_inner" or output.exists():
+    plan_path = _routeb_path(plan_path, "forecast plan", must_exist=True)
+    output = _routeb_path(output, "forecast output", must_exist=False)
+    if output.exists() or not output.parent.is_dir():
+        raise DataError("forecast output must be new and its parent must exist")
+    plan = _load_json_object(plan_path)
+    if plan.get("split") != "train_inner":
         raise DataError("Train-inner plan and a new output directory are required")
     marker = plan_path.with_name(plan_path.name + ".sha256")
     if not marker.is_file() or marker.read_text(encoding="ascii").strip() != _file_hash(plan_path):
         raise DataError("preregistered forecast plan checksum mismatch")
-    bundle_root = Path(plan["bundle"])
+    bundle_root = _routeb_path(plan["bundle"], "forecast bundle", must_exist=True)
     if _verify_file(bundle_root / "bundle.json") != plan["bundle_sha256"]:
         raise DataError("frozen source bundle checksum changed")
-    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = _load_json_object(bundle_root / "bundle.json")
     if (bundle["preprocessing"]["identities"]["dataset"] != plan["dataset_sha256"]
             or available_memory() < 10 * 1024**3):
         raise DataError("dataset identity mismatch or insufficient start memory")
@@ -126,22 +143,33 @@ def run(plan_path: Path, output: Path) -> dict:
            for fold in plan["folds"]):
         raise DataError("forecast folds differ from the frozen Train-only protocol")
     source = plan["source"]
+    source_paths = {
+        name: _routeb_path(source[name + "_path"], f"{name} source", must_exist=True)
+        for name in ("market", "rules")
+    }
+    environment = bundle["environment"]
     for name in ("market", "rules"):
-        if _file_hash(Path(source[name + "_path"])) != source[name + "_sha256"]:
+        environment_path = _routeb_path(
+            environment[name + "_path"], f"bundle {name} source", must_exist=True,
+        )
+        if environment_path != source_paths[name]:
+            raise DataError(f"bundle {name} source differs from the frozen forecast plan")
+        if _file_hash(source_paths[name]) != source[name + "_sha256"]:
             raise DataError(f"{name} source checksum mismatch")
 
     output.mkdir(parents=True)
     _write_verified(output / "preregistration.json", {
         "plan_path": str(plan_path.resolve()), "plan_sha256": _file_hash(plan_path), "plan": plan})
     try:
-        rules = load_rules(source["rules_path"])
-        store = CuratedStore((*read_curated(source["market_path"]).events, *rules))
+        rules = load_rules(source_paths["rules"])
+        quantity_unit, quote_currency = instrument_units_from_rules(rules, environment["instrument"])
+        store = CuratedStore((*read_curated(source_paths["market"]).events, *rules))
         if store.snapshot_hash != plan["dataset_sha256"]:
             raise DataError("source market/rules do not match the frozen data identity")
-        environment = bundle["environment"]
         instrument = environment["instrument"]
         spec = historical_feature_spec(environment["coverage_policy"]["maximum_age_ns"],
-                                       profile=plan["feature_profile"])
+                                       profile=plan["feature_profile"], quantity_unit=quantity_unit,
+                                       quote_currency=quote_currency)
         scaler = _scaler(bundle_root)
         if scaler.feature_hash != spec.hash:
             raise DataError("frozen feature/scaler identity mismatch")

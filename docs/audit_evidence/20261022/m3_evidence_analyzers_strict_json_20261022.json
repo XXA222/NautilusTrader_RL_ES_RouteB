@@ -1,0 +1,27 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A13/A14 / Stage58-60 and M3.3 evidence analyzer JSON integrity",
+  "finding": "Four still-callable M3 coverage and action-value analyzers used default JSON decoding for preregistrations, frozen configurations, R1 learning reports, completion receipts, and native action-value reports. Duplicate keys could replace identity or diagnostic counters while leaving the raw file SHA unchanged from its paired marker.",
+  "change": "The Stage58, Stage59, Stage60, and M3.3 analyzer readers now use rles_data.loads_unique_json, reject duplicate keys recursively, normalize IO/UTF-8/JSON errors to ValueError, and require object roots. Added temporary-file tests for duplicate keys, invalid UTF-8, and non-object roots through every reader.",
+  "source_files": {
+    "qa/analyze_stage58_train_coverage.py": "3e27bc3a6e46587c9397d37001e9e97bbcf1612c7a0d8fdf298e7ad8c49647f9",
+    "qa/analyze_stage59_train_diagnostics.py": "14017810dc1be5bcc1a1d96d81bab7d019b1ce3753918ea6fe633c7d4d8e1c8c",
+    "qa/analyze_stage60_fixed_regimes.py": "e033e7762ce400a097e4afbd8efce8f7723c3eb4ae83f7b4f383f0d3099e8b73",
+    "qa/analyze_m33_action_value.py": "6d9ee60fb812631ba3307730894dd58eb5df096f158f3ae881b392aa646f029b"
+  },
+  "test_files": {
+    "tests/test_m3_analyzer_json_integrity.py": "2fec2edb46fa5eb6953a99fb882ed0b13ffe313117525cef78a8189bc9f8941e"
+  },
+  "verification": {
+    "pytest": "M3 reader regressions + M1.3 runner/analyzers + legacy inventories: 58 passed, 1 skipped (host symlink capability)",
+    "ruff": "passed for four analyzers and test module",
+    "py_compile": "passed for all four analyzers",
+    "mypy": "packages qa: 224 source files, no issues; installed untyped-wheel diagnostic disabled",
+    "source_manifest": {
+      "file_count": 583,
+      "source_identity_sha256": "4606afd3a67f9f48030bde02c57f448de7b71947762a19ab10b1aed17f659a4e",
+      "verified": true
+    }
+  },
+  "scope": "Only synthetic JSON fixtures were parsed; no stage evidence, native reports, market data, or research ledger was opened."
+}

@@ -49,6 +49,22 @@ def test_curated_source_identity_reads_marker_without_decoding_payload(monkeypat
     }
 
 
+def test_curated_source_identity_rejects_duplicate_commit_marker_keys(tmp_path: Path) -> None:
+    path = tmp_path / "ambiguous-market.parquet"
+    write_curated(path, _store(), row_group_size=2)
+    marker = path.with_name(path.name + ".COMPLETED.json")
+    payload = marker.read_bytes().replace(
+        b'"schema_version":"0.4.1"',
+        b'"schema_version":"0.4.0","schema_version":"0.4.1"',
+    )
+    marker.write_bytes(payload)
+    marker.with_suffix(marker.suffix + ".sha256").write_text(
+        sha256(payload).hexdigest(), encoding="ascii")
+
+    with pytest.raises(DataError, match="invalid curated commit metadata"):
+        curated_source_identity(path)
+
+
 def test_curated_window_reads_only_fully_contained_verified_row_groups(tmp_path: Path) -> None:
     path = tmp_path / "market.parquet"
     source = _store()

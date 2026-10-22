@@ -1,0 +1,27 @@
+{
+  "schema": "rles.routeb.audit-evidence.m01-online-accumulator-fail-closed.v1",
+  "date": "2026-10-22",
+  "status": "PASS_SYNTHETIC_ENGINEERING_ONLY",
+  "finding": "NativeReportAccumulator mutates report state before all snapshot validation completes. After a conflicting Funding fact raised MetricsError, callers could catch the exception and still call add_snapshot or finish, allowing partial ledger state to be reused.",
+  "reproduction": "Two new regressions first failed against the previous implementation: add_snapshot after the collision did not raise, and finish did not report the earlier failure.",
+  "change": "NativeReportAccumulator now records the first exception from snapshot ingestion or report finalization and enters a fail-closed state. Later add_snapshot/finish calls raise MetricsError chained from the original failure. Snapshot and finalization mutation logic is behind guarded internal methods.",
+  "verification": {
+    "source_selector": "197 passed; 18 existing dependency/upstream warnings",
+    "installed_wheel_selector": "197 passed; 18 existing dependency/upstream warnings; PYTHONPATH unset",
+    "selectors": [
+      "tests/test_native_report_accumulator_parity.py",
+      "tests/test_research_metrics.py",
+      "tests/test_native_liquidation_facts.py",
+      "tests/test_historical_factory.py"
+    ],
+    "ruff": "passed on modified source and test",
+    "mypy": "Success: no issues found in native_metrics.py",
+    "py_compile": "passed on modified source and test",
+    "diff_check": "passed on modified source and test",
+    "installed_artifact": "rebuilt rles-research 0.4.1 wheel installed only into RouteB .venv-win-app; installed native_metrics SHA matches source",
+    "wheel_manifest": "12/12 RouteB wheels match package source",
+    "dependencies": "69 RouteB app packages compatible"
+  },
+  "source_identity_sha256": "348f837f699634f23d3d48891c6225c60ba4b0bafe9e6e9ec95912f8241403e3",
+  "scope": "Synthetic Funding facts only. No market, account, registry, Validation, Test, or Holdout payload was read. RouteA and the main project were not changed by this tranche. Authenticated cashflow provenance and cross-platform Hosted CI remain external gates."
+}

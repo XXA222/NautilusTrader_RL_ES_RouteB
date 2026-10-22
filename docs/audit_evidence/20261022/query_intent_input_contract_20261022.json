@@ -1,0 +1,37 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "date": "2026-10-22",
+  "topic": "A04/A05 research registry boundary and deterministic inventory",
+  "project_root": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
+  "fixes": [
+    "Formal query intent, candidate list and registry operation inputs are validated before database access.",
+    "Trial recipes use recursive strict JSON serialization; legacy inventory import validates exact schema and SHA256 before transaction.",
+    "Trial-attempt summaries sort deterministically by candidate_id, seed, and attempt_key.",
+    "Paired Test component comparison rejects malformed labels before set operations."
+  ],
+  "validation": {
+    "installed_wheel_test_files": [
+      "tests/test_research_access.py",
+      "tests/test_research_wfo.py",
+      "tests/test_application_cli.py",
+      "tests/test_routeb_fresh_fold_access.py",
+      "tests/world_model/test_reconcile_routeb_research_ledger.py"
+    ],
+    "passed": 206,
+    "failed": 0,
+    "runtime_seconds": 11.72,
+    "ruff": "All checks passed for changed research source and tests.",
+    "mypy": "Success: no issues found in access.py.",
+    "wheel_count": 12,
+    "wheels_match_package_sources": true,
+    "app_dependency_count": 69,
+    "dependency_check": "All installed packages are compatible.",
+    "import_provenance": "12 modules and 6 entry points resolved from RouteB .venv-win-app site-packages.",
+    "source_manifest_identity": "a4bc06b9d8ce7e76f91675d01ed146cc3a4fda1294e9cb47db088d08515626f2"
+  },
+  "boundary": [
+    "Only synthetic malformed inputs and temporary SQLite databases were used.",
+    "No project research ledger or market payload was read or modified; no Validation/Test/Holdout was accessed.",
+    "Hosted clean Linux/Windows CI and external research evidence remain open."
+  ]
+}

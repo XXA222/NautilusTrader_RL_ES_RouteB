@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib
+import json
 
 import pytest
 
@@ -230,6 +231,7 @@ def test_l2_supplemental_quality_is_checked_per_expected_instrument(
                 "funding_settlement", "instrument_rule")
     events = []
     for symbol in ("ETHUSDT-PERP", "BTCUSDT-PERP"):
+        base_currency = symbol.split("USDT-")[0]
         payloads = {
             "ohlcv_1m": {"open": "100", "high": "101", "low": "99", "close": "100", "volume": "1"},
             "mark": {"price": "100"},
@@ -237,6 +239,9 @@ def test_l2_supplemental_quality_is_checked_per_expected_instrument(
             "funding_update": {"rate": "0.001"},
             "funding_settlement": {"rate": "0.001", "settlement_ns": minute},
             "instrument_rule": {
+                "quantity_unit": base_currency, "base_currency": base_currency,
+                "quote_currency": "USDT",
+                "contract_multiplier": "1",
                 "tick_size": "0.1", "step_size": "0.1", "min_notional": "10", "min_qty": "1",
                 "maker_fee": "0.001", "taker_fee": "0.001", "initial_margin_rate": "0.1",
                 "maintenance_margin_rate": "0.05", "effective_ns": minute, "rule_version": "v1",
@@ -474,3 +479,28 @@ def test_l6_artifact_commit_verify_restore_and_tamper_rejection(tmp_path) -> Non
     (target / "policy.txt").write_bytes(b"modified")
     with pytest.raises(ArtifactError, match="hash mismatch"):
         store.verify("run-1", "attempt-1")
+
+
+@pytest.mark.artifact_restore
+def test_l6_artifact_verifier_rejects_duplicate_index_keys(tmp_path) -> None:
+    import hashlib
+
+    hashes = {name: f"{index:x}" * 64 for index, name in enumerate(
+        ("data_hash", "code_hash", "config_hash", "seed_hash", "deps_hash",
+         "adapter_hash", "compute_hash", "execution_hash", "risk_hash"), start=1)}
+    store = ArtifactStore(tmp_path / "artifacts", trusted_sources={"qa-local"})
+    writer = store.begin("run-duplicate", "attempt-1")
+    writer.add("policy.txt", b"policy")
+    target = writer.complete(l1_manifest=hashes, required_files=["policy.txt"],
+                             trusted_source_id="qa-local")
+    index_path = target / "integrity.json"
+    index_data = index_path.read_bytes().replace(
+        b'"source_id":"qa-local"',
+        b'"source_id":"qa-local","source_id":"qa-local"',
+    )
+    index_path.write_bytes(index_data)
+    marker = {"integrity_sha256": hashlib.sha256(index_data).hexdigest(), "state": "COMPLETED"}
+    (target / "COMPLETED").write_bytes(
+        json.dumps(marker, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    with pytest.raises(ArtifactError, match="invalid marker/index"):
+        store.verify("run-duplicate", "attempt-1")

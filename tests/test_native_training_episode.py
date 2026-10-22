@@ -451,6 +451,38 @@ def test_episode_window_overlap_count_handles_inclusive_boundaries_and_large_set
     assert _count_episode_window_overlap_pairs(disjoint) == 0
 
 
+def test_training_episode_window_diagnostics_fail_closed_on_invalid_or_mutating_facts() -> None:
+    from rles_rl_sb3.errors import ContractError
+    from rles_rl_sb3.provider import _record_episode_window, _validated_episode_window
+
+    valid = {
+        "start_ns": 10,
+        "end_ns": 30,
+        "episode_index": 2,
+        "start_offset": 8,
+        "decision_steps": 10,
+    }
+    assert _validated_episode_window(valid, 20) == (10, 30, 2, 8, 10)
+
+    invalid = (
+        ({**valid, "unexpected": 1}, 20),
+        ({**valid, "end_ns": 9}, 10),
+        ({**valid, "decision_steps": 0}, 20),
+        ({**valid, "start_ns": 21}, 20),
+        ({**valid, "episode_index": True}, 20),
+    )
+    for window, decision_ts_ns in invalid:
+        with pytest.raises(ContractError):
+            _validated_episode_window(window, decision_ts_ns)
+
+    registry: dict[tuple[int, int, int], tuple[int, int]] = {}
+    identity = (0, valid["episode_index"], valid["start_offset"])
+    _record_episode_window(registry, identity, (valid["start_ns"], valid["end_ns"]))
+    _record_episode_window(registry, identity, (valid["start_ns"], valid["end_ns"]))
+    with pytest.raises(ContractError, match="changed during one episode"):
+        _record_episode_window(registry, identity, (valid["start_ns"], valid["end_ns"] + 1))
+
+
 def test_sb3_vecenv_trains_multiple_isolated_native_engines_with_staggered_resets() -> None:
     import torch
     from rles_rl_sb3.config import PolicySpec, RLConfig, SeedSpec, TransitionFingerprint

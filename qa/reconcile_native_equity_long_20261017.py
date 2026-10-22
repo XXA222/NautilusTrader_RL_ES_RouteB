@@ -7,29 +7,56 @@ from pathlib import Path
 
 from rles_data.core import CuratedStore, DataError
 from rles_data.io import read_curated
+from rles_data.json_utils import loads_unique_json
 from rles_gym_bridge.historical import HistoricalEnvironmentFactory, load_rules
 from rles_orchestrator.application import _file_hash, _verify_file, _write_verified, rollout
 from rles_orchestrator.research_access import record_development
 from rles_orchestrator.wfo_application import _scaler
 
-from profile_native_history_growth_20261016 import DAY_NS, coverage_for_window, make_predictor
+from profile_native_history_growth_20261016 import (
+    DAY_NS, _routeb_path, coverage_for_window, make_predictor,
+)
+
+
+def _load_json_object(path: Path) -> dict:
+    try:
+        value = loads_unique_json(path.read_bytes())
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise DataError(f"cannot read unambiguous equity-reconciliation JSON: {path}") from exc
+    if not isinstance(value, dict):
+        raise DataError(f"equity-reconciliation JSON root must be an object: {path}")
+    return value
 
 
 def run(*, plan_path: Path, output: Path) -> dict:
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
-    if plan.get("split") != "train_inner" or output.exists():
+    plan_path = _routeb_path(plan_path, "equity reconciliation plan", must_exist=True)
+    output = _routeb_path(output, "equity reconciliation output", must_exist=False)
+    if output.exists() or not output.parent.is_dir():
+        raise DataError("equity reconciliation output must be new and its parent must exist")
+    plan = _load_json_object(plan_path)
+    if plan.get("split") != "train_inner":
         raise DataError("requires the frozen Train-inner plan and a new output directory")
-    original_plan_path = Path(plan["source_plan"])
+    original_plan_path = _routeb_path(plan["source_plan"], "frozen Train plan", must_exist=True)
     if _file_hash(original_plan_path) != plan["source_plan_sha256"]:
         raise DataError("frozen Train-inner source plan checksum changed")
-    source_plan = json.loads(original_plan_path.read_text(encoding="utf-8"))
-    bundle_root = Path(source_plan["bundle"])
+    source_plan = _load_json_object(original_plan_path)
+    bundle_root = _routeb_path(source_plan["bundle"], "frozen candidate bundle", must_exist=True)
     if _verify_file(bundle_root / "bundle.json") != source_plan["bundle_sha256"]:
         raise DataError("frozen candidate bundle checksum changed")
-    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = _load_json_object(bundle_root / "bundle.json")
     source = plan["source"]
+    source_paths = {
+        key: _routeb_path(source[key + "_path"], f"{key} source", must_exist=True)
+        for key in ("market", "rules")
+    }
+    environment = bundle["environment"]
     for key in ("market", "rules"):
-        if _file_hash(Path(source[key + "_path"])) != source[key + "_sha256"]:
+        environment_path = _routeb_path(
+            environment[key + "_path"], f"bundle {key} source", must_exist=True,
+        )
+        if environment_path != source_paths[key]:
+            raise DataError(f"bundle {key} source differs from the reconciliation plan")
+        if _file_hash(source_paths[key]) != source[key + "_sha256"]:
             raise DataError(f"frozen {key} source checksum changed")
     start_ns = source_plan["windows"][0]["start_ns"]
     window = {"start_ns": start_ns, "end_ns": start_ns + 90 * DAY_NS}
@@ -40,11 +67,10 @@ def run(*, plan_path: Path, output: Path) -> dict:
                        "seed": source_plan["seed"]}
     record_development(registry_config, window, label="m0-1-native-equity-90d")
 
-    rules = load_rules(source["rules_path"])
-    store = CuratedStore((*read_curated(source["market_path"]).events, *rules))
+    rules = load_rules(source_paths["rules"])
+    store = CuratedStore((*read_curated(source_paths["market"]).events, *rules))
     if store.snapshot_hash != bundle["preprocessing"]["identities"]["dataset"]:
         raise DataError("frozen archive does not match candidate bundle data identity")
-    environment = bundle["environment"]
     coverage = coverage_for_window(environment["coverage_policy"], window)
     scaler = _scaler(bundle_root)
     factory = HistoricalEnvironmentFactory(**{

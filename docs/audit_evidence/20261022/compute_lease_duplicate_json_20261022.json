@@ -1,0 +1,41 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / compute lease and resource recovery JSON integrity",
+  "finding": "Compute lease ownership, Windows recovery enrollment/evidence, GPU owner lock state, and durable recovery receipts were read with the default JSON decoder. Duplicate keys could make ambiguous ownership facts appear acceptable or affect recovery inspection.",
+  "change": "Added recursive strict JSON parsing for persisted compute runtime state. GPU acquire/release normalize corrupted metadata to ComputeError without dropping the lock; enrollment/recovery evidence readers fail closed; quota inspection rejects ambiguous durable receipts.",
+  "source_files": {
+    "packages/compute_runtime/src/rles_compute_runtime/json_utils.py": "6fa5958c2f75737c601f6dce92cd3cf4bebda1ffbaf5f06e63815e80d78c2ed1",
+    "packages/compute_runtime/src/rles_compute_runtime/resources.py": "cb3329b00471dcd71ab9629b5edb5b9d93b9ad0c9ea0db92bdbbe887f4c588ac",
+    "packages/compute_runtime/src/rles_compute_runtime/recovery.py": "f858b62b60d555fc210b10df9cf735bb21e94d42fd475e6f54d08a58f34a1a7d"
+  },
+  "test_files": {
+    "tests/test_compute_device.py": "eebe35bb32a96810c899fcf09a2263cd472128539ba57d391ff703dadb0c50a7"
+  },
+  "verification": {
+    "pytest_source": "tests/test_compute_device.py + tests/test_resource_recovery.py: 30 passed",
+    "pytest_installed_wheel": "same selectors with PYTHONPATH unset: 30 passed",
+    "ruff": "passed for parser, resource/recovery modules, and device tests",
+    "mypy": "passed for 3 changed runtime modules",
+    "dependency_check": "uv pip check: all 69 RouteB app packages compatible",
+    "installed_source_parity": {
+      "resources": {
+        "installed_sha256": "cb3329b00471dcd71ab9629b5edb5b9d93b9ad0c9ea0db92bdbbe887f4c588ac",
+        "source_sha256": "cb3329b00471dcd71ab9629b5edb5b9d93b9ad0c9ea0db92bdbbe887f4c588ac"
+      },
+      "recovery": {
+        "installed_sha256": "f858b62b60d555fc210b10df9cf735bb21e94d42fd475e6f54d08a58f34a1a7d",
+        "source_sha256": "f858b62b60d555fc210b10df9cf735bb21e94d42fd475e6f54d08a58f34a1a7d"
+      }
+    },
+    "source_manifest": {
+      "file_count": 578,
+      "source_identity_sha256": "d2a8e8d5db05708206eec26cc3d35eb0a8af216181e42dd140086cbddd997cb2",
+      "verified": true
+    }
+  },
+  "distribution": {
+    "wheel": "C:\\Users\\QX\\Documents\\ChatGPT\\RouteB\\routeb-compute-runtime-wheel-20261022\\rles_compute_runtime-0.4.1-py3-none-any.whl",
+    "installed_into": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app"
+  },
+  "scope": "Synthetic lock state, temporary SQLite, and mocked descriptor input only; no worker tree or real GPU recovery was run."
+}

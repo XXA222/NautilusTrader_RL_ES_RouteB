@@ -1,0 +1,26 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "M0.1 / Exact native linear-equity reconciliation",
+  "finding": "Linear equity reconciliation performed quantity, cash, fee, funding, marked-notional, equity, residual and tolerance arithmetic under the caller's active Decimal context. Precision 3 rounded a 12345-unit position and rejected a valid native ledger.",
+  "change": "Batch and online reconciliation now use bounded exact Decimal addition and multiplication, context-independent sign changes, exact expected-equity sums, residual subtraction and scaled tolerances. Both open and flat barriers use the same helpers.",
+  "regression": {
+    "input": "A synthetic 12345-unit position opens and closes at 12.34 with 0.01 USDT fee per fill and a precision-3 Decimal context.",
+    "prior_behavior": "The batch path rounded signed quantity and rejected the native position as inconsistent before checking equity.",
+    "expected_equity": [
+      "199999.99",
+      "199999.98"
+    ]
+  },
+  "verification": {
+    "pytest_source": "Native report accumulator parity, research metrics, Binance cashflows, native liquidation facts and historical factory: 251 passed, 18 dependency warnings, 132.69 seconds; all RouteB package source roots were on PYTHONPATH.",
+    "pytest_installed_wheel": "Same selector with PYTHONPATH unset and rebuilt rles-research 0.4.1 wheel in RouteB .venv-win-app: 251 passed, 18 dependency warnings, 131.16 seconds.",
+    "static_checks": "Ruff passed for native_metrics.py and test_native_report_accumulator_parity.py; targeted MyPy passed for native_metrics.py.",
+    "wheel": "Built and installed rles_research-0.4.1-py3-none-any.whl.",
+    "source_and_installed_module_sha256": "9b3291ecb387bd28d5580fa11a9e73574f63de61c1827c52954ee21331b496cc",
+    "source_manifest": {
+      "files": 604,
+      "identity_sha256": "eae1a07e7bdb04d4c9ae7fed5c90d1a22cb925bb4e109b683d645e24b7992b24"
+    }
+  },
+  "scope": "Synthetic account fixtures only. No live account, market, registry, Validation, Test, or Holdout payload was accessed. Authenticated cashflow provenance and completeness remain external M0.1 evidence gates."
+}

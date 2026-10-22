@@ -1,0 +1,50 @@
+{
+  "data_boundary": "Synthetic reconciliation fixtures and metadata-only report/ledger dry-run. No market, forecast, account, Validation, Test, or Holdout payload was opened.",
+  "date": "2026-10-22",
+  "finding": "Duplicate JSON object keys could make failure/registration receipt schemas ambiguous; receipt discovery could miss an R4 failure when a later duplicate schema key overwrote the R4 marker.",
+  "implementation": [
+    "All JSON decoding in the RouteB ledger reconciler now rejects duplicate object keys.",
+    "Failure receipt discovery retains a candidate for rejection when a damaged receipt contains a known R4 schema string, including JSON-escaped spellings.",
+    "Apply remains fail-closed when any discovered report is rejected."
+  ],
+  "ledger_metadata_dry_run": {
+    "candidate_attempts": 228,
+    "ledger_mutated": false,
+    "mode": "dry-run",
+    "read_only_reports": 3,
+    "reports_accepted": 42,
+    "reports_discovered": 42,
+    "reports_rejected": 0,
+    "unresolved_r4_accesses": 0
+  },
+  "regression": {
+    "cases": [
+      "Duplicate schema in failure receipt",
+      "JSON-escaped R4 schema plus duplicate schema",
+      "Malformed failure receipt with duplicate schema in registration receipt",
+      "Duplicate key in completed comparison report",
+      "Apply rejects a batch containing an ambiguous report"
+    ],
+    "command": ".venv-win-app/Scripts/python.exe -m pytest -p no:cacheprovider --basetemp <workspace-temp> tests/world_model/test_reconcile_routeb_research_ledger.py -q",
+    "result": "18 passed"
+  },
+  "routeb_cpu_environment": {
+    "jax": "0.11.2",
+    "path": "packages/world_model/environment/.venv-win-cpu",
+    "pyarrow": "25.0.1",
+    "pyarrow_parquet_smoke": "In-memory 3-row Arrow table write/read round-trip passed",
+    "python": "3.12.10",
+    "uv_pip_check": "67 installed packages compatible"
+  },
+  "schema": "routeb.audit.reconciler-strict-json.v1",
+  "source_manifest": {
+    "files": 569,
+    "identity_sha256": "6b20164620fee2b921e79f5985c3b34090e6ab6684a8637a2b72c3dff954c720",
+    "verified": true
+  },
+  "static_checks": {
+    "git_diff_check": "passed; Git reports existing LF-to-CRLF normalization notices",
+    "mypy": "passed on reconciler source with RouteB workspace package sources configured",
+    "ruff": "passed on the reconciler and focused test file"
+  }
+}

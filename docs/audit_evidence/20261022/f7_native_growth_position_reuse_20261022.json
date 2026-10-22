@@ -1,0 +1,60 @@
+{
+  "schema": "rles.routeb.audit-evidence.f7-native-growth-and-position-reuse.v1",
+  "date": "2026-10-22",
+  "finding": "F7 remained partial because compact native report snapshots were retained per barrier and no long-window full native replay profile proved trajectory parity and RSS growth.",
+  "change": "Compact report snapshots now reuse the last unchanged tuple of required position facts. Shared position mappings are read-only MappingProxyType objects so reuse cannot let one snapshot mutate another.",
+  "verification": {
+    "source_tests": "186 historical factory/native liquidation/research metrics tests passed before adding the immutability regression; the new immutability regression also passed",
+    "installed_wheel_tests": "2 focused historical factory tests passed; compact snapshot and research metrics suites passed 95 tests",
+    "static_checks": {
+      "ruff": "passed",
+      "py_compile": "passed",
+      "targeted_mypy": "Success: no issues found in 1 source file"
+    },
+    "wheel": {
+      "wheel_manifest": "12 wheels present; all_match=true",
+      "installed_gym_bridge_module_matches_source": true,
+      "wheel_import_smoke": "passed for 12 modules and 6 entry points",
+      "dependency_check": "69 packages compatible"
+    },
+    "source_manifest": {
+      "files": 595,
+      "source_identity_sha256": "336d37fdb1fe904756b8c5cb9532df8a60b88185e5e14192f13647a182418415",
+      "verified": true
+    },
+    "synthetic_native_replay": {
+      "profile_before": "docs/audit_evidence/20261022/f7_synthetic_native_growth_replay_20261022.json",
+      "profile_after": "docs/audit_evidence/20261022/f7_synthetic_native_growth_reuse_20261022.json",
+      "days": [
+        {
+          "days": 1,
+          "decision_steps": 1437,
+          "trajectory_and_metric_hashes_unchanged": true,
+          "retained_peak_delta_before_bytes": 79085568,
+          "retained_peak_delta_after_bytes": 77238272
+        },
+        {
+          "days": 30,
+          "decision_steps": 43197,
+          "trajectory_and_metric_hashes_unchanged": true,
+          "retained_peak_delta_before_bytes": 185901056,
+          "retained_peak_delta_after_bytes": 160505856
+        },
+        {
+          "days": 90,
+          "decision_steps": 129597,
+          "trajectory_and_metric_hashes_unchanged": true,
+          "retained_peak_delta_before_bytes": 472567808,
+          "retained_peak_delta_after_bytes": 398458880
+        }
+      ],
+      "90_day_reduction_bytes": 74108928,
+      "90_day_reduction_fraction": 0.1568,
+      "synthetic_source_event_count": 389258,
+      "market_data_used": false,
+      "research_registry_accessed": false
+    }
+  },
+  "remaining": "F7 is still partial: the compact per-barrier snapshot sequence remains O(n), and this profile uses a fixed-action synthetic path rather than a full real-history Train trace. The result quantifies current memory and trajectory behavior; it does not prove constant-memory reporting.",
+  "scope_limit": "Synthetic OHLCV, mark, index, funding, and native-engine data only. No market archive, account, project ledger, Validation, Test, or Holdout payload was accessed."
+}

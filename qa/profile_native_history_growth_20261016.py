@@ -20,6 +20,7 @@ import numpy as np
 
 from rles_data.core import CuratedStore, DataError, MINUTE_NS
 from rles_data.io import read_curated
+from rles_data.json_utils import loads_unique_json
 from rles_gym_bridge.historical import HistoricalEnvironmentFactory, load_rules
 from rles_orchestrator.application import _file_hash, _verify_file, _write_verified, rollout
 from rles_orchestrator.research_access import record_development
@@ -50,7 +51,27 @@ def coverage_for_window(original: dict, window: dict) -> dict:
     return coverage
 
 
+def _load_json_object(path: Path) -> dict:
+    try:
+        value = loads_unique_json(path.read_bytes())
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise DataError(f"cannot read unambiguous profile JSON: {path}") from exc
+    if not isinstance(value, dict):
+        raise DataError(f"profile JSON root must be an object: {path}")
+    return value
+
+
 DAY_NS = 86_400 * 1_000_000_000
+
+
+def _routeb_path(path: str | Path, label: str, *, must_exist: bool) -> Path:
+    root = Path(__file__).resolve().parents[1]
+    resolved = Path(path).resolve(strict=must_exist)
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise DataError(f"{label} must resolve inside the isolated RouteB project") from exc
+    return resolved
 
 
 def process_rss() -> int:
@@ -114,16 +135,31 @@ def make_predictor(workload: str, rows):
 
 
 def run(plan_path: Path, output: Path) -> dict:
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
-    if plan.get("split") != "train_inner" or output.exists():
+    plan_path = _routeb_path(plan_path, "profile plan", must_exist=True)
+    output = _routeb_path(output, "profile output", must_exist=False)
+    if output.exists() or not output.parent.is_dir():
+        raise DataError("profile output must be new and its parent must exist")
+    plan = _load_json_object(plan_path)
+    if plan.get("split") != "train_inner":
         raise DataError("requires the frozen Train plan and a new output directory")
-    bundle_root = Path(plan["bundle"])
+    bundle_root = _routeb_path(plan["bundle"], "frozen Train bundle", must_exist=True)
     if _verify_file(bundle_root / "bundle.json") != plan["bundle_sha256"]:
         raise DataError("frozen candidate bundle checksum changed")
-    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = _load_json_object(bundle_root / "bundle.json")
     source = plan["source"]
+    source_paths = {
+        key: _routeb_path(source[key + "_path"], f"{key} source", must_exist=True)
+        for key in ("market", "rules")
+    }
+    environment = bundle["environment"]
     for key in ("market", "rules"):
-        if _file_hash(Path(source[key + "_path"])) != source[key + "_sha256"]:
+        environment_path = _routeb_path(
+            environment[key + "_path"], f"bundle {key} source", must_exist=True,
+        )
+        if environment_path != source_paths[key]:
+            raise DataError(f"frozen bundle {key} source differs from the Train plan")
+    for key in ("market", "rules"):
+        if _file_hash(source_paths[key]) != source[key + "_sha256"]:
             raise DataError(f"frozen {key} source checksum changed")
     base = plan["windows"][0]["start_ns"]
     windows = [{"start_ns": base, "end_ns": base + days * DAY_NS, "days": days}
@@ -132,7 +168,6 @@ def run(plan_path: Path, output: Path) -> dict:
         raise DataError("long profile window exceeds frozen Train boundary")
     if available_memory() < plan["minimum_start_free_bytes"]:
         raise MemoryError("free memory below frozen plan start floor")
-    environment = bundle["environment"]
     registry_config = {"environment": environment, "output": str(output), "seed": plan["seed"]}
     for window in windows:
         record_development(registry_config, window, label="f7-native-history-growth")
@@ -151,8 +186,8 @@ def run(plan_path: Path, output: Path) -> dict:
     records = []
     try:
         started = time.perf_counter()
-        rules = load_rules(source["rules_path"])
-        store = CuratedStore((*read_curated(source["market_path"]).events, *rules))
+        rules = load_rules(source_paths["rules"])
+        store = CuratedStore((*read_curated(source_paths["market"]).events, *rules))
         if store.snapshot_hash != bundle["preprocessing"]["identities"]["dataset"]:
             raise DataError("archived source does not match frozen model data identity")
         source_seconds = time.perf_counter() - started

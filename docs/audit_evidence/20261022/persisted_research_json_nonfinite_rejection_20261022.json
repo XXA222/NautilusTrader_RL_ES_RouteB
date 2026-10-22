@@ -1,0 +1,52 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "finding": "Several persisted-state JSON readers still accepted non-standard NaN/Infinity constants despite duplicate-key safeguards: the Research ArtifactStore, legacy research access inventory, and registered-fold ledger reconciler.",
+  "changes": [
+    "Research ArtifactStore rejects non-finite constants in integrity index, completion marker, and L1 manifest, including cases whose external hashes were recomputed.",
+    "The legacy project access inventory and Route B ledger reconciler reject non-finite constants in inventory, report, receipt, and SQLite identity JSON."
+  ],
+  "source_files": [
+    {
+      "path": "packages/research/src/rles_research/artifacts.py",
+      "sha256": "824626717b628f0ceea76ea14c193ed9ced087243e6eee29351b4254ff8cb1ac"
+    },
+    {
+      "path": "packages/orchestrator/src/rles_orchestrator/research_access.py",
+      "sha256": "a80f3a9bb0ee51f21164a0413ad5786255196ed9d5256cfef2d7b9060fba74d4"
+    },
+    {
+      "path": "qa/world_model/reconcile_routeb_research_ledger.py",
+      "sha256": "66f0a6893ca14771d36a191c5f5b6f6cd11e8d800c6735636dc2bc705fc50119"
+    },
+    {
+      "path": "tests/test_research_artifacts_json_integrity.py",
+      "sha256": "f834ca1725ac8552350362a0c44d7cc9f9fb0ca8dc90adb8568542e7ed4116d5"
+    },
+    {
+      "path": "tests/test_research_access.py",
+      "sha256": "bb9016e920dfeaaba41d7467b0611d68d9d808247ca68566ab6954eacb0b6e63"
+    },
+    {
+      "path": "tests/world_model/test_reconcile_routeb_research_ledger.py",
+      "sha256": "e53f73cde66e0bbf5142d894c0ebb7720392ee1fad835fc443b59bea322c1cd7"
+    }
+  ],
+  "verification": {
+    "source_pytest": "Research artifacts, research inventory, research access, artifact_restore, and registered ledger reconciler selectors: 182 passed",
+    "installed_wheel_pytest": "Same selectors with PYTHONPATH unset against RouteB .venv-win-app wheels: 182 passed",
+    "ruff": "ruff check packages ci qa tests: passed",
+    "mypy": "mypy packages qa --disable-error-code=import-untyped: success, 224 source files",
+    "dependency_check": "uv pip check: 69 packages compatible",
+    "distribution": {
+      "source_manifest_files": 593,
+      "source_identity_sha256": "08e500cd08f2ec9d6baa6a6b1961d32f72c50ab9d728d6c9be057cc44b403a13",
+      "wheel_count": 12,
+      "all_wheels_match_source": true,
+      "installed_package_modules": 12,
+      "installed_entry_points": 6,
+      "wheel_manifest": "qa/reports/wheel_manifest_persisted_json_20261022.json"
+    }
+  },
+  "scope": "Synthetic temporary artifact, inventory, and reconciler fixtures only; no project research registry, market, account, Validation, Test, or Holdout payload was read.",
+  "remaining": "Hosted CI and authenticated market/economic evidence gates remain open."
+}

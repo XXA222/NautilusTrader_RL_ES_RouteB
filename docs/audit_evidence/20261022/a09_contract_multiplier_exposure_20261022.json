@@ -1,0 +1,31 @@
+{
+  "schema": "rles.routeb.audit-evidence.a09-contract-multiplier-exposure.v1",
+  "date": "2026-10-22",
+  "finding": "M4.1 had generalized the planner and native instrument to consume contract_multiplier, but observation, pending-order, hard-risk current-exposure, and executed-exposure calculations still valued raw quantity times mark. Contracts with multiplier != 1 therefore understated notional exposure; position_quantity was also reported in a unit inconsistent with the BTC unit label.",
+  "change": "HistoricalEnvironmentFactory now computes all position notionals from raw native quantity × mark × the frozen contract multiplier. Pending signed/gross exposure and the executed policy exposure use that unit conversion, and position_quantity reports effective base units. The planner still receives raw native contract quantity.",
+  "verification": {
+    "source_command": "python -B -m pytest -p no:cacheprovider tests\\test_historical_factory.py tests\\test_execution_contract_bridge.py tests\\test_layer_invariants.py",
+    "source_result": "151 passed, 18 warnings",
+    "installed_wheel_command": "python -B -m pytest -p no:cacheprovider --basetemp <RouteB scratch> tests\\test_historical_factory.py tests\\test_execution_contract_bridge.py tests\\test_layer_invariants.py (PYTHONPATH unset)",
+    "installed_wheel_result": "151 passed, 18 warnings",
+    "ruff": "passed for historical.py and test_historical_factory.py",
+    "mypy": "Success: no issues found in 155 package source files",
+    "dependency_check": "69 packages compatible",
+    "source_manifest": {
+      "files": 594,
+      "source_identity_sha256": "195cd507685a1711f9b5e36834612657d531f39308e9c8002e021a67837a5e64",
+      "verified": true
+    },
+    "wheel": {
+      "path": "C:/Users/QX/Documents/ChatGPT/RouteB/dist-routeb-multiplier-audit-20261022/rles_gym_bridge-0.4.0.dev2-py3-none-any.whl",
+      "sha256": "ae9c34aa937a3e995e8dd724333cacb36587e2b833f996bd422d3572ca91f68a",
+      "installed_module_matches_source": true,
+      "historical_module_sha256": "0c9872af78964587f71613401a1923592417b05060ab42e58f546e41ddb710d4"
+    }
+  },
+  "source_sha256": {
+    "packages/gym_bridge/src/rles_gym_bridge/historical.py": "0c9872af78964587f71613401a1923592417b05060ab42e58f546e41ddb710d4",
+    "tests/test_historical_factory.py": "d590c987ad3d038e10abfc732f120ed2dc0ee427c47c64a78cc965a4557fb703"
+  },
+  "scope_limit": "Synthetic BTC multiplier-2 rules and account snapshots only; this fixes M4.1 unit propagation but does not authenticate exchange specifications or real cross-asset Funding/equity behavior."
+}

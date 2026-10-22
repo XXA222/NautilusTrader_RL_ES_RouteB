@@ -21,6 +21,8 @@ from .jax_gru_train import (train_gru, forecast_gru,
                             forecast_gru_distribution)
 from .codec import OHLCVCodec,TrainOnlyStandardizer,select_decodable_paths
 from .market import MINUTE_NS
+from .randomness import validate_jax_seed, validate_jax_seed_offset
+from ..json_utils import loads_unique_json
 
 BATCH_ANCHOR_CHUNK_SIZE = 4
 
@@ -92,7 +94,7 @@ def main(argv:list[str]|None=None)->int:
     ed.add_argument("--configuration",required=True)
     args=ap.parse_args(argv)
     try:
-        config=json.loads(Path(args.configuration).read_text('utf-8'))
+        config=loads_unique_json(Path(args.configuration).read_text('utf-8'))
         if set(config)!={"model","training"}:
             raise ValueError("unknown model/training configuration keys")
         e1=args.command.startswith('e1-')
@@ -114,7 +116,7 @@ def main(argv:list[str]|None=None)->int:
                     "kind":"E1_TRAIN_DIAGNOSTIC_ONLY" if e1 else "TRAIN_DIAGNOSTIC_ONLY",
                     "checkpoint":args.checkpoint,"reports":report}
         else:
-            request=json.loads(Path(args.request).read_text('utf-8'))
+            request=loads_unique_json(Path(args.request).read_text('utf-8'))
             batch=args.command in {'forecast-batch','e1-forecast-batch','risk-distribution-batch'}
             expected={"schema","train_scope_id","dataset_id","history_npz","context_sha256","scaler_sha256","horizon",
                       "n_paths","seed","train_npz_sha256","instrument"}
@@ -133,16 +135,27 @@ def main(argv:list[str]|None=None)->int:
             int_fields=('horizon','n_paths','seed') if batch else ('horizon','n_paths','seed','anchor_ts_ns','first_future_close_ns')
             if any(type(request[k]) is not int for k in int_fields):
                 raise ValueError('forecast integer fields must not be coerced from strings or bools')
+            validate_jax_seed(request['seed'], name='forecast seed')
+            instrument=request.get('instrument')
+            if (not isinstance(instrument,str) or not instrument or instrument!=instrument.strip()):
+                raise ValueError('forecast instrument must be a nonblank canonical string')
             h=request['horizon'];p=request['n_paths']
             if not batch:
+                anchor_close=request['anchor_close']
+                if (isinstance(anchor_close,bool) or not isinstance(anchor_close,(int,float))
+                    or not np.isfinite(anchor_close) or anchor_close<=0):
+                    raise ValueError('forecast anchor close must be finite and positive')
                 if int(request["first_future_close_ns"])!=int(request["anchor_ts_ns"])+MINUTE_NS:
                     raise ValueError("forecast time does not start after anchor close")
-                if request['seed']<0 or request['anchor_ts_ns']<=0 or request['anchor_ts_ns']%MINUTE_NS:
+                if request['anchor_ts_ns']<=0 or request['anchor_ts_ns']%MINUTE_NS:
                     raise ValueError('forecast seed or anchor timestamp invalid')
-            elif request['seed']<0:
-                raise ValueError('forecast seed invalid')
             if h<1 or h>60 or p<2 or p>1024:
                 raise ValueError("forecast size exceeds supported research limits")
+            if batch:
+                max_chunk_start = ((len(request['anchor_timestamps_ns']) - 1)
+                                   // BATCH_ANCHOR_CHUNK_SIZE) * BATCH_ANCHOR_CHUNK_SIZE
+                validate_jax_seed_offset(request['seed'], max_chunk_start,
+                                         name='forecast seed')
             context_path=Path(request['history_npz'])
             if hashlib.sha256(context_path.read_bytes()).hexdigest()!=request['context_sha256']:
                 raise ValueError('forecast context checksum mismatch')

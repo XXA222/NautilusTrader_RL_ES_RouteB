@@ -92,6 +92,8 @@ class ConstraintPriorityFitnessSpec:
     terminal insolvency. This keeps feasibility lexicographically ahead of
     any finite economic outcome without treating HardRisk interventions as
     violations or allowing an unbounded return to overwhelm the constraint.
+    Every native feasibility fact must be explicitly reported as a Boolean;
+    missing evidence is an input error, never an implicit feasible result.
     """
 
     return_weight: float = 1.0
@@ -111,6 +113,7 @@ class ConstraintPriorityFitnessSpec:
                          step_log_returns: Sequence[float], drawdowns: Sequence[float],
                          risk_intervention_rate: float, tail_fraction: float,
                          insolvency: bool | None = None,
+                         margin_facts_known: bool | None = None,
                          maintenance_margin_breach: bool | None = None,
                          native_liquidation_detected: bool | None = None) -> FitnessDecision:
         # Reuse the legacy input validation and exact native-fact aggregation,
@@ -118,6 +121,14 @@ class ConstraintPriorityFitnessSpec:
         if (isinstance(final_equity, bool) or not isinstance(final_equity, (int, float))
                 or not math.isfinite(final_equity)):
             raise ValueError("episode final equity must be a finite real number")
+        constraint_facts = (
+            insolvency, margin_facts_known, maintenance_margin_breach,
+            native_liquidation_detected,
+        )
+        if any(type(value) is not bool for value in constraint_facts):
+            raise ValueError("native feasibility facts must be explicit Boolean values")
+        if margin_facts_known is not True:
+            raise ValueError("native margin and liquidation facts must be known")
         # A negative terminal account balance is a valid bankruptcy fact in a
         # futures account. The legacy economic scorer requires nonnegative
         # equity, so clamp only its unused score input; feasibility below still
@@ -133,9 +144,6 @@ class ConstraintPriorityFitnessSpec:
             step_log_returns=step_log_returns, drawdowns=drawdowns,
             risk_intervention_rate=risk_intervention_rate, tail_fraction=tail_fraction,
         )
-        constraint_facts = (insolvency, maintenance_margin_breach, native_liquidation_detected)
-        if any(value is not None and type(value) is not bool for value in constraint_facts):
-            raise ValueError("native feasibility facts must be Boolean when provided")
         reasons = []
         if final_equity <= 0 or insolvency is True:
             reasons.append("episode_insolvency_detected")

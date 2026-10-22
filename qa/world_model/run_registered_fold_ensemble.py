@@ -62,8 +62,8 @@ def _seal_report_digest(report: dict) -> str:
 
 
 def _read_forecasts(directory: Path, name: str) -> tuple[np.ndarray, np.ndarray, dict]:
-    report = json.loads((directory / 'fold_experiment_report.json').read_text(encoding='utf-8'))
-    request = json.loads((directory / 'validation_forecast_request.json').read_text(encoding='utf-8'))
+    report = _read_json(str(directory / 'fold_experiment_report.json'))
+    request = _read_json(str(directory / 'validation_forecast_request.json'))
     anchors = np.asarray(request['anchor_timestamps_ns'], dtype=np.int64)
     path = directory / f'{name.lower()}_validation_forecasts.npz'
     with np.load(path, allow_pickle=False) as payload:

@@ -1,0 +1,43 @@
+{
+  "schema": "rles.routeb-audit-evidence.v1",
+  "audit_items": ["A04 pre-read query identity", "A05 project trial inventory identity"],
+  "date": "2026-10-22",
+  "finding": {
+    "before": "Formal query candidate sets accepted padded aliases such as candidate-a and candidate-a . Trial registration/event APIs accepted whitespace-only or padded identifier fields, and a padded protocol ID returned a successful empty summary.",
+    "reproduction": "Five new installed-wheel regressions failed before the fix: padded formal candidate alias, whitespace-only and padded trial candidate IDs, padded event key, and padded protocol ID summary."
+  },
+  "fix": {
+    "shared_contract": "Added one nonempty, no-surrounding-whitespace identifier predicate at the project registry boundary.",
+    "formal_queries": "Protocol IDs, frozen candidate IDs, start batches, and verification candidate IDs use the shared contract; intent/owner/market/family continue through canonical scope validation.",
+    "trial_inventory": "Attempt, protocol, candidate, event, event-query, and summary identifiers reject empty or padded strings before SQLite operations."
+  },
+  "verification": {
+    "installed_wheel_tests": {
+      "selector": [
+        "tests/test_research_access.py",
+        "tests/test_application_cli.py",
+        "tests/test_routeb_fresh_fold_access.py",
+        "tests/test_research_wfo.py",
+        "tests/world_model/test_reconcile_routeb_research_ledger.py"
+      ],
+      "passed": 220,
+      "failed": 0
+    },
+    "ruff": "passed for changed source and tests",
+    "mypy": "passed for rles_research.access with RouteB workspace source paths",
+    "distribution": {
+      "wheels": 12,
+      "sdists": 12,
+      "wheel_source_match": true,
+      "installed_routeb_wheel": "rles-research",
+      "import_provenance": "12 packages and 6 entry points resolved from RouteB isolated app venv",
+      "dependency_check": "69 packages compatible"
+    },
+    "source_manifest": {
+      "file_count": 569,
+      "identity_sha256": "978cbf8723d42aa28c0496f869d4e8119aa0237bdd51229d8ca4de81b6893d16",
+      "verified": true
+    }
+  },
+  "scope_boundary": "Synthetic IDs and temporary SQLite only. No project research ledger was changed and no market, account, Validation, Test, or Holdout payload was read."
+}

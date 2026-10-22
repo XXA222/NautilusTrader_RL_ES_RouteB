@@ -1,0 +1,34 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / R1 resume evidence JSON integrity",
+  "finding": "R1 resume loaded durable transfer evidence and learning diagnostics with the default JSON parser; duplicate fields could be silently overwritten while reconstructing frozen training evidence.",
+  "change": "Both R1-transfer.json and R1-learning.json readers now use the orchestrator recursive duplicate-key parser. Added synthetic resume regressions with valid integrity marker for the diagnostics payload.",
+  "source_files": {
+    "packages/orchestrator/src/rles_orchestrator/rl_stage.py": "4383f2fc08ad3b35f80f4e853406177790ac8a8210f5b2561f7cd698b453db54"
+  },
+  "test_files": {
+    "tests/test_rl_stage_json_integrity.py": "649dac86737e41b1f1a0ff3dbfecab0f55cb649524716da13bc3fcd12d1c2641"
+  },
+  "verification": {
+    "pytest_installed_wheel": "R1 integrity + application CLI + research WFO: 80 passed with PYTHONPATH unset",
+    "pytest_current_source": "world-model + application CLI + research WFO + SB3 JSON + R1 integrity selector: 296 passed, 14 JAX-specific app-venv skips",
+    "ruff": "passed for rl_stage.py and the new test module",
+    "mypy": "passed with only import-untyped disabled for installed dependencies lacking py.typed markers",
+    "dependency_check": "uv pip check: 69 RouteB app packages compatible",
+    "installed_source_parity": {
+      "installed_sha256": "4383f2fc08ad3b35f80f4e853406177790ac8a8210f5b2561f7cd698b453db54",
+      "source_sha256": "4383f2fc08ad3b35f80f4e853406177790ac8a8210f5b2561f7cd698b453db54",
+      "matches": true
+    },
+    "source_manifest": {
+      "file_count": 575,
+      "source_identity_sha256": "de47121ae6661f454fb68b527935c5285688aa3322059dff2cf0312cae68f650",
+      "verified": true
+    }
+  },
+  "distribution": {
+    "wheel": "C:\\Users\\QX\\Documents\\ChatGPT\\RouteB\\routeb-orchestrator-wheel-20261022\\rles_orchestrator-0.4.0.dev2-py3-none-any.whl",
+    "installed_into": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app"
+  },
+  "scope": "Synthetic temporary R1 evidence only; no registered market or formal evaluation payload read."
+}

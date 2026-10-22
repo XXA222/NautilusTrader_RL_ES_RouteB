@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from bisect import bisect_left
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -10,6 +11,10 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from .metrics import MetricsError
+
+
+def _reject_json_constant(value: str) -> None:
+    raise json.JSONDecodeError(f"non-standard JSON constant: {value}", "", 0)
 
 
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -61,22 +66,30 @@ def import_binance_usdm_transfer_income(
     The exact input bytes are hashed; this does not authenticate the exporter or
     certify that the three-month Binance endpoint supplied a complete history.
     """
-    if not isinstance(account_scope_id, str) or not account_scope_id.strip():
-        raise MetricsError("Binance transfer import requires an account scope ID")
-    if not isinstance(currency, str) or not currency.strip():
-        raise MetricsError("Binance transfer import requires an account currency")
+    if (not isinstance(account_scope_id, str) or not account_scope_id
+            or account_scope_id != account_scope_id.strip()):
+        raise MetricsError("account scope ID must be nonempty and trimmed")
+    if not isinstance(currency, str) or not currency or currency != currency.strip():
+        raise MetricsError("account currency must be nonempty and trimmed")
     if not isinstance(payload, (bytes, str)):
         raise MetricsError("Binance transfer payload must preserve exact source bytes")
-    raw_bytes = payload if isinstance(payload, bytes) else payload.encode("utf-8")
     try:
-        document = json.loads(raw_bytes, object_pairs_hook=_unique_json_object)
+        raw_bytes = payload if isinstance(payload, bytes) else payload.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise MetricsError("Binance transfer payload string is not valid UTF-8 text") from exc
+    try:
+        document = json.loads(raw_bytes, object_pairs_hook=_unique_json_object,
+                                parse_constant=_reject_json_constant)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise MetricsError("invalid Binance income-history JSON payload") from exc
     if not isinstance(document, list):
         raise MetricsError("Binance income-history payload must be a JSON array")
-    if not sample_barriers_ns or any(type(value) is not int or value < 0 for value in sample_barriers_ns):
-        raise MetricsError("sample barriers must be nonnegative integer timestamps")
+    if (not isinstance(sample_barriers_ns, Sequence)
+            or isinstance(sample_barriers_ns, (str, bytes, bytearray))):
+        raise MetricsError("sample barriers must be a sequence of integer timestamps")
     barriers = list(sample_barriers_ns)
+    if not barriers or any(type(value) is not int or value < 0 for value in barriers):
+        raise MetricsError("sample barriers must be nonnegative integer timestamps")
     if barriers != sorted(barriers) or len(set(barriers)) != len(barriers):
         raise MetricsError("sample barriers must be strictly increasing")
     if len(barriers) < 2:
@@ -100,8 +113,13 @@ def import_binance_usdm_transfer_income(
         timestamp_ms = row.get("time")
         if type(timestamp_ms) is not int or timestamp_ms < 0:
             raise MetricsError("Binance transfer requires a nonnegative integer time")
+        raw_amount = row.get("income")
+        if (not isinstance(raw_amount, str) or not raw_amount
+                or raw_amount != raw_amount.strip()
+                or re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)", raw_amount) is None):
+            raise MetricsError("Binance transfer income amount must be an exact decimal string")
         try:
-            amount = Decimal(str(row.get("income")))
+            amount = Decimal(raw_amount)
         except (InvalidOperation, ValueError, TypeError) as exc:
             raise MetricsError("invalid Binance transfer amount") from exc
         if not amount.is_finite() or amount == 0:
@@ -164,12 +182,15 @@ def import_binance_usdm_transfer_income_pages(
     if (type(query_start_ms) is not int or query_start_ms < 0
             or type(query_end_ms) is not int or query_end_ms < query_start_ms):
         raise MetricsError("income query range must be a nonnegative inclusive interval")
+    if (not isinstance(pages, Sequence) or isinstance(pages, (str, bytes, bytearray))):
+        raise MetricsError("income pages must be a sequence of archived response pages")
     if not pages:
         raise MetricsError("income query requires archived response pages")
-    if not isinstance(account_scope_id, str) or not account_scope_id.strip():
-        raise MetricsError("Binance transfer import requires an account scope ID")
-    if not isinstance(currency, str) or not currency.strip():
-        raise MetricsError("Binance transfer import requires an account currency")
+    if (not isinstance(account_scope_id, str) or not account_scope_id
+            or account_scope_id != account_scope_id.strip()):
+        raise MetricsError("account scope ID must be nonempty and trimmed")
+    if not isinstance(currency, str) or not currency or currency != currency.strip():
+        raise MetricsError("account currency must be nonempty and trimmed")
 
     expected_start = query_start_ms
     page_hashes: list[str] = []
@@ -187,7 +208,8 @@ def import_binance_usdm_transfer_income_pages(
         if not isinstance(page.payload, bytes):
             raise MetricsError("income page must preserve exact response bytes")
         try:
-            page_rows = json.loads(page.payload, object_pairs_hook=_unique_json_object)
+            page_rows = json.loads(page.payload, object_pairs_hook=_unique_json_object,
+                                    parse_constant=_reject_json_constant)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise MetricsError("invalid Binance income-history page JSON") from exc
         if not isinstance(page_rows, list):
@@ -215,7 +237,9 @@ def import_binance_usdm_transfer_income_pages(
     if expected_start != query_end_ms + 1:
         raise MetricsError("income page ranges do not reach the declared query end")
 
-    merged_payload = json.dumps(rows, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    # Escaping non-ASCII also keeps escaped surrogate code points from leaking
+    # UnicodeEncodeError while the caller-supplied page hashes retain the exact bytes.
+    merged_payload = json.dumps(rows, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
     imported = import_binance_usdm_transfer_income(
         merged_payload,
         account_scope_id=account_scope_id,

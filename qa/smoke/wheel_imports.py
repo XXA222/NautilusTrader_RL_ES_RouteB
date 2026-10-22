@@ -18,6 +18,37 @@ def _normalize(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key!r}")
+        result[key] = value
+    return result
+
+
+def _parse_wheel_origin(content: str, package_name: str) -> dict[str, Any]:
+    try:
+        origin = json.loads(content, object_pairs_hook=_unique_json_object,
+                             parse_constant=lambda value: (_ for _ in ()).throw(
+                                 ValueError(f"non-standard JSON constant: {value}")))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{package_name}: invalid direct_url.json") from exc
+    if not isinstance(origin, dict):
+        raise ValueError(f"{package_name}: direct_url.json root must be an object")
+    url = origin.get("url")
+    archive_info = origin.get("archive_info")
+    dir_info = origin.get("dir_info", {})
+    if (not isinstance(url, str) or not url.startswith("file:")
+            or not url.lower().endswith(".whl")
+            or not isinstance(archive_info, dict)
+            or not isinstance(dir_info, dict)
+            or ("editable" in dir_info and type(dir_info["editable"]) is not bool)
+            or dir_info.get("editable") is True):
+        raise ValueError(f"{package_name}: expected an installed wheel archive origin")
+    return origin
+
+
 def _workspace_packages() -> list[tuple[str, tuple[str, ...]]]:
     packages: list[tuple[str, tuple[str, ...]]] = []
     seen_distributions: set[str] = set()
@@ -65,12 +96,10 @@ def main() -> None:
         direct_url = dist.read_text("direct_url.json")
         if direct_url is None:
             raise SystemExit(f"{name}: local wheel provenance missing")
-        origin = json.loads(direct_url)
-        if (origin.get("dir_info", {}).get("editable")
-            or not isinstance(origin.get("archive_info"), dict)
-            or not origin.get("url", "").startswith("file:")
-            or not origin.get("url", "").lower().endswith(".whl")):
-            raise SystemExit(f"{name}: expected archive installation, got {origin}")
+        try:
+            _parse_wheel_origin(direct_url, name)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
 
         imported_modules = {
             module_name: str(_installed_module_path(module_name, prefix, name))

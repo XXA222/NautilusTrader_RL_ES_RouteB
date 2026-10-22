@@ -19,6 +19,13 @@ def test_economic_metrics_reject_integers_outside_float_domain_as_metrics_errors
         series_metrics([0.01, -0.01], periods_per_year=_OVERSIZED_INTEGER)
 
 
+def test_economic_metrics_keep_finite_large_dispersion_in_float_domain() -> None:
+    result = series_metrics([1e308, 0.0], periods_per_year=1)
+    assert result["mean_period_return"] == pytest.approx(5e307)
+    assert result["std_period_return"] == pytest.approx(7.071067811865475e307)
+    assert result["value_at_risk"] == 0.0
+
+
 def test_bootstrap_rejects_oversized_integer_as_statistics_error() -> None:
     with pytest.raises(StatisticsError, match="nonfinite or non-real returns"):
         block_bootstrap(

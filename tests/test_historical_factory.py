@@ -1,9 +1,11 @@
 """Synthetic contract tests for production assembly; never real-data claims."""
 from bisect import bisect_left, bisect_right
 from dataclasses import asdict
+from decimal import Decimal
 from hashlib import sha256
 import json
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import pytest
@@ -12,7 +14,9 @@ from rles_data.core import Availability, CuratedStore, DataError, Event, MINUTE_
 from rles_data.features import make_feature_row
 from rles_data.io import write_curated
 from rles_data.contracts import to_market_event
-from rles_gym_bridge.historical import (HistoricalEnvironmentFactory, _visible_batches_by_decision,
+from rles_gym_bridge.historical import (HistoricalEnvironmentFactory, _money, _visible_batches_by_decision,
+                                        _CompactReportSnapshot, _CompactReportSnapshotSeries,
+                                        _SpooledReportSnapshotSequence,
                                         historical_feature_spec, partition_decision_lanes,
                                         scheduled_funding_time_features)
 from rles_gym_bridge.episode import BarrierFrame, EpisodeReplay
@@ -21,6 +25,20 @@ from rles_contracts.dto import DataQualityGrade
 from rles_risk import SoftRiskParams
 
 pytestmark = pytest.mark.micro_golden
+
+
+@pytest.mark.parametrize("value", ["1,2 USDT", "1,234.50 USDT", "12 USDC", "NaN", "1 USDT extra"])
+def test_native_account_money_rejects_ambiguous_or_wrong_currency(value):
+    with pytest.raises(DataError):
+        _money(value, "USDT")
+
+
+@pytest.mark.parametrize(("value", "expected"), [
+    ("1234.50000000 USDT", Decimal("1234.50000000")),
+    ("1234.50000000", Decimal("1234.50000000")),
+])
+def test_native_account_money_accepts_strict_decimal_wire_values(value, expected):
+    assert _money(value, "USDT") == expected
 
 
 def test_checked_in_ethusdt_real_config_has_valid_soft_risk_domain():
@@ -199,6 +217,37 @@ def test_cached_episode_frames_preserve_native_replay_boundary_and_ledger(tmp_pa
             cached_resume_env.close()
 
 
+def test_training_environment_can_skip_diagnostic_snapshot_retention_without_changing_rollout(tmp_path):
+    config = recipe(tmp_path, bar_count=24)
+    reference_factory = HistoricalEnvironmentFactory(**config)
+    lean_factory = HistoricalEnvironmentFactory(**config)
+    actions = (0.5, -0.25, 0.0, 0.75)
+
+    reference = reference_factory.make_env()
+    try:
+        reference_observation, reference_info = reference.reset(seed=71)
+        reference_steps = [reference.step(np.asarray([action], dtype=np.float32))
+                           for action in actions]
+    finally:
+        reference.close()
+    assert reference_factory.snapshots
+
+    lean = lean_factory.make_env(retain_report_snapshots=False)
+    try:
+        lean_observation, lean_info = lean.reset(seed=71)
+        lean_steps = [lean.step(np.asarray([action], dtype=np.float32)) for action in actions]
+    finally:
+        lean.close()
+
+    assert np.array_equal(reference_observation, lean_observation)
+    assert reference_info == lean_info
+    for expected, actual in zip(reference_steps, lean_steps, strict=True):
+        assert np.array_equal(expected[0], actual[0])
+        assert expected[1:] == actual[1:]
+    assert lean_factory.snapshots == []
+    assert lean_factory.fill_references == {}
+
+
 def test_stress_execution_identity_changes_only_the_mode_from_frozen_base(tmp_path):
     environment = recipe(tmp_path)
     base = HistoricalEnvironmentFactory(**environment)
@@ -354,9 +403,14 @@ def test_funding_schedule_countdown_is_bounded_and_uses_strict_future_schedule()
     }
 
 
-def recipe(tmp_path, *, price_jump=False, bar_count=20, start_minute=6):
-    symbol = "ETHUSDT-PERP.SIM"
-    rule = {"instrument": symbol, "tick_size": "0.01", "step_size": "0.001", "min_qty": "0.001",
+def recipe(tmp_path, *, price_jump=False, bar_count=20, start_minute=6,
+           base_currency="ETH", quote_currency="USDT", contract_multiplier="1"):
+    symbol = f"{base_currency}{quote_currency}-PERP.SIM"
+    quantity_unit = base_currency
+    rule = {"instrument": symbol, "quantity_unit": quantity_unit,
+            "base_currency": base_currency, "quote_currency": quote_currency,
+            "contract_multiplier": contract_multiplier,
+            "tick_size": "0.01", "step_size": "0.001", "min_qty": "0.001",
             "min_notional": "1", "maker_fee": "0.001", "taker_fee": "0.001", "initial_margin_rate": "1",
             "maintenance_margin_rate": "0.35", "effective_ns": MINUTE_NS,
             "valid_until_ns": (bar_count + 1) * MINUTE_NS,
@@ -403,12 +457,67 @@ def recipe(tmp_path, *, price_jump=False, bar_count=20, start_minute=6):
                 fit_scaler=True)
 
 
+def test_historical_planner_uses_frozen_quantity_unit_and_contract_multiplier(tmp_path, monkeypatch):
+    import rles_gym_bridge.historical as historical
+
+    planned = []
+    original = historical.to_contract_plan
+
+    def capture(decision, factory, *args, latency_model_id, quantity_unit):
+        planned.append((decision.target_qty, quantity_unit))
+        return original(decision, factory, *args, latency_model_id=latency_model_id,
+                        quantity_unit=quantity_unit)
+
+    monkeypatch.setattr(historical, "to_contract_plan", capture)
+    factory = HistoricalEnvironmentFactory(**recipe(
+        tmp_path, bar_count=14, base_currency="BTC", contract_multiplier="2",
+    ))
+    units = dict(zip(factory.schema.names, factory.schema.units, strict=True))
+    assert units["market.volume_5m"] == "BTC"
+    assert units["account.equity"] == "USDT"
+    assert units["account.position_quantity"] == "BTC"
+    env = factory.make_env()
+    try:
+        env.reset(seed=17)
+        env.step(np.asarray([0.5], dtype=np.float32))
+    finally:
+        env.close()
+
+    assert planned
+    assert all(unit == "BTC" for _quantity, unit in planned)
+    assert any(quantity == Decimal("0.250") for quantity, _unit in planned)
+
+
+def test_historical_observation_and_risk_exposures_apply_contract_multiplier(tmp_path):
+    from types import SimpleNamespace
+
+    factory = HistoricalEnvironmentFactory(**recipe(
+        tmp_path, bar_count=14, base_currency="BTC", contract_multiplier="2",
+    ))
+    snapshot = SimpleNamespace(
+        mark=Decimal("1000"), equity=Decimal("10000"), currency="USDT",
+        positions=({"quantity": "0.5", "side": "LONG"},),
+        account_events=({"balances": ({"currency": "USDT", "total": "10000", "free": "9000"},)},),
+        margins=(), orders=({"side": "BUY", "leaves_qty": "0.25"},),
+        cumulative_submitted_qty=Decimal("1"), cumulative_filled_qty=Decimal("0.5"),
+    )
+
+    state = factory.observation_state(snapshot)
+
+    assert state["account"]["net_exposure"] == pytest.approx(1.0)
+    assert state["account"]["position_quantity"] == pytest.approx(1.0)
+    assert state["execution"]["pending_signed_exposure"] == pytest.approx(0.5)
+    assert state["execution"]["pending_gross_exposure"] == pytest.approx(0.5)
+
+
 def test_causal_mtf_profile_adds_regime_features_without_future_leakage():
     maximum_age = {"mark": 60 * MINUTE_NS, "index": 60 * MINUTE_NS,
                    "funding_update": 60 * MINUTE_NS}
-    legacy = historical_feature_spec(maximum_age)
-    profile_v1 = historical_feature_spec(maximum_age, profile="causal_mtf_v1")
-    profile = historical_feature_spec(maximum_age, profile="causal_mtf_v2")
+    legacy = historical_feature_spec(maximum_age, quantity_unit="ETH", quote_currency="USDT")
+    profile_v1 = historical_feature_spec(maximum_age, quantity_unit="ETH", quote_currency="USDT",
+                                         profile="causal_mtf_v1")
+    profile = historical_feature_spec(maximum_age, quantity_unit="ETH", quote_currency="USDT",
+                                      profile="causal_mtf_v2")
     assert profile.fields[:len(legacy.fields)] == legacy.fields
     assert profile.fields[:len(profile_v1.fields)] == profile_v1.fields
     assert tuple(field.name for field in profile.fields[len(legacy.fields):len(profile_v1.fields)]) == (
@@ -729,12 +838,39 @@ def test_rollout_execution_trace_joins_decisions_to_native_orders_and_fills(tmp_
     from decimal import Decimal
     from rles_orchestrator.application import rollout
 
-    factory = HistoricalEnvironmentFactory(**recipe(tmp_path, bar_count=14))
+    config = recipe(tmp_path, bar_count=14)
+    config["compact_report_snapshots"] = True
+    factory = HistoricalEnvironmentFactory(**config)
     report, _ = rollout(
         factory, lambda _batch: np.asarray([[0.5]], dtype=np.float32), seed=31,
         collect_observations=False, include_account_rows=False, include_execution_trace=True,
     )
+    reference_factory = HistoricalEnvironmentFactory(**config)
+    reference_report, _ = rollout(
+        reference_factory, lambda _batch: np.asarray([[0.5]], dtype=np.float32), seed=31,
+        collect_observations=False, include_account_rows=True, include_execution_trace=True,
+    )
+    for field in ("metrics", "funding", "terminal_flat", "external_cashflows",
+                  "liquidations", "liquidations_observed", "liquidation_orders"):
+        assert report[field] == reference_report[field]
+    identity_fields = {"event_id", "trade_id", "venue_order_id", "account_id"}
+    normalized_fills = [
+        {key: value for key, value in item.items() if key not in identity_fields}
+        for item in report["fills"]
+    ]
+    normalized_reference_fills = [
+        {key: value for key, value in item.items() if key not in identity_fields}
+        for item in reference_report["fills"]
+    ]
+    assert normalized_fills == normalized_reference_fills
+    assert "account_rows" not in report and reference_report["account_rows"]
+    reconciliation = dict(report["equity_reconciliation"])
+    reference_reconciliation = dict(reference_report["equity_reconciliation"])
+    reconciliation.pop("rows", None)
+    reference_reconciliation.pop("rows", None)
+    assert reconciliation == reference_reconciliation
     summary = report["execution_decision_diagnostics"]
+    assert factory.snapshots == []
     trace = report["execution_decision_trace"]
     terminal_trace = report["terminal_settlement_trace"]
     assert summary["components_known"] is True
@@ -1106,6 +1242,15 @@ def test_native_observation_exposes_pending_order_direction_and_size(tmp_path):
         factory.observation_state(invalid)
 
 
+def test_historical_rules_manifest_rejects_duplicate_keys(tmp_path):
+    from rles_gym_bridge.historical import load_rules
+
+    path = tmp_path / "rules.json"
+    path.write_text('{"sources":[],"sources":[],"events":[]}', encoding="utf-8")
+    with pytest.raises(DataError, match="invalid or ambiguous JSON"):
+        load_rules(path)
+
+
 def test_production_factory_rejects_missing_rules_and_evaluation_fit(tmp_path):
     config = recipe(tmp_path)
     with pytest.raises(DataError, match="only Train-inner"):
@@ -1352,7 +1497,7 @@ def test_application_es_and_hybrid_use_installed_historical_spawn_factory(tmp_pa
     bundle_files_before = {str(path.relative_to(bundle_root)): sha256(path.read_bytes()).hexdigest()
                            for path in bundle_root.rglob("*") if path.is_file()}
     with monkeypatch.context() as diagnostic_patch:
-        from rles_data.io import read_curated
+        from rles_data.io import curated_source_identity, read_curated
 
         def forbidden(*_args, **_kwargs):
             pytest.fail("Train diagnostics must not refit scaling or construct an evaluation")
@@ -1368,7 +1513,8 @@ def test_application_es_and_hybrid_use_installed_historical_spawn_factory(tmp_pa
             **run, "evaluation": None,
             "train_data_access": {
                 "start_ns": MINUTE_NS, "end_ns": 31 * MINUTE_NS,
-                "marker_sha256": "a" * 64, "label": "train-diagnostic-test",
+                "marker_sha256": curated_source_identity(config["market_path"])["marker_sha256"],
+                "label": "train-diagnostic-test",
             },
         }
         diagnostic = diagnose_train(scoped_run, bundle_root)
@@ -1669,3 +1815,121 @@ def test_application_finalizes_full_budget_r1_checkpoint_without_retraining(tmp_
     assert bundle["lineage"][0]["usage"]["rl_steps"] == 4
     assert (root / "COMPLETED.json").is_file()
     assert list(root.glob("FAILED-*.json"))
+
+def test_compact_report_positions_are_immutable_facts(tmp_path):
+    config = recipe(tmp_path, bar_count=32)
+    config["compact_report_snapshots"] = True
+    factory = HistoricalEnvironmentFactory(**config)
+    env = factory.make_env()
+    try:
+        env.reset(seed=83)
+        for _ in range(12):
+            observation, reward, terminated, truncated, info = env.step(
+                np.asarray([0.5], dtype=np.float32),
+            )
+            if terminated or truncated:
+                break
+    finally:
+        env.close()
+
+    positions = [snapshot.positions[0] for snapshot in factory.snapshots
+                 if snapshot.positions]
+    assert len(positions) >= 3
+    compact_accounts = [snapshot.account for snapshot in factory.snapshots]
+    assert compact_accounts[0] is compact_accounts[-1]
+    with pytest.raises(TypeError):
+        compact_accounts[0]["balance"] = "0"
+    assert factory.snapshots[0].equity == next(iter(factory.snapshots)).equity
+    assert factory.snapshots[-1].decision_ts_ns == tuple(factory.snapshots)[-1].decision_ts_ns
+    assert factory.snapshots[1:3] == tuple(factory.snapshots)[1:3]
+    with pytest.raises(TypeError):
+        positions[0]["quantity"] = "0"
+
+
+def test_compact_snapshot_numeric_columns_preserve_decimal_and_timestamp_values():
+    series = _CompactReportSnapshotSeries()
+    equities = (Decimal("-0.00100"), Decimal("1.2300"),
+                Decimal("123456789012345678901234567890.12300"), Decimal("NaN"))
+    marks = (Decimal("-0"), Decimal("0.0001"), Decimal("1E+33"), None)
+    timestamps = (1, -7, (1 << 63) + 1, True)
+    for equity, mark, timestamp in zip(equities, marks, timestamps, strict=True):
+        series.append(_CompactReportSnapshot(
+            equity=equity, currency="USDT", positions=(), orders=(), account={},
+            account_events=(), fills=(), funding=(), all_orders=(),
+            liquidation_orders=(), margins=(), mark=mark,
+            liquidation_capability=True, decision_ts_ns=timestamp,
+            cumulative_submitted_qty=Decimal("0.000"),
+            cumulative_filled_qty=Decimal("-0.000"),
+        ))
+
+    for index, (equity, mark, timestamp) in enumerate(zip(equities, marks, timestamps, strict=True)):
+        restored = series[index]
+        assert restored.equity.as_tuple() == equity.as_tuple()
+        if isinstance(mark, Decimal):
+            assert restored.mark.as_tuple() == mark.as_tuple()
+        else:
+            assert restored.mark is mark
+        assert restored.decision_ts_ns is timestamp or restored.decision_ts_ns == timestamp
+        assert restored.cumulative_submitted_qty.as_tuple() == Decimal("0.000").as_tuple()
+        assert restored.cumulative_filled_qty.as_tuple() == Decimal("-0.000").as_tuple()
+
+
+def test_compact_snapshot_run_columns_retain_only_fact_changes():
+    series = _CompactReportSnapshotSeries()
+    stable_position = (MappingProxyType({"position_id": "P1", "quantity": "1"}),)
+    changed_position = (MappingProxyType({"position_id": "P1", "quantity": "2"}),)
+    fill = ({"event_id": "F1", "last_qty": "1"},)
+    for index in range(6):
+        series.append(_CompactReportSnapshot(
+            equity=Decimal(100 + index), currency="USDT",
+            positions=stable_position if index < 4 else changed_position,
+            orders=(), account={}, account_events=(),
+            fills=fill if index == 2 else (), funding=(), all_orders=(),
+            liquidation_orders=(), margins=(), mark=Decimal(10),
+            liquidation_capability=True, decision_ts_ns=index,
+            cumulative_submitted_qty=Decimal(1 if index >= 3 else 0),
+            cumulative_filled_qty=Decimal(1 if index >= 3 else 0),
+        ))
+
+    assert len(series) == 6
+    assert len(series._positions._values) == 2
+    assert len(series._orders._values) == 1
+    assert len(series._fills._values) == 3
+    assert len(series._funding._values) == 1
+    assert len(series._all_orders._values) == 1
+    assert len(series._liquidation_orders._values) == 1
+    assert len(series._cumulative_submitted_qty._values) == 2
+    assert series[0].positions is stable_position
+    assert series[4].positions is changed_position
+    assert series[1].fills == ()
+    assert series[2].fills == fill
+    assert series[5].cumulative_submitted_qty == Decimal(1)
+
+
+def test_spooled_summary_snapshots_round_trip_exact_report_facts():
+    spool = _SpooledReportSnapshotSequence()
+    snapshot = _CompactReportSnapshot(
+        equity=Decimal("-0.00100"), currency="USDT",
+        positions=(MappingProxyType({"quantity": Decimal("1.2300")}),),
+        orders=(), account={}, account_events=({"value": Decimal("-sNaN007")},),
+        fills=({"event_id": "F1", "last_qty": Decimal("-0.000")},),
+        funding=(), all_orders=(), liquidation_orders=(), margins=(Decimal("-Infinity"),),
+        mark=Decimal("1E+33"), liquidation_capability=True,
+        decision_ts_ns=1_700_000_000_000_000_000,
+        cumulative_submitted_qty=Decimal("2.00"),
+        cumulative_filled_qty=Decimal("1.000"),
+    )
+    try:
+        spool.append(snapshot)
+        restored = spool[0]
+        assert len(spool) == 1
+        assert restored.equity.as_tuple() == snapshot.equity.as_tuple()
+        assert restored.positions[0]["quantity"].as_tuple() == Decimal("1.2300").as_tuple()
+        assert restored.fills[0]["last_qty"].as_tuple() == Decimal("-0.000").as_tuple()
+        assert restored.account_events[0]["value"].as_tuple() == Decimal("-sNaN007").as_tuple()
+        assert restored.margins[0].as_tuple() == Decimal("-Infinity").as_tuple()
+        assert restored.mark.as_tuple() == Decimal("1E+33").as_tuple()
+        iterated = next(iter(spool))
+        assert iterated.equity.as_tuple() == snapshot.equity.as_tuple()
+    finally:
+        spool.close()

@@ -4,12 +4,12 @@ The caller MUST have already registered the Train access and exported approved
 Train-only NPZ; this client grants no access permission and reads no raw data.
 """
 from __future__ import annotations
-import json
 import hashlib
 import os
 from pathlib import Path
 import subprocess
 from dataclasses import dataclass
+from ..json_utils import loads_unique_json
 
 @dataclass(frozen=True)
 class WorkerConfig:
@@ -50,9 +50,9 @@ class WorkerClient:
                 f"with exit {proc.returncode}: stdout={proc.stdout[-1500:]} stderr={proc.stderr[-1500:]}"
             )
         try:
-            result=json.loads(proc.stdout.splitlines()[-1])
-        except json.JSONDecodeError as exc:
-            raise WorkerFailure("worker runtime preflight did not return JSON") from exc
+            result=loads_unique_json(proc.stdout.splitlines()[-1])
+        except ValueError as exc:
+            raise WorkerFailure(f"worker runtime preflight did not return JSON: {exc}") from exc
         if (not isinstance(result,dict) or not isinstance(result.get("numpy"),str)
                 or not isinstance(result.get("jax"),str) or not result.get("devices")):
             raise WorkerFailure("worker runtime preflight returned an incomplete environment identity")
@@ -73,9 +73,9 @@ class WorkerClient:
         if proc.returncode!=0:
             raise WorkerFailure(f"worker failed with exit {proc.returncode}: {proc.stderr[-1500:]}")
         try:
-            result=json.loads(proc.stdout.splitlines()[-1])
-        except json.JSONDecodeError as exc:
-            raise WorkerFailure("worker stdout is not a single JSON result") from exc
+            result=loads_unique_json(proc.stdout.splitlines()[-1])
+        except ValueError as exc:
+            raise WorkerFailure(f"worker stdout is not a single JSON result: {exc}") from exc
         if not isinstance(result,dict) or result.get('kind') not in {
             'TRAIN_DIAGNOSTIC_ONLY', 'F1_PRIOR_PATHS', 'E2_NEXT_DISTRIBUTION',
             'E2_RISK_DISTRIBUTION', 'E2_RISK_DISTRIBUTION_BATCH',

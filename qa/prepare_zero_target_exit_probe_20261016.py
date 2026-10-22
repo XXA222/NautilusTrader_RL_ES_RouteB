@@ -2,10 +2,21 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-import json
 from pathlib import Path
 
+from rles_data.core import DataError
+from rles_data.json_utils import loads_unique_json
 from rles_orchestrator.application import _file_hash, _verify_file, _write_verified
+
+
+def _read_json_object(path: Path) -> dict:
+    try:
+        value = loads_unique_json(path.read_bytes())
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise DataError(f"cannot read unambiguous zero-target JSON: {path}") from exc
+    if not isinstance(value, dict):
+        raise DataError(f"zero-target JSON root must be an object: {path}")
+    return value
 
 
 def stamp(value: datetime) -> int:
@@ -14,11 +25,11 @@ def stamp(value: datetime) -> int:
 
 def prepare(root: Path) -> Path:
     baseline_path = root / "configs/train_signal_baselines_20261016.json"
-    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    baseline = _read_json_object(baseline_path)
     bundle_root = Path(baseline["bundle"])
     if _verify_file(bundle_root / "bundle.json") != baseline["bundle_sha256"]:
         raise ValueError("frozen bundle checksum changed")
-    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = _read_json_object(bundle_root / "bundle.json")
     start = datetime(2025, 2, 1, tzinfo=timezone.utc)
     end = start + timedelta(days=1)
     source_start = start - timedelta(days=1)

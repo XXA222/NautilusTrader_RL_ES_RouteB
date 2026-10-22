@@ -2,12 +2,22 @@ import json
 import subprocess
 
 import numpy as np
+import pytest
 from rles_data.core import DAY_NS
 from rles_data.core import FoldManifest, Window, MINUTE_NS
 from rles_world_model.baselines import BaselineScore
 from rles_orchestrator.application import main
 import rles_world_model.cli as world_model_cli
 from rles_world_model.contracts import MarketFrame, MarketReplay
+
+
+def test_json_input_rejects_duplicate_keys_recursively(tmp_path):
+    from rles_data.core import DataError
+
+    path = tmp_path / "duplicate.json"
+    path.write_text('{"schema":"outer","nested":{"x":1,"x":2}}', encoding="utf-8")
+    with pytest.raises(DataError, match="cannot read valid JSON"):
+        world_model_cli._read_json(str(path))
 
 
 def test_code_identity_falls_back_to_explicit_snapshot_commit(monkeypatch):
@@ -52,6 +62,17 @@ def test_code_identity_binds_nested_routeb_sources(tmp_path, monkeypatch):
     second = world_model_cli._routeb_code_identity(tmp_path)
     assert first["repository_commit"] == second["repository_commit"] == "d" * 40
     assert first["source_code_sha256"] != second["source_code_sha256"]
+
+    from rles_data.core import DataError
+
+    marker.write_text(
+        '{"schema_version":"rles.routeb.repository_base.v0",'
+        '"repository_commit":"' + "d" * 40 + '","repository_commit":"'
+        + "d" * 40 + '"}',
+        encoding="utf-8",
+    )
+    with pytest.raises(DataError, match="cannot freeze Route B repository commit"):
+        world_model_cli._routeb_code_identity(tmp_path)
 
 
 def test_world_model_cli_dispatches_through_rles(tmp_path, capsys):

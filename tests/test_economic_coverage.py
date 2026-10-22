@@ -24,7 +24,9 @@ def events():
                                 "a" * 64, {"instrument": SYMBOL, **payload}, "synthetic:coverage-regression"))
     for kind, payload in {
         "funding_settlement": {"rate": "0.001", "settlement_ns": MINUTE_NS},
-        "instrument_rule": {"tick_size": "0.1", "step_size": "0.1", "min_qty": "1", "min_notional": "1",
+        "instrument_rule": {"quantity_unit": "ETH", "base_currency": "ETH", "quote_currency": "USDT",
+                            "contract_multiplier": "1",
+                            "tick_size": "0.1", "step_size": "0.1", "min_qty": "1", "min_notional": "1",
                             "maker_fee": "0.001", "taker_fee": "0.001", "initial_margin_rate": "0.1",
                             "maintenance_margin_rate": "0.05", "effective_ns": MINUTE_NS, "rule_version": "v1"},
     }.items():

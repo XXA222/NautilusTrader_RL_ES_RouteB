@@ -5,7 +5,6 @@ This package deliberately contains no NautilusTrader imports and no L1 DTO clone
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, is_dataclass
-from functools import cached_property
 from datetime import datetime, timezone
 from enum import StrEnum
 from bisect import bisect_left, bisect_right
@@ -13,7 +12,7 @@ from hashlib import sha256
 import json
 import math
 import re
-from typing import Any, Iterable, Mapping, TYPE_CHECKING, cast
+from typing import Any, ClassVar, Iterable, Mapping, TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from .coverage import CoveragePolicy
@@ -22,7 +21,7 @@ MINUTE_NS = 60_000_000_000
 DAY_NS = 1_440 * MINUTE_NS
 MAX_NS = 2**63 - 1
 CORE_KINDS = frozenset({"ohlcv_1m", "mark", "index", "funding_update", "funding_settlement", "instrument_rule"})
-KINDS = CORE_KINDS | {"best_quote", "trade_flow_1s"}
+KINDS = CORE_KINDS | {"best_quote", "trade_flow_1s", "coverage_marker"}
 HASH_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 
@@ -107,7 +106,7 @@ def require_ns(value: int) -> int:
 def parse_ns(value: str) -> int:
     """Explicit UTC ISO-8601 only, preserving up to nine fractional digits."""
     if not isinstance(value, str) or re.fullmatch(
-        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z", value
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z", value
     ) is None:
         raise DataError("expected explicit UTC ISO-8601 timestamp ending in Z")
     main, _, tail = value[:-1].partition(".")
@@ -172,6 +171,9 @@ class Event:
     payload: Mapping[str, Any]
     provenance: str
 
+    if TYPE_CHECKING:
+        _bound_hash: ClassVar[str]
+
     def __post_init__(self) -> None:
         require_ns(self.ts_event_ns)
         require_ns(self.ts_init_ns)
@@ -192,13 +194,17 @@ class Event:
         from .schemas import validate_payload
         validate_payload(self.kind, dict(self.payload), self.ts_event_ns)
         canonical_bytes(self.payload)
+        object.__setattr__(self, "_bound_hash", digest(self))
 
     def visible(self, decision_ns: int) -> bool:
         return self.available_at_ns is not None and self.available_at_ns <= require_ns(decision_ns)
 
-    @cached_property
+    @property
     def hash(self) -> str:
-        return digest(self)
+        current = digest(self)
+        if current != self._bound_hash:
+            raise DataError("event mutated after construction")
+        return self._bound_hash
 
 
 @dataclass(frozen=True)
@@ -336,15 +342,22 @@ class FeatureSpec:
     schema_version: str
     fields: tuple[FeatureField, ...]
 
+    if TYPE_CHECKING:
+        _bound_hash: ClassVar[str]
+
     def __post_init__(self) -> None:
         if (self.schema_version != "0.4.0" or type(self.fields) is not tuple or not self.fields or
                 any(not isinstance(field, FeatureField) for field in self.fields) or
                 len({f.name for f in self.fields}) != len(self.fields)):
             raise DataError("duplicate/empty feature schema")
+        object.__setattr__(self, "_bound_hash", digest(self))
 
-    @cached_property
+    @property
     def hash(self) -> str:
-        return digest(self)
+        current = digest(self)
+        if current != self._bound_hash:
+            raise DataError("feature spec mutated after construction")
+        return self._bound_hash
 
     @property
     def max_lookback_ns(self) -> int:

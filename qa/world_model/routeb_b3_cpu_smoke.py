@@ -9,12 +9,21 @@ import argparse
 import json
 import math
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 
-from rles_world_model.routeb.hierarchy_dataset import build_train_hierarchy
+from rles_world_model.routeb.hierarchy_dataset import (
+    build_train_hierarchy,
+    build_validation_hierarchy,
+)
+from rles_world_model.routeb.jax_hierarchy_f2 import rollout_hierarchical_f2_checkpoint
 from rles_world_model.routeb.jax_hierarchy_train import (
-    HierarchyTrainingConfig, train_hierarchical,
+    HierarchyTrainingConfig,
+    forecast_hierarchical_validation_static_context_batch_standardized,
+    forecast_hierarchical_static_context_standardized,
+    forecast_hierarchical_validation_static_context_standardized,
+    train_hierarchical,
 )
 from rles_world_model.routeb.jax_model import RSSMConfig
 from rles_world_model.routeb.market import Candle, MarketSequence, MINUTE_NS
@@ -51,12 +60,14 @@ def main() -> int:
     output.mkdir(parents=True, exist_ok=True)
     replay = MarketSequence(synthetic_train_bars(),
                             "synthetic-b3-smoke-not-market-data", "train")
-    tensors, _ = build_train_hierarchy(replay, burn_in=32)
+    tensors, scalers = build_train_hierarchy(replay, burn_in=32)
     model = RSSMConfig(deter=8, hidden=8, stoch=1, classes=2, blocks=1)
-    cfg_one = HierarchyTrainingConfig(seed=31, steps=1, window_length=256,
+    cfg_one = HierarchyTrainingConfig(seed=31, steps=1, hierarchy_variant="e4_conditional",
+                                      window_length=256,
                                       hour_context_steps=16, day_context_steps=8,
                                       report_interval=1)
-    cfg_two = HierarchyTrainingConfig(seed=31, steps=2, window_length=256,
+    cfg_two = HierarchyTrainingConfig(seed=31, steps=2, hierarchy_variant="e4_conditional",
+                                      window_length=256,
                                       hour_context_steps=16, day_context_steps=8,
                                       report_interval=1)
     resumed_path = output / "resumed.npz"
@@ -87,6 +98,146 @@ def main() -> int:
         if set(resumed.files) != set(uninterrupted.files) or not all(
                 np.array_equal(resumed[name], uninterrupted[name]) for name in resumed.files):
             raise AssertionError("resumed and uninterrupted B3 training states differ")
+    # Exercise all three explicitly named candidates with identical data,
+    # seed, windows, and update budget before any real E3/E4 registration.
+    variant_losses = {}
+    variant_parameters = {"e4_conditional": continuation[-1]["parameters"]}
+    variant_configs = {}
+    for variant in ("e3_features", "e3b_fusion"):
+        variant_cfg = HierarchyTrainingConfig(
+            seed=31, steps=1, hierarchy_variant=variant, window_length=256,
+            hour_context_steps=16, day_context_steps=8, report_interval=1,
+            risk_auxiliary_scale=1.0 if variant == "e3_features" else 0.0)
+        variant_reports = train_hierarchical(
+            tensors=tensors, train_scope_id="train-synthetic-only",
+            dataset_id=replay.dataset_id, checkout=args.checkout,
+            output_checkpoint=output / f"{variant}.npz", minute_config=model,
+            hour_config=model, day_config=model, training_config=variant_cfg)
+        if not np.isfinite(variant_reports[-1]["loss"]):
+            raise AssertionError(f"{variant} produced a nonfinite loss")
+        if variant == "e3_features" and (
+                not np.isfinite(variant_reports[-1]["risk_aux_nll"])
+                or variant_reports[-1]["risk_aux_nll"] <= 0):
+            raise AssertionError("matched multi-horizon risk objective did not activate")
+        variant_configs[variant] = variant_cfg
+        variant_losses[variant] = variant_reports[-1]["loss"]
+        variant_parameters[variant] = variant_reports[-1]["parameters"]
+    if not (variant_parameters["e3_features"] < variant_parameters["e3b_fusion"]
+            < variant_parameters["e4_conditional"]):
+        raise AssertionError("E3/E3b/E4 did not instantiate distinct model graphs")
+
+    # Select a forecast window whose one-step horizon does not cross a UTC
+    # hour/day event; the static-context diagnostic refuses any such crossing.
+    forecast_cfg = cfg_two
+    forecast_start = None
+    eligible = continuation[-1]["eligible_window_count"]
+    for candidate_start in range(eligible):
+        try:
+            forecast = forecast_hierarchical_static_context_standardized(
+                tensors=tensors, start=candidate_start, steps=1,
+                train_scope_id="train-synthetic-only", dataset_id=replay.dataset_id,
+                checkout=args.checkout, checkpoint=resumed_path,
+                minute_config=model, hour_config=model, day_config=model,
+                training_config=forecast_cfg, forecast_seed=901)
+        except ValueError as exc:
+            if "crosses a future hour/day event" in str(exc):
+                continue
+            raise
+        forecast_start = candidate_start
+        repeated = forecast_hierarchical_static_context_standardized(
+            tensors=tensors, start=candidate_start, steps=1,
+            train_scope_id="train-synthetic-only", dataset_id=replay.dataset_id,
+            checkout=args.checkout, checkpoint=resumed_path,
+            minute_config=model, hour_config=model, day_config=model,
+            training_config=forecast_cfg, forecast_seed=901)
+        if any(not np.array_equal(forecast[key], repeated[key]) for key in forecast):
+            raise AssertionError("fixed-seed prior forecast is not reproducible")
+        break
+    if forecast_start is None:
+        raise AssertionError("no synthetic forecast anchor remained inside the slow-event boundary")
+    if (forecast["samples"].shape != (1, 1, 5)
+            or np.any(forecast["scales"] <= 0)):
+        raise AssertionError("invalid E4 static-context prior forecast")
+
+    validation_candles = tuple(Candle(
+        bar.ts_close_ns + len(replay.candles) * MINUTE_NS,
+        bar.available_at_ns + len(replay.candles) * MINUTE_NS,
+        bar.instrument, bar.open, bar.high, bar.low, bar.close, bar.volume)
+        for bar in replay.candles)
+    validation = MarketSequence(validation_candles, replay.dataset_id, "validation")
+    score_start = validation_candles[3_000].ts_close_ns
+    score_end = validation_candles[-1].ts_close_ns + MINUTE_NS
+    validation_tensors = build_validation_hierarchy(
+        validation, scalers=scalers, score_start_ns=score_start,
+        score_end_ns=score_end)
+    validation_anchor_index = 3_255 - 1
+    validation_forecast = forecast_hierarchical_validation_static_context_standardized(
+        train_tensors=tensors, validation_tensors=validation_tensors,
+        start=validation_anchor_index - forecast_cfg.window_length + 1,
+        steps=15, train_scope_id="train-synthetic-only",
+        dataset_id=replay.dataset_id, checkout=args.checkout,
+        checkpoint=resumed_path, minute_config=model, hour_config=model,
+        day_config=model, training_config=forecast_cfg,
+        forecast_seeds=(1901, 1902))
+    if (validation_forecast["samples"].shape != (2, 1, 15, 5)
+            or np.any(validation_forecast["scales"] <= 0)):
+        raise AssertionError("Train-bound Validation-context forecast failed")
+    batch_validation_forecast = forecast_hierarchical_validation_static_context_batch_standardized(
+        train_tensors=tensors, validation_tensors=validation_tensors,
+        starts=(validation_anchor_index - forecast_cfg.window_length + 1,
+                validation_anchor_index + 360 - forecast_cfg.window_length + 1),
+        steps=15, forecast_seeds=(1911, 1912),
+        train_scope_id="train-synthetic-only", dataset_id=replay.dataset_id,
+        checkout=args.checkout, checkpoint=resumed_path, minute_config=model,
+        hour_config=model, day_config=model, training_config=forecast_cfg,
+        forecast_batch_size=1)
+    if (batch_validation_forecast["samples"].shape != (2, 2, 15, 5)
+            or np.any(batch_validation_forecast["scales"] <= 0)):
+        raise AssertionError("batched Train-bound Validation forecast failed")
+
+    # Load the Train-identity-bound E4 checkpoint, then drive its actual
+    # recurrent carries through a coincident generated hour/day boundary.
+    # End one minute before a UTC day close, so the next synthetic bar closes
+    # both its daily and hourly buckets at exactly the same event time.
+    prefix = MarketSequence(
+        replay.candles[:5_759], replay.dataset_id, "train")
+    prefix_tensors, _ = build_train_hierarchy(
+        prefix, burn_in=32, frozen_scalers=scalers)
+    f2_results = {}
+    F2Mode = Literal["F2_SLOW_ONLY", "F2_FULL_FILTER"]
+    f2_cases: list[tuple[str, HierarchyTrainingConfig, Path, tuple[F2Mode, ...]]] = [
+        ("e3_features", variant_configs["e3_features"], output / "e3_features.npz",
+         ("F2_FULL_FILTER",)),
+        ("e3b_fusion", variant_configs["e3b_fusion"], output / "e3b_fusion.npz",
+         ("F2_FULL_FILTER",)),
+        ("e4_conditional", cfg_two, resumed_path,
+         ("F2_SLOW_ONLY", "F2_FULL_FILTER")),
+    ]
+    for variant, variant_cfg, variant_checkpoint, modes in f2_cases:
+        for mode in modes:
+            key = f"{variant}:{mode}"
+            f2_results[key] = rollout_hierarchical_f2_checkpoint(
+                training_tensors=tensors, train_scope_id="train-synthetic-only",
+                dataset_id=replay.dataset_id, checkpoint=str(variant_checkpoint),
+                prefix=prefix, context_tensors=prefix_tensors, scalers=scalers,
+                checkout=args.checkout, steps=2, mode=mode,
+                minute_config=model, hour_config=model, day_config=model,
+                training_config=variant_cfg, seed=1201, record_minute_states=False)
+            result = f2_results[key]
+            if (result.hour_updates != 1 or result.day_updates != 1
+                    or result.score_capability != "SCENARIO_ONLY"
+                    or result.minute_states):
+                raise AssertionError(
+                    f"integrated {key} failed its generated day/hour boundary")
+            if mode == "F2_FULL_FILTER" and (
+                    result.minute_posterior_updates != 2
+                    or not result.minute_posterior_max_abs_logit_delta
+                    or result.minute_posterior_max_abs_logit_delta <= 0):
+                raise AssertionError(
+                    f"{key} posterior evidence failed: "
+                    f"updates={result.minute_posterior_updates}, "
+                    f"max_abs_logit_delta={result.minute_posterior_max_abs_logit_delta}")
+    full_filter = f2_results["e4_conditional:F2_FULL_FILTER"]
     report = {
         "status": "PASS_SYNTHETIC_ENGINEERING_ONLY",
         "device": str(jax.devices()[0]),
@@ -94,9 +245,27 @@ def main() -> int:
         "hour_steps": int(tensors.hour_x.shape[1]),
         "day_steps": int(tensors.day_x.shape[1]),
         "optimizer_updates": 2,
+        "hierarchy_variant": cfg_two.hierarchy_variant,
+        "variant_losses": variant_losses,
+        "variant_parameters": variant_parameters,
+        "validation_forecast_shape": list(validation_forecast["samples"].shape),
+        "batched_validation_forecast_shape": list(
+            batch_validation_forecast["samples"].shape),
+        "f2_full_filter_max_abs_logit_delta": full_filter.minute_posterior_max_abs_logit_delta,
+        "jax_f2_modes": {
+            mode: {"hour_updates": result.hour_updates,
+                   "day_updates": result.day_updates,
+                   "score_capability": result.score_capability,
+                   "minute_posterior_updates": result.minute_posterior_updates,
+                   "minute_posterior_max_abs_logit_delta":
+                       result.minute_posterior_max_abs_logit_delta,
+                   "generated_bars": len(result.bars)}
+            for mode, result in f2_results.items()},
         "window_length": cfg_two.window_length,
         "eligible_window_count": continuation[-1]["eligible_window_count"],
         "window_start_sha256": continuation[-1]["window_start_sha256"],
+        "static_context_forecast_steps": 1,
+        "static_context_forecast_start": forecast_start,
         "loss": continuation[-1]["loss"],
         "grad_norm": continuation[-1]["grad_norm"],
         "parameters": continuation[-1]["parameters"],

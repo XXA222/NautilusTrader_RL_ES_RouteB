@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -77,6 +78,169 @@ def test_config_loader_accepts_es_scale_and_rejects_other_unknown_keys(tmp_path)
     }}))
     with pytest.raises(DataError, match="scoped Train data access"):
         application.load_config(path)
+
+
+def test_config_loader_rejects_duplicate_keys_recursively(tmp_path):
+    path = tmp_path / "duplicate-config.json"
+    path.write_text(
+        '{"environment":{"market_path":"safe.parquet",'
+        '"market_path":"other.parquet"},"output":"run"}',
+        encoding="utf-8",
+    )
+    with pytest.raises(json.JSONDecodeError, match="duplicate JSON object key"):
+        application.load_config(path)
+
+
+def test_wfo_validation_factory_decodes_only_its_registered_window(monkeypatch):
+    source_identity = {
+        "schema_version": "0.4.1", "snapshot_hash": "a" * 64,
+        "file_sha256": "b" * 64, "marker_sha256": "c" * 64, "events": 10,
+    }
+    read_calls = []
+    reservations = []
+    market_events = (object(),)
+    monkeypatch.setattr(application, "curated_source_identity",
+                        lambda _path: source_identity)
+    monkeypatch.setattr(application, "record_development",
+                        lambda config, window, *, label, source_identity: reservations.append(
+                            (window, label, source_identity)))
+    monkeypatch.setattr(application, "read_curated_window",
+                        lambda path, start, end, **kwargs: (
+                            read_calls.append((path, start, end, kwargs))
+                            or SimpleNamespace(events=market_events)))
+    monkeypatch.setattr(application, "CuratedStore",
+                        lambda events: SimpleNamespace(events=tuple(events)))
+    monkeypatch.setattr(application, "load_rules", lambda _path: ())
+    monkeypatch.setattr(application, "HistoricalEnvironmentFactory",
+                        lambda **kwargs: SimpleNamespace(**kwargs))
+
+    training = SimpleNamespace(
+        end_ns=100, scaler=object(), reward_config=SimpleNamespace(reward_scale=1.0),
+    )
+    config = {
+        "environment": {"market_path": "market.parquet", "rules_path": "rules.json",
+                        "instrument": "ETHUSDT-PERP.SIM", "start_ns": 10, "end_ns": 100},
+        "evaluation": {"start_ns": 200, "end_ns": 300,
+                       "coverage_policy": {"maximum_age_ns": {}}},
+        "evaluation_data_access": {
+            "start_ns": 180, "end_ns": 300, "marker_sha256": "c" * 64,
+            "label": "validation-wfo-fold-0000-candidate-a",
+        },
+        "wfo_dataset_hash": "d" * 64,
+    }
+
+    result = application._evaluation_factory(config, training)
+
+    assert read_calls == [(
+        "market.parquet", 180, 300, {"expected_marker_sha256": "c" * 64},
+    )]
+    assert reservations == [(
+        {"start_ns": 180, "end_ns": 300},
+        "validation-wfo-fold-0000-candidate-a", source_identity,
+    )]
+    assert result.prepared_store.events == market_events
+    assert result.application_dataset_identity_hash == "d" * 64
+
+
+def test_formal_backtest_consumes_scope_before_decoding_only_that_window(tmp_path, monkeypatch):
+    from rles_data.core import DataQualityReport, Grade
+    from rles_gym_bridge.observation import ObservationSchema
+    from rles_research.access import EvaluationAccess
+    from rles_orchestrator.application import _write_verified
+
+    events = ()
+    order = []
+    schema = ObservationSchema("0.4.0", (
+        "account.equity", "account.peak_equity", "account.drawdown",
+        "risk.guard_intervention", "execution.prev_executed_target",
+    ), ("USDT", "USDT", "ratio", "ratio", "ratio"))
+    dataset_hash = "d" * 64
+    factory = SimpleNamespace(
+        split="test", start_ns=20, end_ns=30, mode="base", instrument="ETHUSDT-PERP.SIM",
+        store=SimpleNamespace(snapshot_hash="scoped-rows", events=events),
+        features=SimpleNamespace(hash="f" * 64), schema=schema,
+        scaler=SimpleNamespace(hash="s" * 64), hard=SimpleNamespace(signature=lambda: "h" * 64),
+        execution=SimpleNamespace(
+            fingerprint=lambda: "e" * 64,
+            latency=lambda _mode: SimpleNamespace(model_id="latency"),
+            fill=lambda _mode: SimpleNamespace(model_id="fill"),
+        ),
+        config_hash="c" * 64, quality=DataQualityReport(Grade.B, (), 0, {}, dataset_hash),
+    )
+    bundle_root = tmp_path / "bundle"
+    actor_root = bundle_root / "actor"
+    actor_root.mkdir(parents=True)
+    (actor_root / "COMPLETED").write_text("actor-hash", encoding="ascii")
+    _write_verified(bundle_root / "bundle.json", {
+        "environment": {"market_path": "market.parquet", "rules_path": "rules.json",
+                        "instrument": "ETHUSDT-PERP.SIM", "start_ns": 10, "end_ns": 20},
+        "training_end_ns": 10,
+        "preprocessing": {
+            "identities": {
+                "dataset": dataset_hash, "features": "f" * 64, "schema": schema.hash,
+                "scaler": "s" * 64, "execution": "e" * 64,
+                "hard_risk": "h" * 64, "config": "c" * 64,
+            },
+            "schema": {"schema_version": schema.schema_version,
+                       "names": schema.names, "units": schema.units},
+            "scaler": {"mean": [], "std": []},
+        },
+        "actor": {"kind": "rl", "path": "actor", "actor_hash": "actor-hash"},
+        "soft_multipliers": None,
+    })
+    access_identity = {
+        "bundle_sha": hashlib.sha256((bundle_root / "bundle.json").read_bytes()).hexdigest(),
+        "split": "test", "start_ns": 20, "end_ns": 30,
+        "market": "ETHUSDT", "mode": "base",
+    }
+
+    class AccessRegistry:
+        def consume(self, *_args, **_kwargs):
+            order.append("consume")
+
+    access = EvaluationAccess(AccessRegistry(), "key", "token", json.dumps(access_identity))
+    source_identity = {
+        "schema_version": "0.4.1", "snapshot_hash": "a" * 64,
+        "file_sha256": "b" * 64, "marker_sha256": "c" * 64, "events": 10,
+    }
+    monkeypatch.setattr(application, "curated_source_identity",
+                        lambda _path: (order.append("source-identity") or source_identity))
+    monkeypatch.setattr(application, "record_development",
+                        lambda *_args, **_kwargs: pytest.fail("formal reads must not become development"))
+    monkeypatch.setattr(application, "read_curated_window",
+                        lambda path, start, end, **kwargs: (
+                            order.append(("payload", start, end, kwargs))
+                            or SimpleNamespace(events=events)))
+    monkeypatch.setattr(application, "CuratedStore",
+                        lambda _events: SimpleNamespace(events=events))
+    monkeypatch.setattr(application, "load_rules", lambda _path: ())
+    monkeypatch.setattr(application, "HistoricalEnvironmentFactory", lambda **_kwargs: factory)
+    monkeypatch.setattr(application, "Scaler", lambda **_kwargs: SimpleNamespace(hash="s" * 64))
+    monkeypatch.setattr(application, "InferenceActor",
+                        lambda *_args, **_kwargs: SimpleNamespace(predict=lambda _batch: np.zeros((1, 1))))
+    monkeypatch.setattr(application, "rollout",
+                        lambda *_args, **_kwargs: ({"metrics": {}}, np.empty((0, 5))))
+
+    config = {
+        "environment": {"market_path": "market.parquet", "rules_path": "rules.json",
+                        "instrument": "ETHUSDT-PERP.SIM", "start_ns": 10, "end_ns": 20},
+        "evaluation": {"start_ns": 20, "end_ns": 30, "split": "test",
+                       "coverage_policy": {"maximum_age_ns": {}}},
+        "train_data_access": {"start_ns": 0, "end_ns": 20, "marker_sha256": "c" * 64,
+                              "label": "train-wfo-fold-candidate"},
+        "evaluation_data_access": {
+            "start_ns": 18, "end_ns": 30, "marker_sha256": "c" * 64,
+            "label": "test-wfo-fold-0000-candidate-a",
+        },
+        "wfo_dataset_hash": dataset_hash,
+    }
+
+    report = application.backtest(config, bundle_root, evaluation_access=access)
+
+    assert report["evaluation_scope"]["split"] == "test"
+    assert order == ["consume", "source-identity", (
+        "payload", 18, 30, {"expected_marker_sha256": "c" * 64},
+    )]
 
 
 def test_train_only_cli_skips_validation_and_is_limited_to_train_command(monkeypatch, capsys):
@@ -187,8 +351,10 @@ def test_single_r1_environment_reuses_the_already_frozen_train_factory():
     calls = []
 
     class SharedFactory:
-        def make_env(self, transition_hash, *, episode_rank, episode_count, episode_steps):
-            calls.append((transition_hash, episode_rank, episode_count, episode_steps))
+        def make_env(self, transition_hash, *, episode_rank, episode_count, episode_steps,
+                     retain_report_snapshots):
+            calls.append((transition_hash, episode_rank, episode_count, episode_steps,
+                          retain_report_snapshots))
             return "shared-native-environment"
 
     factory = application._HistoricalRLEnvFactory(
@@ -196,7 +362,7 @@ def test_single_r1_environment_reuses_the_already_frozen_train_factory():
         num_envs=1, episode_steps=8192, shared_factory=SharedFactory(),
     )
     assert factory(0, 123, "train") == "shared-native-environment"
-    assert calls == [("a" * 64, 0, 1, 8192)]
+    assert calls == [("a" * 64, 0, 1, 8192, False)]
 
 
 def test_prepared_train_factory_recipe_identity_binds_window_and_reward_scale(monkeypatch):
@@ -232,6 +398,10 @@ def test_prepare_uses_registered_scoped_market_before_factory(monkeypatch):
     calls = []
     monkeypatch.setattr(application, "read_registered_train_window",
                         lambda *args, **kwargs: calls.append((args, kwargs)) or market)
+    monkeypatch.setattr(application, "curated_source_identity", lambda _path: {
+        "schema_version": "0.4.1", "snapshot_hash": "b" * 64,
+        "file_sha256": "c" * 64, "marker_sha256": "a" * 64, "events": 1,
+    })
     monkeypatch.setattr(application, "load_rules", lambda _path: ("rule-row",))
     monkeypatch.setattr(application, "CuratedStore", lambda events: tuple(events))
     monkeypatch.setattr(application, "record_development",
@@ -302,6 +472,7 @@ def test_spawned_r1_factory_reloads_registered_train_scope(monkeypatch):
     assert observed["access_config"] == access_config
     assert observed["factory_kwargs"]["prepared_store"] is prepared
     assert options["episode_rank"] == 1 and options["episode_count"] == 2
+    assert options["retain_report_snapshots"] is False
 
 
 def test_es_worker_factory_reloads_registered_train_scope(monkeypatch):
@@ -459,6 +630,7 @@ def test_rollout_reports_requested_and_post_guard_action_diagnostics(
 
     class Factory:
         mode = "base"
+        contract_multiplier = Decimal("1")
         snapshots = ()
         fill_references = ()
         schema = SimpleNamespace(names=("market.feature_1", "market.feature_2"))

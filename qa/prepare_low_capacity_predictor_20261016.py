@@ -2,10 +2,21 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-import json
 from pathlib import Path
 
+from rles_data.core import DataError
+from rles_data.json_utils import loads_unique_json
 from rles_orchestrator.application import _file_hash, _verify_file, _write_verified
+
+
+def _read_json_object(path: Path) -> dict:
+    try:
+        value = loads_unique_json(path.read_bytes())
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise DataError(f"cannot read unambiguous forecast JSON: {path}") from exc
+    if not isinstance(value, dict):
+        raise DataError(f"forecast JSON root must be an object: {path}")
+    return value
 
 
 def ns(value: datetime) -> int:
@@ -14,11 +25,11 @@ def ns(value: datetime) -> int:
 
 def prepare(root: Path) -> Path:
     source_plan_path = root / "configs/train_signal_baselines_20261016.json"
-    source_plan = json.loads(source_plan_path.read_text(encoding="utf-8"))
+    source_plan = _read_json_object(source_plan_path)
     bundle_root = Path(source_plan["bundle"])
     if _verify_file(bundle_root / "bundle.json") != source_plan["bundle_sha256"]:
         raise ValueError("frozen candidate bundle changed")
-    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = _read_json_object(bundle_root / "bundle.json")
     test_starts = ("2025-02-01", "2025-09-01", "2026-04-01")
     folds = []
     for index, date in enumerate(test_starts, start=1):

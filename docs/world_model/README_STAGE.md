@@ -663,3 +663,13 @@ The BTCUSDT `[2023-08-01, 2023-11-03)` transfer completed. E2-minus-selected-E0 
 ## Latest R2 adjacent Gaussian strength-0.1 transfer
 
 The frozen BTCUSDT strength-0.1 transfer on `[2023-11-03, 2024-02-05)` improved selected-E0 path-derived 15m log-RV CRPS in each seed, but seed 31 missed the registered Holm threshold (`p=0.087956`) so the all-seed gate failed. Pooled E2/E0 CRPS was `0.204828/0.277485`; generated volatility mean/p95 and absolute-return persistence still understated realized values. Independent aggregate, predictive, seed and forecast/risk artifact checks passed; Test/Holdout remained unread. R2 remains unpromoted and R3-R6 gated. Next investigate a training-time path-consistency objective. See [`R2_BTCUSDT_GAUSSIAN_RISK01_ADJACENT_RESULTS_20261020.md`](R2_BTCUSDT_GAUSSIAN_RISK01_ADJACENT_RESULTS_20261020.md).
+
+
+## Latest matched-objective R4 E2/E3 comparison — DOGEUSDT
+
+The registered three-seed DOGEUSDT comparison completed on a disjoint 360/15-day Train/Validation Fold. E3's multi-horizon risk objective matched the frozen E2 auxiliary settings. Two seeds significantly favored E3 on path log-RV CRPS; seed 102 significantly favored E2, so the all-seed primary gate failed. The return-CRPS no-harm gate passed. Test OHLCV remained sealed; no hierarchy promotion, economic certification, or production claim follows. See [`R4_DOGEUSDT_E2_E3_RESULTS_20261022.md`](R4_DOGEUSDT_E2_E3_RESULTS_20261022.md).
+
+
+## Matched-objective R4 DOGEUSDT temporal replication — run 02
+
+The second fixed-protocol DOGEUSDT E2/E3 comparison completed on a disjoint earlier interval. Seeds 31 and 20261018 significantly favored E3 on the primary path log-RV CRPS; seed 102 significantly favored E2 again. Return-CRPS no-harm passed, but the all-seed gate failed, with no promotion. Test OHLCV stayed sealed. The same seed-direction disagreement across two periods is a warning about seed sensitivity; its mechanism is unknown. See [`R4_DOGEUSDT_E2_E3_RESULTS_RUN02_20261022.md`](R4_DOGEUSDT_E2_E3_RESULTS_RUN02_20261022.md).

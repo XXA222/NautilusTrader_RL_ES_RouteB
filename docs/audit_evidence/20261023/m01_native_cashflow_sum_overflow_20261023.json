@@ -1,0 +1,22 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "M0.1 / sourced cashflow exact aggregation and Decimal boundaries",
+  "finding": "Batch and online cashflow sums could silently round mixed-scale finite values under caller Decimal precision; withdrawal unary negation also rounded before aggregation; overflow could leak raw decimal exceptions; wide exponent alignment could cause excessive allocation.",
+  "change": "Both report paths now use an exact Decimal adder with operand-derived local precision, a 4096-digit alignment cap, stable MetricsError mapping, and copy_negate() for context-independent withdrawal signing. Regressions cover precision-3 addition and withdrawal signing, precision-cap rejection, and sum overflow.",
+  "verification": {
+    "pytest_source": "Final combined native report accumulator parity, research metrics, Binance cashflows, native liquidation facts, and historical factory selector: 249 passed, 18 dependency warnings; PYTHONPATH=packages/research/src.",
+    "pytest_installed_wheel": "Same selector with PYTHONPATH unset and final rles-research 0.4.1 wheel installed in RouteB .venv-win-app: 249 passed, 18 dependency warnings; pytest basetemp under RouteB audit artifacts.",
+    "static_checks": "Ruff, targeted MyPy for native_metrics.py, py_compile for source/test, and git diff --check passed.",
+    "package_build": "uv build --all-packages completed with 12 wheels and 12 source distributions.",
+    "wheel_manifest": "12 wheels; all_match=true against current source manifest.",
+    "installed_provenance": "qa/smoke/wheel_imports.py passed for all 12 RLES packages and 6 declared entry points in RouteB .venv-win-app.",
+    "dependencies": "uv pip check passed; 69 installed packages compatible.",
+    "source_and_installed_module_sha256": "28af40fe9d2c4e18eaaf920897ed7522f5beca8be6011e4f067ab2b8bf292acc",
+    "source_manifest": {
+      "files": 604,
+      "identity_sha256": "b0a2241bb3d1197ff29c51a28822113895fa546acf01f4186d6a9f8173466c69"
+    },
+    "build_artifacts": ".artifacts/audit_cashflow_decimal_precision_20261023/final-wheels"
+  },
+  "scope": "Synthetic sourced cashflows only; no real account, market, or evaluation payload was accessed. Authenticated account origin and transfer-history completeness remain external M0.1 evidence gates."
+}

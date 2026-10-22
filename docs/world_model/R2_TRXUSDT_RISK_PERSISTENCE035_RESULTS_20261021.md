@@ -28,3 +28,7 @@ No seed showed significant Holm-corrected E2 harm to 15-minute return CRPS. All 
 
 The E2 prerequisite for beginning R3 research is now satisfied. R3 remains a separate preregistered development phase: specify the hierarchical multi-timeframe causal clock, freeze an independent Train/Validation Fold and E3/E4 matched ablation before reading that interval, and keep Test/Holdout closed. Economic validation remains gated on contract rules, fees, funding and native execution parity. Full hierarchical R3 results do not follow from this R2 pass.
 
+
+## Append-only numbering correction — 2026-10-21
+
+The “Next work” paragraph above incorrectly assigns the hierarchical E3/E3b/E4 work to R3. Per the controlling `RouteB_WorldModel_Research_Architecture_v3.0_20261018.md`, R3 is the preregistered latent-redundancy regularizer ablation (`lambda={0,0.01,0.05}`); R4 is the hierarchical E3/E3b/E4 comparison. The R2 pass opens both phases for separate preregistration, but this R2 result itself does not complete either phase. RouteB status and experiment records use this corrected numbering.

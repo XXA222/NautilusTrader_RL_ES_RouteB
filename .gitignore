@@ -4,6 +4,7 @@
 .uv-cache/
 .rles-python/
 .tmp/
+.tmp_*/
 .artifacts/
 .pytest_cache/
 .mypy_cache/

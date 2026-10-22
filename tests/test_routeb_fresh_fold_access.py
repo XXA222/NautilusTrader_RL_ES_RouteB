@@ -70,6 +70,12 @@ def test_development_result_requires_existing_development_access(tmp_path):
         )
 
 
+def test_development_result_lookup_rejects_non_string_access_key(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "fresh.sqlite")
+    with pytest.raises(ValueError, match="development access key is required"):
+        registry.development_result([])
+
+
 def test_routeb_fresh_fold_completion_and_candidate_lifecycle(tmp_path, monkeypatch):
     registry = ProjectResearchRegistry(tmp_path / "fresh.sqlite")
     monkeypatch.setattr(research_access, "project_registry", lambda: registry)
@@ -121,6 +127,96 @@ def test_routeb_fresh_fold_completion_and_candidate_lifecycle(tmp_path, monkeypa
     ]
 
 
+def test_routeb_r4_hierarchy_candidate_registry_is_frozen_by_variant_seed(tmp_path, monkeypatch):
+    registry = ProjectResearchRegistry(tmp_path / "r4.sqlite")
+    monkeypatch.setattr(research_access, "project_registry", lambda: registry)
+    for candidate in ("R4_E3_FEATURES", "R4_E3B_FUSION", "R4_E4_CONDITIONAL"):
+        key = research_access.register_routeb_r4_hierarchy_attempt(
+            label="routeb-fold-avaxusdt-r4-lifecycle-v1",
+            candidate_id=candidate,
+            configuration={"variant": candidate, "training": {"steps": 3}},
+            fold_sha256="a" * 64, feature_sha256="b" * 64, seed=31)
+        assert len(key) == 64
+        research_access.record_routeb_candidate_event(
+            key, event_key="started", status="started", detail={"device": "cpu"})
+        research_access.record_routeb_candidate_event(
+            key, event_key="completed", status="completed", detail={"updates": 3})
+    summary = registry.trial_attempt_summary(
+        "routeb-r4:routeb-fold-avaxusdt-r4-lifecycle-v1")
+    assert summary["protocol_registered_attempt_count"] == 3
+    assert {attempt["candidate_id"] for attempt in summary["attempts"]} == {
+        "R4_E3_FEATURES", "R4_E3B_FUSION", "R4_E4_CONDITIONAL"}
+
+
+def test_routeb_r4_hierarchy_registry_rejects_unfrozen_candidates(monkeypatch):
+    monkeypatch.setattr(research_access, "project_registry",
+                        lambda: pytest.fail("invalid R4 attempt must fail before ledger access"))
+    with pytest.raises(ValueError, match="invalid Route B R4 hierarchy"):
+        research_access.register_routeb_r4_hierarchy_attempt(
+            label="routeb-fold-avaxusdt-r4-invalid-v1", candidate_id="R4_VARIANT_SEARCH",
+            configuration={}, fold_sha256="a" * 64, feature_sha256="b" * 64, seed=31)
+
+
+def test_routeb_r4_baseline_comparison_registry_freezes_model_and_seed(tmp_path, monkeypatch):
+    registry = ProjectResearchRegistry(tmp_path / "r4-baseline.sqlite")
+    monkeypatch.setattr(research_access, "project_registry", lambda: registry)
+    label = "routeb-fold-adausdt-r4-baseline-v1"
+    for candidate in ("R4_E2_SINGLE_SCALE", "R4_E3_HIERARCHY"):
+        key = research_access.register_routeb_r4_baseline_comparison_attempt(
+            label=label, candidate_id=candidate,
+            configuration={"candidate": candidate, "training": {"steps": 3}},
+            fold_sha256="a" * 64, feature_sha256="b" * 64, seed=31)
+        research_access.record_routeb_candidate_event(
+            key, event_key="started", status="started", detail={"device": "cpu"})
+        research_access.record_routeb_candidate_event(
+            key, event_key="completed", status="completed", detail={"updates": 3})
+    summary = registry.trial_attempt_summary(f"routeb-r4-baseline:{label}")
+    assert summary["protocol_registered_attempt_count"] == 2
+    assert {attempt["candidate_id"] for attempt in summary["attempts"]} == {
+        "R4_E2_SINGLE_SCALE", "R4_E3_HIERARCHY"}
+
+
+def test_routeb_r4_baseline_comparison_rejects_unfrozen_candidate(monkeypatch):
+    monkeypatch.setattr(research_access, "project_registry",
+                        lambda: pytest.fail("invalid candidate must fail before ledger access"))
+    with pytest.raises(ValueError, match="invalid Route B R4 baseline-comparison"):
+        research_access.register_routeb_r4_baseline_comparison_attempt(
+            label="routeb-fold-adausdt-r4-baseline-v1", candidate_id="R4_E3_SEARCH",
+            configuration={}, fold_sha256="a" * 64, feature_sha256="b" * 64, seed=31)
+
+
+def test_routeb_fresh_fold_failure_is_terminal_and_bound_to_consumed_scope(tmp_path, monkeypatch):
+    registry = ProjectResearchRegistry(tmp_path / "fresh-failed.sqlite")
+    monkeypatch.setattr(research_access, "project_registry", lambda: registry)
+    config = {"environment": {"instrument": "AVAXUSDT-PERP.BINANCE",
+                               "market_path": str(tmp_path / "market.parquet")}}
+    window = {"start_ns": 100, "end_ns": 200}
+    label = "routeb-fold-avaxusdt-failed-v1"
+    source_identity = {"schema_version": "0.4.1", "snapshot_hash": "a" * 64,
+                       "file_sha256": "b" * 64, "marker_sha256": "c" * 64,
+                       "events": 42}
+    reservation = research_access.reserve_routeb_fresh_fold(
+        config, window, label=label, fold_sha256="d" * 64,
+        repository_commit="e" * 40, source_code_sha256="f" * 64,
+        source_identity=source_identity)
+
+    failure = research_access.fail_routeb_fresh_fold(
+        config, window, label=label, fold_sha256="d" * 64,
+        repository_commit="e" * 40, source_code_sha256="f" * 64,
+        source_identity=source_identity, report_sha256="9" * 64,
+        detail={"error": "DataError", "test_payload_decoded": False})
+
+    assert failure == {"schema": "routeb.development-result-receipt.v1",
+                       "access_key": reservation["access_key"], "status": "failed",
+                       "report_sha256": "9" * 64}
+    assert registry.development_result(reservation["access_key"])["status"] == "failed"
+    with pytest.raises(ResearchLockError, match="receipt changed"):
+        research_access.complete_routeb_fresh_fold(
+            config, window, label=label, fold_sha256="d" * 64,
+            repository_commit="e" * 40, source_code_sha256="f" * 64,
+            source_identity=source_identity, report_sha256="8" * 64)
+
+
 def test_fresh_development_reservation_rejects_existing_query_intent(tmp_path):
     registry = ProjectResearchRegistry(tmp_path / "intent.sqlite")
     registry.reserve_query_intent(
@@ -159,17 +255,80 @@ def test_registered_fresh_fold_marker_and_reservation_precede_payload_decode(
     monkeypatch.setattr(research_access, "reserve_routeb_fresh_fold", reserve_fresh)
     monkeypatch.setattr(research_access, "read_curated_window", decode)
 
+    reservation_callbacks = []
+
+    def after_reservation():
+        reservation_callbacks.append("reserved")
+        calls.append(("reserved", None))
+
     result = research_access.read_registered_fold_window(
         config, {"start_ns": 100, "end_ns": 200}, marker_sha256="c" * 64,
         dataset_hash="a" * 64, required_start_ns=100, required_end_ns=200,
         label="routeb-fold-001", fold_sha256="d" * 64, repository_commit="c" * 40,
         source_code_sha256="e" * 64,
+        on_reserved=after_reservation,
     )
 
     assert result == "store"
-    assert [call[0] for call in calls] == ["marker", "reserve", "decode"]
+    assert [call[0] for call in calls] == ["marker", "reserve", "reserved", "decode"]
+    assert reservation_callbacks == ["reserved"]
     assert calls[1][1]["source_identity"] == source_identity
-    assert calls[2][1]["expected_marker_sha256"] == "c" * 64
+    assert calls[3][1]["expected_marker_sha256"] == "c" * 64
+
+
+def test_registered_fresh_fold_does_not_signal_reservation_before_preflight(tmp_path, monkeypatch):
+    source_identity = {
+        "schema_version": "0.4.1", "snapshot_hash": "a" * 64,
+        "file_sha256": "b" * 64, "marker_sha256": "c" * 64, "events": 42,
+    }
+    config = {"environment": {"instrument": "ETHUSDT-PERP.BINANCE",
+                               "market_path": str(tmp_path / "market.parquet")}}
+    signals = []
+    monkeypatch.setattr(research_access, "curated_source_identity", lambda _path: source_identity)
+    monkeypatch.setattr(research_access, "reserve_routeb_fresh_fold",
+                        lambda *_args, **_kwargs: pytest.fail("must fail before reservation"))
+    with pytest.raises(DataError, match="marker"):
+        research_access.read_registered_fold_window(
+            config, {"start_ns": 100, "end_ns": 200}, marker_sha256="f" * 64,
+            dataset_hash="a" * 64, required_start_ns=100, required_end_ns=200,
+            label="routeb-fold-001", fold_sha256="d" * 64,
+            repository_commit="c" * 40, source_code_sha256="e" * 64,
+            on_reserved=lambda: signals.append("reserved"),
+        )
+    assert signals == []
+
+
+def test_registered_fresh_fold_callback_failure_stops_before_payload_decode(tmp_path, monkeypatch):
+    source_identity = {
+        "schema_version": "0.4.1", "snapshot_hash": "a" * 64,
+        "file_sha256": "b" * 64, "marker_sha256": "c" * 64, "events": 42,
+    }
+    config = {"environment": {"instrument": "ETHUSDT-PERP.BINANCE",
+                               "market_path": str(tmp_path / "market.parquet")}}
+    calls = []
+    monkeypatch.setattr(research_access, "curated_source_identity",
+                        lambda _path: source_identity)
+    monkeypatch.setattr(research_access, "curated_event_time_bounds",
+                        lambda _path, **_kwargs: {"min_ts_event_ns": 0,
+                                                  "max_ts_event_ns": 10**15})
+    monkeypatch.setattr(research_access, "reserve_routeb_fresh_fold",
+                        lambda *_args, **_kwargs: calls.append("reserved"))
+    monkeypatch.setattr(research_access, "read_curated_window",
+                        lambda *_args, **_kwargs: pytest.fail("payload must not be decoded"))
+
+    def fail_after_reservation():
+        calls.append("registration")
+        raise RuntimeError("attempt registration failed")
+
+    with pytest.raises(RuntimeError, match="attempt registration failed"):
+        research_access.read_registered_fold_window(
+            config, {"start_ns": 100, "end_ns": 200}, marker_sha256="c" * 64,
+            dataset_hash="a" * 64, required_start_ns=100, required_end_ns=200,
+            label="routeb-fold-callback-failure", fold_sha256="d" * 64,
+            repository_commit="e" * 40, source_code_sha256="f" * 64,
+            on_reserved=fail_after_reservation,
+        )
+    assert calls == ["reserved", "registration"]
 
 
 def test_registered_fresh_fold_rejects_dataset_mismatch_before_reservation(

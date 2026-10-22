@@ -13,6 +13,7 @@ import tempfile
 import numpy as np
 from .market import MarketSequence, MINUTE_NS
 from .codec import OHLCVCodec, TrainOnlyStandardizer
+from ..json_utils import loads_unique_json
 
 SCHEMA="routeb.train-sequences.v3"
 RISK_HORIZONS=(1,5,15,30,60)
@@ -218,7 +219,7 @@ def load_worker_batch(path: str|Path, *, expected_scope: str,
                       snapshot_sha: str,upstream_sha: str)->tuple[SequenceBatch,dict]:
     """Loads prepared features only; validates metadata but does not grant data access."""
     path=Path(path)
-    meta=json.loads(path.with_suffix('.json').read_text('utf-8'))
+    meta=loads_unique_json(path.with_suffix('.json').read_text('utf-8'))
     if (meta.get('schema')!=SCHEMA or meta.get('purpose')!='train' or
         meta.get('train_scope_id')!=expected_scope or
         meta.get('snapshot_sha')!=snapshot_sha or meta.get('upstream_sha')!=upstream_sha):

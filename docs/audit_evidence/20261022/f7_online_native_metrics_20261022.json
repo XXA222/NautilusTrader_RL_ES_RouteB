@@ -1,0 +1,39 @@
+{
+  "schema": "rles.routeb.audit-evidence.f7-online-native-metrics.v1",
+  "date": "2026-10-22",
+  "finding": "Even with include_account_rows=false, native_report previously accumulated the full return array before calculating return metrics.",
+  "change": "Native reports now pass an upper bound derived from snapshot count into AccountFactsAccumulator. It computes compounded return, drawdown, Welford variance, downside deviation, and exact worst-tail VaR/CVaR online. The exact lower-tail heap is sized from the upper bound and trimmed on a copy at result time, so intermediate result calls do not corrupt later accumulation. No full return array is kept on this native_report path.",
+  "verification": {
+    "incremental_result_regression": "An interim result followed by additional rows matches one-shot metrics exactly; full return buffer is absent and worst-tail heap remains intact",
+    "source_joint_tests": "188 passed",
+    "installed_wheel_joint_tests": "188 passed with PYTHONPATH unset",
+    "ruff": "passed",
+    "py_compile": "passed",
+    "targeted_mypy": "Success: no issues found in 3 source files",
+    "distribution": {
+      "wheel_manifest": "12 wheels present; all_match=true",
+      "wheel_import_smoke": "12 distributions, 12 modules, 6 entry points",
+      "dependency_check": "69 packages compatible",
+      "research_metrics_source_module_sha256": "a1e8b44dd0d2b6751ee08ae318ccb8931c56bddbd43dc6c6ff2e807f25a60300",
+      "research_metrics_installed_module_sha256": "a1e8b44dd0d2b6751ee08ae318ccb8931c56bddbd43dc6c6ff2e807f25a60300",
+      "native_metrics_source_module_sha256": "e2d18d2f9550374c6725ea87ad7cdf87fd464bb8d006fca8409573bbe44ba4b0",
+      "native_metrics_installed_module_sha256": "e2d18d2f9550374c6725ea87ad7cdf87fd464bb8d006fca8409573bbe44ba4b0"
+    },
+    "source_manifest": {
+      "files": 595,
+      "source_identity_sha256": "c84e6bc3b712fb36394b52bb11b7a110c89254eb53fcf5b22717c597aebe1e27",
+      "verified": true
+    },
+    "final_90_day_synthetic_native_replay": {
+      "report": "docs/audit_evidence/20261022/f7_synthetic_native_growth_final_20261022.json",
+      "decision_steps": 129597,
+      "trajectory_sha256_matches_preoptimization": true,
+      "native_metrics_sha256_matches_preoptimization": true,
+      "retained_rss_peak_delta_bytes": 576286720,
+      "lean_rss_peak_delta_bytes": 235511808,
+      "rss_note": "Absolute RSS varied across repeated runs; this single profile is recorded as an observation and does not establish a stable improvement ratio."
+    }
+  },
+  "remaining": "F7 is still partial. The compact per-barrier native snapshot sequence remains O(n), and include_account_rows=true intentionally retains output rows. Long-window real-history Train RSS and trajectory evidence are not present.",
+  "scope_limit": "Fixed-action synthetic OHLCV/mark/index/funding and native-engine replay only. No market archive, account, research registry, project ledger, Validation, Test, or Holdout payload was accessed."
+}

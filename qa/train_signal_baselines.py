@@ -17,6 +17,7 @@ import numpy as np
 
 from rles_data.core import CuratedStore, DataError, MINUTE_NS
 from rles_data.io import read_curated
+from rles_data.json_utils import loads_unique_json
 from rles_gym_bridge.historical import HistoricalEnvironmentFactory, load_rules
 from rles_orchestrator.application import _file_hash, _verify_file, _write_verified, backtest, rollout
 from rles_orchestrator.research_access import record_development
@@ -48,14 +49,24 @@ def coverage_for_window(original: dict, window: dict) -> dict:
     return coverage
 
 
+def _read_json_object(path: Path) -> dict:
+    try:
+        value = loads_unique_json(path.read_bytes())
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise DataError(f"cannot read unambiguous Train-baseline JSON: {path}") from exc
+    if not isinstance(value, dict):
+        raise DataError(f"Train-baseline JSON root must be an object: {path}")
+    return value
+
+
 def compare(plan_path: Path, output: Path) -> dict:
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    plan = _read_json_object(plan_path)
     if plan["split"] != "train_inner" or output.exists():
         raise DataError("Train-only plan and a new immutable output directory required")
     bundle_root = Path(plan["bundle"])
     if _verify_file(bundle_root / "bundle.json") != plan["bundle_sha256"]:
         raise DataError("preregistered bundle changed")
-    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = _read_json_object(bundle_root / "bundle.json")
     environment = bundle["environment"]
     config = {"environment": environment, "output": str(output), "seed": plan["seed"]}
     for window in plan["windows"]:

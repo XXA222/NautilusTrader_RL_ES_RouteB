@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+from qa.source_manifest import _source_files
+
 
 _GENERATOR = Path(__file__).resolve().parents[1] / "qa" / "source_manifest.py"
 
@@ -63,3 +65,64 @@ def test_source_identity_tracks_workspace_inputs_and_ignores_generated_reports(t
     (tmp_path / "packages" / "demo" / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
     changed = _generate(tmp_path, manifest_path)
     assert changed["source_identity_sha256"] != qa_changed["source_identity_sha256"]
+
+
+def test_source_manifest_verify_rejects_duplicate_json_keys(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        '{"source_identity_sha256":"' + "a" * 64 + '","source_identity_sha256":"' + "a" * 64 + '"}',
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [sys.executable, str(_GENERATOR), "--root", str(tmp_path),
+         "--output", str(manifest), "--verify"],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 2
+    assert "duplicate JSON manifest key" in result.stderr
+
+
+def test_source_manifest_verify_normalizes_invalid_utf8(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_bytes(b"{\"source_identity_sha256\":\"\xff\"}")
+    result = subprocess.run(
+        [sys.executable, str(_GENERATOR), "--root", str(tmp_path),
+         "--output", str(manifest), "--verify"],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 2
+    assert "cannot read JSON manifest" in result.stderr
+
+
+def test_source_manifest_checks_symlink_before_file_stat(tmp_path: Path, monkeypatch) -> None:
+    source_root = tmp_path / "packages" / "demo"
+    source_root.mkdir(parents=True)
+    linked = source_root / "linked.py"
+    linked.write_text("VALUE = 1\n", encoding="utf-8")
+    original_is_symlink = Path.is_symlink
+    original_is_file = Path.is_file
+
+    def is_symlink(path: Path) -> bool:
+        return True if path == linked else original_is_symlink(path)
+
+    def is_file(path: Path) -> bool:
+        if path == linked:
+            raise AssertionError("is_file must not stat a symlink target")
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_symlink", is_symlink)
+    monkeypatch.setattr(Path, "is_file", is_file)
+    assert linked not in _source_files(tmp_path)
+
+
+def test_source_manifest_verify_rejects_nonstandard_json_constant(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"source_identity_sha256":"' + "a" * 64 + '","extra":NaN}',
+                        encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(_GENERATOR), "--root", str(tmp_path),
+         "--output", str(manifest), "--verify"],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 2
+    assert "cannot read JSON manifest" in result.stderr

@@ -23,12 +23,13 @@ from .routeb.jax_train import SNAPSHOT_SHA
 from .routeb.jax_model import PINNED_UPSTREAM
 from .routeb.fold_experiment import run_fold_experiment
 from .upstream import inspect_upstream
+from .json_utils import loads_unique_json
 
 
 def _read_json(path: str) -> dict:
     try:
-        value = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        value = loads_unique_json(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as exc:
         raise DataError(f"cannot read valid JSON input: {path}") from exc
     if not isinstance(value, dict):
         raise DataError("JSON input root must be an object")
@@ -101,15 +102,15 @@ def _routeb_code_identity(root: Path | None = None) -> dict[str, str]:
             ["git", "-C", str(root), "rev-parse", "HEAD"],
             check=True, capture_output=True, text=True,
         ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError) as exc:
+    except (OSError, subprocess.CalledProcessError):
         # A copied Route B workspace may be intentionally materialized without
         # Git objects. In that case accept only the explicit base-commit
         # manifest, and bind that manifest into the source fingerprint below.
         snapshot_marker = root / "docs" / "world_model" / "REPO_BASELINE.json"
         try:
-            marker = json.loads(snapshot_marker.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            raise DataError("cannot freeze Route B repository commit before market access") from exc
+            marker = loads_unique_json(snapshot_marker.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ValueError) as marker_exc:
+            raise DataError("cannot freeze Route B repository commit before market access") from marker_exc
         if (not isinstance(marker, dict)
                 or set(marker) != {"schema_version", "repository_commit"}
                 or marker.get("schema_version") != "rles.routeb.repository_base.v0"
