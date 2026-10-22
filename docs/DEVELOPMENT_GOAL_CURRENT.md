@@ -1,5 +1,9 @@
 # RouteB 审计整改：当前连续开发目标
 
+## 2026-10-23 最新续做：线性权益初始屏障拒绝预存清算订单
+
+复核 M0.1 对账不变量发现，批处理与在线线性权益对账的初始屏障均漏检 `liquidation_orders`，预存强平订单可能被接受为“无事件”基线。现在两条路径都拒绝初始屏障中的可见清算订单；批处理入口也校验提供的清算订单历史类型。新增同一合成输入对批处理/在线路径的双参数回归。四个 Native/metrics/历史工厂源码套件 **214 passed、18 warnings**；RouteB 独立 wheel 两套件 **118 passed**。Wheel 离线构建并安装成功，源与安装模块 SHA-256 一致；Ruff、目标 MyPy、语法编译、清单验证和差异检查通过。Source manifest：604 files，identity `137a3fee290d06711a0bf487521a79933ca0ba718461364647182b30835687f1`。证据：`docs/audit_evidence/20261023/m01_initial_liquidation_event_guard_20261023.json`。仅合成快照；未访问行情、账户、登记库或 Validation/Test/Holdout。继续其余可本地解决审计项。
+
 ## 2026-10-23 最新续做：有限输入的累计指标溢出保护
 
 继续 M0.1 数值审计发现，单行手续费、Funding、滑点、现金流或换手率增量都有限，跨行累计仍可能溢出为 `inf`；已实现交易 PnL 的求和以及年化 Sharpe/Sortino 也存在有限输入产生非有限输出的路径。现对每次累计增量和累计值做有限性校验，用 `math.fsum` 并捕获溢出计算总毛收益与闭合交易 PnL，且拒绝非有限 profit factor/年化比率。新增高量级有限费用与盈亏累加回归。四个源码回归套件 **212 passed、18 warnings**；RouteB 独立 wheel 两套件 **116 passed**，wheel 与源码哈希一致；全仓 Ruff、MyPy 225 文件通过；604 文件 source manifest 已验证。证据：`docs/audit_evidence/20261023/m01_metric_aggregation_overflow_20261023.json`。仅合成数值；无市场、账户、登记库或正式评价数据访问。继续其余可本地完成的 A01–A14；外部现金流真实性、历史登记覆盖、Validation、新授权样本和真实盘口深度仍保持各自独立门槛。

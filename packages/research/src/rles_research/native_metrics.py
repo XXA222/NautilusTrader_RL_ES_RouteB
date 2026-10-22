@@ -462,10 +462,16 @@ def reconcile_linear_equity(snapshots: Sequence[Any], *,
         _snapshot_records(item, "funding", "funding")
     cashflows_by_time, cashflow_facts = _external_cashflows_by_time(external_cashflows, ordered)
     first = ordered[0]
+    initial_liquidations = getattr(first, "liquidation_orders", ())
+    if initial_liquidations is not None and (
+            not isinstance(initial_liquidations, SequenceABC)
+            or isinstance(initial_liquidations, (str, bytes, bytearray))):
+        raise MetricsError("native liquidation order history must be a sequence")
     if (_snapshot_records(first, "positions", "position")
             or _snapshot_records(first, "orders", "order")
             or _snapshot_records(first, "fills", "fill")
-            or _snapshot_records(first, "funding", "funding")):
+            or _snapshot_records(first, "funding", "funding")
+            or initial_liquidations):
         raise MetricsError("linear reconciliation requires a flat event-free initial barrier")
     initial = _decimal(first.equity, "initial equity")
     if initial <= 0:
@@ -845,7 +851,8 @@ class NativeReportAccumulator:
             for fact in self._cashflow_facts:
                 if fact.get("currency") != currency:
                     raise MetricsError("external cashflow currency differs from native account")
-            if (positions or orders or fill_records or funding_records):
+            if (positions or orders or fill_records or funding_records
+                    or liquidation_records):
                 raise MetricsError("linear reconciliation requires a flat event-free initial barrier")
             self._initial_equity = _decimal(equity, "initial equity")
             if self._initial_equity <= 0:

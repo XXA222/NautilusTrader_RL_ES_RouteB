@@ -2040,6 +2040,16 @@ The F7 audit found duplicate retained state in online reporting. Unique fills an
 
 **Boundary / next cursor:** synthetic finite values only; no market, account, registry, Validation, Test, or Holdout payload was accessed. Continue dependency-satisfied A01–A14 source audit; authenticated cashflows, pre-registration history, independent Validation, new market authorization, authentic depth, historic trial coverage, and M4.2 remain external/input gates.
 
+## 2026-10-23 — M0.1 initial liquidation-event guard
+
+**Finding:** batch and online linear-equity reconciliation checked that the initial barrier had no positions, regular orders, fills, or Funding, but omitted native liquidation orders. A pre-existing liquidation order could be accepted as the flat, event-free baseline.
+
+**Fix:** include visible liquidation orders in both initial-barrier guards; batch reconciliation also validates a provided liquidation-order history as a sequence.
+
+**Verification:** the same synthetic baseline with a submitted, zero-filled liquidation order is rejected by both batch and online paths. The four-file Native/metrics/historical-factory selector passes **214 tests, 18 dependency warnings**; the RouteB app-venv wheel parity selector passes **118 tests** with `PYTHONPATH` unset. The offline `rles-research` wheel build/install succeeds and the installed/source `native_metrics.py` SHA-256 matches at `bf72b60d7141c72b01981933cb706e77458422ec0aa7cfed440b47ee2c03d53c`. Ruff and targeted MyPy pass; the 604-file source manifest verifies identity `137a3fee290d06711a0bf487521a79933ca0ba718461364647182b30835687f1`; compile and diff checks pass. Evidence: `docs/audit_evidence/20261023/m01_initial_liquidation_event_guard_20261023.json`.
+
+**Boundary / next cursor:** synthetic snapshots only; no market, account, registry, Validation, Test, or Holdout payload was accessed. Continue dependency-satisfied A01–A14 audit; authenticated cashflows, historical access coverage, independent Validation, new market authorization, authentic depth, historical trial coverage, and M4.2 remain separate external/input gates.
+
 ### 2026-10-23 M0.2 follow-up — canonical inventory checksum bytes
 
 Hosted run `39837931130` confirmed the Linux wheel root fix, then failed when reaching the inventory: the Git blob was LF (`2950db3e…`), while its marker matched only Windows CRLF working-copy bytes (`9fb401e…`). Added exact-byte `-text` attributes for both inventory and marker, normalized the tracked file to LF, and rebound the marker to the LF SHA-256. A further package-root audit found the same fixed-depth assumption in WFO source hashing and world-model CLI code identity; both now discover the workspace marker through package-file ancestors. The research-access + world-model CLI suites pass **131 tests**, WFO passes **36**, full Ruff/MyPy (**225 source files**) pass, and the 604-file source identity is `59a584b0864d448535e1905a39905e2099536050a9d7550fad94d272327deb73`. Updated evidence: `docs/audit_evidence/20261023/research_registry_linux_wheel_root_20261023.json`. Hosted verification of the combined fixes remains pending.
