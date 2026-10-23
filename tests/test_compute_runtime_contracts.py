@@ -33,6 +33,16 @@ def test_worker_json_payload_rejects_circular_containers() -> None:
         small_json(payload)
 
 
+def test_worker_json_payload_normalizes_roundtrip_decoder_recursion(monkeypatch) -> None:
+    import rles_compute_runtime.transport as transport
+
+    def reject_nesting(_payload: bytes) -> object:
+        raise RecursionError("reader nesting limit")
+
+    monkeypatch.setattr(transport.json, "loads", reject_nesting)
+    with pytest.raises(ComputeProtocolError, match="supported nesting depth"):
+        small_json({"safe": 1})
+
 def _sample(_mode: str, _trial: int) -> dict[str, int | float]:
     return {
         "wall_sec": 2.0,

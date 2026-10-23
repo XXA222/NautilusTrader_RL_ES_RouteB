@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-23T05:10:31.725133+00:00",
-  "source_identity_sha256": "cbd98ba52db1e2ffcd3e564060aefdcab2e75f0b5ca30090c7e5d2477f0b3a82",
+  "generated_at_utc": "2026-10-23T05:19:14.790187+00:00",
+  "source_identity_sha256": "dedf0097168391c29a321bcd54863b14de650c57f21d84f195115a91788fdfaa",
   "scope": {
     "included": [
       ".gitattributes",
@@ -953,8 +953,8 @@
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/transport.py",
-      "size_bytes": 3894,
-      "sha256": "b6fdafe8f91b0f5b9393cffd87cc4695fada41eb83900375939bbf0fb902f124"
+      "size_bytes": 4035,
+      "sha256": "bdc030830f13d9b4952c56c97f42733dd3ea0554e3437833e8e3160f458b91c9"
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/validation.py",
@@ -2568,8 +2568,8 @@
     },
     {
       "path": "tests/test_compute_runtime_contracts.py",
-      "size_bytes": 5810,
-      "sha256": "2a3079695f93b8c25b4baa2436257615bc9208e5548bab9cb7d60ce57a5ecb3c"
+      "size_bytes": 6238,
+      "sha256": "fd889c69a935f33fa87989e467843665e6592d44890c6ad139be82314fb885b2"
     },
     {
       "path": "tests/test_compute_worker_pool.py",

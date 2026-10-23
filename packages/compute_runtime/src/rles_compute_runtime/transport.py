@@ -66,7 +66,10 @@ def small_json(value: object) -> object:
         raise ComputeProtocolError('invalid JSON payload') from exc
     if len(raw) > MAX_BYTES:
         raise ComputeProtocolError('large payload rejected; use readonly data refs')
-    return json.loads(raw)
+    try:
+        return json.loads(raw)
+    except RecursionError as exc:
+        raise ComputeProtocolError("worker payload exceeds supported nesting depth") from exc
 
 
 def enforce_response(request_key: Mapping[str, object], response: Mapping[str, object]) -> object:

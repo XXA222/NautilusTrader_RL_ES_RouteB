@@ -1,0 +1,29 @@
+{
+  "schema": "rles.audit-evidence.v1",
+  "task": "M0.2/A10 compute transport JSON decoder recursion boundary",
+  "status": "LOCAL_PASS_HOSTED_PENDING",
+  "checkout": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
+  "finding": "small_json converted cycles and encoder depth errors but leaked RecursionError if its final json.loads round trip rejected nesting.",
+  "fix": "Normalize final decode RecursionError to ComputeProtocolError with a stable supported-nesting message.",
+  "verification": [
+    {
+      "command": "RouteB .venv-win-app with RouteB package src paths first: pytest tests/test_compute_runtime_contracts.py",
+      "result": "19 passed in 0.63s"
+    },
+    {
+      "command": "python -m ruff check packages/compute_runtime/src/rles_compute_runtime/transport.py tests/test_compute_runtime_contracts.py",
+      "result": "passed"
+    },
+    {
+      "command": "python -m mypy packages/compute_runtime/src/rles_compute_runtime/transport.py",
+      "result": "no issues in 1 source file"
+    },
+    {
+      "command": "python qa/source_manifest.py --output qa/reports/source_manifest_current.json --verify",
+      "result": "verified 605 files; identity dedf0097168391c29a321bcd54863b14de650c57f21d84f195115a91788fdfaa"
+    }
+  ],
+  "source_manifest_identity": "dedf0097168391c29a321bcd54863b14de650c57f21d84f195115a91788fdfaa",
+  "data_access": "No market, account, Train, Validation, Test, or Holdout data accessed; synthetic in-memory JSON only.",
+  "remaining": "Hosted clean Linux/Windows/JAX CI for the RouteB-only follow-up commit is pending."
+}

@@ -2222,3 +2222,12 @@ After the JSON boundary changes, the fresh 605-file source identity is `f1a5ed8b
 **Verification:** Under the dedicated RouteB .venv-win-app, tests/test_source_manifest.py — **9 passed**; Ruff passed; MyPy passed (1 file); source manifest regenerated and immediately verified **605 files**, identity cbd98ba52db1e2ffcd3e564060aefdcab2e75f0b5ca30090c7e5d2477f0b3a82. Evidence: docs/audit_evidence/20261023/a10_source_manifest_platform_stable_v3_20261023.json.
 
 **Boundary / next cursor:** No market, account, Train, Validation, Test, or Holdout data accessed. Current local source revision still needs clean Hosted Linux/Windows/JAX CI. Continue the remaining implementation-ready A01–A14 code audit; do not close external provenance, independent Validation, authentic depth, or history-coverage gates.
+## 2026-10-23 — A10 compute transport JSON decode depth
+
+**Finding:** The worker transport round-trip normalized cyclic values and JSON encoder recursion, but its final json.loads could still leak a decoder RecursionError.
+
+**Fix:** Normalize final decoder recursion to ComputeProtocolError. The regression replaces only the decoder boundary with a deterministic RecursionError and verifies the stable protocol error.
+
+**Verification:** Actual RouteB source packages first on PYTHONPATH, dedicated .venv-win-app, tests/test_compute_runtime_contracts.py — **19 passed**; Ruff passed; MyPy passed (1 file). The 605-file current source manifest was regenerated and verified at identity dedf0097168391c29a321bcd54863b14de650c57f21d84f195115a91788fdfaa. Evidence: docs/audit_evidence/20261023/a10_compute_transport_decode_recursion_20261023.json.
+
+**Boundary / next cursor:** Synthetic JSON only; no market/account/Train/Validation/Test/Holdout data. Hosted CI for the follow-up RouteB-only revision is pending. Continue local A01-A14 source audit.

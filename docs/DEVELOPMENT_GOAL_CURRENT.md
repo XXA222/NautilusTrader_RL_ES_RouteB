@@ -572,3 +572,6 @@ M13 两版阶段分析器、fold-ledger reconciler 与 distribution manifest rea
 ### 2026-10-23 current continuation cursor — A10 source manifest v3
 
 Actual RouteB source manifest is v3: Git text line-ending normalization, exact-byte -text preservation, runtime/upstream untracked-path redaction, and fail-closed old-schema verification. RouteB dedicated .venv-win-app tests: 9 passed; Ruff/MyPy passed; 605-file manifest identity cbd98ba52db1e2ffcd3e564060aefdcab2e75f0b5ca30090c7e5d2477f0b3a82 self-verifies. Evidence: docs/audit_evidence/20261023/a10_source_manifest_platform_stable_v3_20261023.json. Hosted Linux/Windows/JAX CI for this revision remains pending. Continue implementation-ready A01-A14 engineering work.
+### 2026-10-23 current continuation cursor — A10 compute transport decoder
+
+Fixed the remaining small_json round-trip decoder RecursionError leak as ComputeProtocolError. Actual RouteB source selector: 19 passed; Ruff/MyPy passed. Current 605-file source identity: dedf0097168391c29a321bcd54863b14de650c57f21d84f195115a91788fdfaa. Evidence: docs/audit_evidence/20261023/a10_compute_transport_decode_recursion_20261023.json. New Hosted clean CI is pending; continue other implementation-ready A01-A14 engineering issues.
