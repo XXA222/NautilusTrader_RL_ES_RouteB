@@ -823,3 +823,4 @@ class CuratedStore:
                            start, end, len(self.events), report.hash, feature_hash,
                            tuple(sorted({e.source_hash for e in self.events})),
                            report.missing_minutes, report.grade)
+
