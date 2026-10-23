@@ -196,6 +196,32 @@ def test_imagined_account_rejects_unknown_limit_fill_policy(policy):
                         limit_fill_policy=policy)
 
 
+@pytest.mark.parametrize("field", [
+    "initial_equity", "fee_maker", "fee_taker", "max_abs_qty",
+    "simulated_depth_fraction", "market_slippage_bps", "price_increment",
+])
+def test_imagined_account_rejects_boolean_numeric_settings(field):
+    settings = {
+        "initial_equity": 1000,
+        "fee_maker": 0.001,
+        "fee_taker": 0.001,
+        "max_abs_qty": 1e6,
+        "simulated_depth_fraction": 1.0,
+        "market_slippage_bps": 0.0,
+        "price_increment": 0.01,
+    }
+    settings[field] = True
+    with pytest.raises(ValueError, match="invalid scenario account settings"):
+        ImaginedAccount(**settings)
+
+def test_imagined_account_rejects_boolean_order_values():
+    account = ImaginedAccount(initial_equity=1000, fee_maker=0.001, fee_taker=0.001)
+    with pytest.raises(ValueError, match="invalid target/risk limit"):
+        account.submit(target_qty=True, decision_ns=MINUTE_NS)
+    with pytest.raises(ValueError, match="limit needs price"):
+        account.submit(target_qty=1, decision_ns=MINUTE_NS,
+                       kind="limit", limit_price=True)
+
 def test_imagined_account_fails_closed_on_mixed_market_instruments():
     account = ImaginedAccount(initial_equity=1000, fee_maker=.0001, fee_taker=.001)
     account.on_bar(Candle(MINUTE_NS, MINUTE_NS, "BTC/USD.SIM", 100, 101, 99, 100, 1000))
@@ -418,3 +444,65 @@ def test_forecast_request_from_visible_only(tmp_path):
             anchor_ns=b.ts_close_ns,train_scope_id='train-demo',train_npz_sha256='f'*64,
             output_context_npz=tmp_path/'bad.npz',output_request_json=tmp_path/'bad.json',
             horizon=5,n_paths=16,seed=31)
+
+
+def test_imagined_depth_fraction_is_one_shot_capacity_for_pending_order():
+    history = bars(4, start=1)
+    account = ImaginedAccount(
+        initial_equity=1000, fee_maker=0, fee_taker=0,
+        simulated_depth_fraction=0.4,
+    )
+    account.submit(target_qty=0.5, decision_ns=MINUTE_NS)
+
+    first = account.on_bar(history[1])
+    assert first is not None and first.signed_qty == pytest.approx(0.2)
+    assert account.pending is not None
+    assert account.pending.signed_qty == pytest.approx(0.3)
+    assert account.pending.initial_signed_qty == pytest.approx(0.5)
+    assert account.pending.remaining_depth_qty == pytest.approx(0)
+
+    assert account.on_bar(history[2]) is None
+    assert account.on_bar(history[3]) is None
+    assert account.pending is not None
+    assert account.pending.signed_qty == pytest.approx(0.3)
+    assert account.qty == pytest.approx(0.2)
+    assert sum(fill.signed_qty for fill in account.fills) == pytest.approx(0.2)
+
+
+
+def test_imagined_partial_order_cancel_keeps_filled_quantity_and_equity():
+    history = bars(3, start=1)
+    account = ImaginedAccount(
+        initial_equity=1000, fee_maker=0, fee_taker=0,
+        simulated_depth_fraction=0.4,
+    )
+    account.submit(target_qty=0.5, decision_ns=MINUTE_NS)
+    partial = account.on_bar(history[1])
+    assert partial is not None and partial.signed_qty == pytest.approx(0.2)
+    equity_after_partial = account.equity
+
+    assert account.cancel()
+    assert account.pending is None
+    assert account.qty == pytest.approx(0.2)
+    assert account.equity == pytest.approx(equity_after_partial)
+    assert len(account.fills) == 1
+
+
+@pytest.mark.parametrize("fraction", [-0.1, 1.1, float("nan")])
+def test_imagined_account_rejects_invalid_depth_fraction(fraction):
+    with pytest.raises(ValueError, match="scenario account settings"):
+        ImaginedAccount(
+            initial_equity=1000, fee_maker=0, fee_taker=0,
+            simulated_depth_fraction=fraction,
+        )
+
+@pytest.mark.parametrize(("market_slippage_bps", "price_increment"), [
+    (-0.1, 0.01), (10_000, 0.01), (float("nan"), 0.01), (2, 0),
+])
+def test_imagined_account_rejects_invalid_adverse_fill_settings(
+        market_slippage_bps, price_increment):
+    with pytest.raises(ValueError, match="scenario account settings"):
+        ImaginedAccount(
+            initial_equity=1000, fee_maker=0, fee_taker=0,
+            market_slippage_bps=market_slippage_bps, price_increment=price_increment,
+        )

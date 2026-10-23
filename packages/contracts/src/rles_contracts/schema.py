@@ -53,19 +53,12 @@ class FieldSpec:
             raise ValueError("required field must not have a default")
         if not self.required:
             import json
+            from .json_utils import loads_strict_json
             try:
                 default_json = self.default_json
                 if not isinstance(default_json, str):
                     raise ValueError("optional field default must be a string")
-                def _check_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
-                    value: dict[str, object] = {}
-                    for key, item in pairs:
-                        if key in value:
-                            raise ValueError("duplicate default JSON field")
-                        value[key] = item
-                    return value
-                parsed = json.loads(default_json, object_pairs_hook=_check_pairs,
-                                    parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))
+                parsed = loads_strict_json(default_json)
             except (ValueError, TypeError) as exc:
                 raise ValueError("invalid canonical JSON default") from exc
             if json.dumps(parsed, ensure_ascii=True, sort_keys=True,

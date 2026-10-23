@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
-from .json_utils import ensure_json_nesting_depth
+from .json_utils import loads_strict_json
 
 
 class ErrorCategory(StrEnum):
@@ -115,19 +115,15 @@ def error_json(error: RLESError) -> str:
 def parse_error_json(blob: bytes) -> ErrorEnvelope:
     """Verify an exact canonical CLI error envelope, including derived exit status."""
     import json
-    from .serialization import _no_duplicate_pairs
 
     if type(blob) is not bytes:
         raise TypeError("error JSON must be bytes")
     try:
-        ensure_json_nesting_depth(blob)
+        data = loads_strict_json(blob.decode("ascii"))
     except ValueError as exc:
-        raise ValueError("error JSON exceeds the supported nesting depth") from exc
-    try:
-        data = json.loads(blob.decode("ascii"), object_pairs_hook=_no_duplicate_pairs,
-                          parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))
-    except RecursionError as exc:
-        raise ValueError("error JSON exceeds the supported nesting depth") from exc
+        if "supported nesting depth" in str(exc):
+            raise ValueError("error JSON exceeds the supported nesting depth") from exc
+        raise
     expected = {"category", "code", "message", "retryable", "run_id", "cause_code",
                 "schema_version", "exit_code"}
     if type(data) is not dict or set(data) != expected:

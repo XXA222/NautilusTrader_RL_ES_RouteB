@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-23T09:52:41.021877+00:00",
-  "source_identity_sha256": "9d6d7433a98162ae95fcda9d80a680a7a4a3e108b83e984b7ad22c6217527ac3",
+  "generated_at_utc": "2026-10-23T13:01:48.373358+00:00",
+  "source_identity_sha256": "8ac14ea4f433ea58d30eacabc5907b7c7f332540314d1ff576100f2f39269b3a",
   "scope": {
     "included": [
       ".gitattributes",
@@ -923,8 +923,8 @@
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/json_utils.py",
-      "size_bytes": 1007,
-      "sha256": "38d989c9b57c7d06f66e715233ae3e3d689856391d9dd499945cda60931099a4"
+      "size_bytes": 354,
+      "sha256": "18dbad135a59decffada0eb355726082277e7948abead2b878e7025869c7d136"
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/lanes.py",
@@ -1003,8 +1003,8 @@
     },
     {
       "path": "packages/contracts/src/rles_contracts/errors.py",
-      "size_bytes": 5303,
-      "sha256": "1cda16098ef18f37c386b1ecd41a9a46838282e27f7ecd6129d269fb030ddd02"
+      "size_bytes": 5024,
+      "sha256": "4bff38dbd4001fc27e96cd2f7de36b265e292f55820f5a6f8456abe084deacf3"
     },
     {
       "path": "packages/contracts/src/rles_contracts/frozen.py",
@@ -1013,8 +1013,8 @@
     },
     {
       "path": "packages/contracts/src/rles_contracts/json_utils.py",
-      "size_bytes": 1549,
-      "sha256": "6555f1461f56c32b5829359ea3def814e31a1c57a78ea09ef8ee086e4de50c35"
+      "size_bytes": 2866,
+      "sha256": "28c9b21acad96d88d2ab33bfe1443aa21bcac3e0871f0d27d25d38a1de471d3e"
     },
     {
       "path": "packages/contracts/src/rles_contracts/manifest.py",
@@ -1043,8 +1043,8 @@
     },
     {
       "path": "packages/contracts/src/rles_contracts/schema.py",
-      "size_bytes": 4848,
-      "sha256": "ac9201a13c6b151beadc91f9d819c7894c2e8e49fb8a37c62556728f085951e4"
+      "size_bytes": 4403,
+      "sha256": "46455647e261ac0f2c9fb1da15fbd0f04fc050faf2ea0279333a88eb2fd358e6"
     },
     {
       "path": "packages/contracts/src/rles_contracts/seed.py",
@@ -1053,8 +1053,8 @@
     },
     {
       "path": "packages/contracts/src/rles_contracts/serialization.py",
-      "size_bytes": 11756,
-      "sha256": "da3171286e3cf93d654927ddfc4ad68c6b447121956fb467086e29f4ea0b2be0"
+      "size_bytes": 11269,
+      "sha256": "68d2edf57b89e7fefcf2722acdd0562d9434f9a1c32becb34b49d8f9687667ac"
     },
     {
       "path": "packages/contracts/src/rles_contracts/validation.py",
@@ -1073,8 +1073,8 @@
     },
     {
       "path": "packages/data/src/rles_data/__main__.py",
-      "size_bytes": 7892,
-      "sha256": "aa28a1003c020a56c15e07ecdde38014b248d115a8721c34319bd81de70d19ed"
+      "size_bytes": 7825,
+      "sha256": "1b15bfa521906f1791abcb229a9525be497f138809c63af38cc8078620d4f08b"
     },
     {
       "path": "packages/data/src/rles_data/binance_archive.py",
@@ -1113,8 +1113,8 @@
     },
     {
       "path": "packages/data/src/rles_data/json_utils.py",
-      "size_bytes": 1223,
-      "sha256": "75c4c43a4826c5164c6eef574425ad20c278bee8931ad9859466bd1f65c495ec"
+      "size_bytes": 511,
+      "sha256": "26359566361f6806581358d96fda4fd5a1e0ef900f86f83676047a80a65daf9b"
     },
     {
       "path": "packages/data/src/rles_data/quality.py",
@@ -1163,8 +1163,8 @@
     },
     {
       "path": "packages/es_evotorch/src/rles_es_evotorch/json_utils.py",
-      "size_bytes": 1003,
-      "sha256": "1d3b78e05b0c7b116f73bb4e62dcb056a1c246fc4ef04a915e043f020dfc2926"
+      "size_bytes": 339,
+      "sha256": "0d6697d4e80168d9e940fd75c3b0f329809e2e1da07a0be37170e5515ca38038"
     },
     {
       "path": "packages/es_evotorch/src/rles_es_evotorch/provider.py",
@@ -1333,8 +1333,8 @@
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/json_utils.py",
-      "size_bytes": 1046,
-      "sha256": "a81c4fd3e4da805c5987ee12b1c50a73cc66beb5f9ac0445b65cd65e43513e14"
+      "size_bytes": 364,
+      "sha256": "6208d8c7cebb25f63e002cb8623515275996f7cf039b13d293d2dc0d24dcf53a"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/lineage.py",
@@ -1348,8 +1348,8 @@
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/research_access.py",
-      "size_bytes": 29707,
-      "sha256": "17450ca52ca6dc92153b722e2726bbb368e50763af623f5f38db9ecc24864f9d"
+      "size_bytes": 29044,
+      "sha256": "51b40f8722df3d44ff28cc34443b71eb4fce0bb65308ae87da39131e238e7291"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/rl_stage.py",
@@ -1388,8 +1388,8 @@
     },
     {
       "path": "packages/research/src/rles_research/artifacts.py",
-      "size_bytes": 13630,
-      "sha256": "30fdc17e5f1406977f5e404be4e7eb4f8d66a4e0f1d3a78d504c1e671c9cae00"
+      "size_bytes": 12694,
+      "sha256": "741decebb9e711132a016c578b8257dee91bb780f28ff5a6b78a0681b7e113b5"
     },
     {
       "path": "packages/research/src/rles_research/baselines.py",
@@ -1398,13 +1398,13 @@
     },
     {
       "path": "packages/research/src/rles_research/binance_cashflows.py",
-      "size_bytes": 14043,
-      "sha256": "98ab9a662dc0cad0eeb0d3c17c3640755cbe62f785e6c23ecd872f44912617e0"
+      "size_bytes": 13029,
+      "sha256": "0204abb0f9b2215afcada3811044d37a24da476dcccd172f6fa1d4aa963835d6"
     },
     {
       "path": "packages/research/src/rles_research/json_utils.py",
-      "size_bytes": 1013,
-      "sha256": "ccbab29da566e09bb85b73897803152e4192488ec32093ecad610b7920f05f70"
+      "size_bytes": 358,
+      "sha256": "3163464d11daf80e4219bec5381bc6e8ce4e0e6418faeccf111b0518c05498ab"
     },
     {
       "path": "packages/research/src/rles_research/ledger.py",
@@ -1498,8 +1498,8 @@
     },
     {
       "path": "packages/rl_sb3/src/rles_rl_sb3/json_utils.py",
-      "size_bytes": 1038,
-      "sha256": "498f2a4ecba70595f42341fe8e0222a5c53c3a1323e8a16a58fa9c9922439749"
+      "size_bytes": 348,
+      "sha256": "0179a95cab06ec565a508479548e4e3cdd58fc79df3d3b0020f40a6579657674"
     },
     {
       "path": "packages/rl_sb3/src/rles_rl_sb3/noise.py",
@@ -1608,8 +1608,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/json_utils.py",
-      "size_bytes": 1325,
-      "sha256": "7a5978581f91adbd620944d563e75d279c0acaf74d9a90935bad27c51f20c4d7"
+      "size_bytes": 513,
+      "sha256": "329d115a41c1d93800b01073754070ad08b72247df32eee99f6f785168942c42"
     },
     {
       "path": "packages/world_model/src/rles_world_model/learner.py",
@@ -1663,8 +1663,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/imagined_account.py",
-      "size_bytes": 7868,
-      "sha256": "b42cb39a296630ddd23b313c4b9baf67bf8cba89a8aa58a6681d0793c8ef72a4"
+      "size_bytes": 11357,
+      "sha256": "cd360dcde389da1262730e30047ff41a79979e15a83d696a5798c31e65004c72"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/integration.py",
@@ -2587,6 +2587,11 @@
       "sha256": "cdde0dcd782b46a095dc7e25c778bdc05990671ce4cf69e51f79eb1d9c968b08"
     },
     {
+      "path": "tests/test_contract_json_unification.py",
+      "size_bytes": 1502,
+      "sha256": "612c909a73ee8b0b114face1caee811ef460907588c2a1041bc21e14bfe14a8d"
+    },
+    {
       "path": "tests/test_cuda_smoke.py",
       "size_bytes": 1874,
       "sha256": "f03f58b86ffbeafeed30838356063929c68c3c84ed75c119c74430f6776bd1d5"
@@ -2743,8 +2748,8 @@
     },
     {
       "path": "tests/test_nautilus_adapter_smoke.py",
-      "size_bytes": 67066,
-      "sha256": "b7d002643910e781773d9f6847b0f6c0143513b15f77da423f372ee0514a04b0"
+      "size_bytes": 74954,
+      "sha256": "f12ea93c67738caf785df0dac875da6e60eff6800bc42314808900e15d786f70"
     },
     {
       "path": "tests/test_orchestrator_workflow.py",
@@ -2773,8 +2778,8 @@
     },
     {
       "path": "tests/test_registered_train_window_read.py",
-      "size_bytes": 3751,
-      "sha256": "65878605e0d54b79a23fe19c4741add1a811ac41c38f80b13afe6b54eabe07b4"
+      "size_bytes": 5013,
+      "sha256": "54f5f380af89307f9c45a9ff6b7b1f7a507fa17897b8012f8caeb91a6e15d9f4"
     },
     {
       "path": "tests/test_research_access.py",
@@ -2953,8 +2958,8 @@
     },
     {
       "path": "tests/world_model/test_routeb_additive.py",
-      "size_bytes": 19153,
-      "sha256": "44f216e0126f92e35325125e2001b6b745ad4e2011284b4e18a9c7a9f2c1b40d"
+      "size_bytes": 22715,
+      "sha256": "8f9460aa60f25e3c108b8efe9669a203f482e06d2fced041ac161f335f79be4e"
     },
     {
       "path": "tests/world_model/test_routeb_e0.py",

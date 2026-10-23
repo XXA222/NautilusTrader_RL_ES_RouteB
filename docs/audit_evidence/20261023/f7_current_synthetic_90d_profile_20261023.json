@@ -1,0 +1,67 @@
+{
+  "cases": [
+    {
+      "lean_execution": {
+        "days": 90,
+        "decision_steps": 129597,
+        "elapsed_seconds": 88.61051579995546,
+        "mode": "lean_execution",
+        "native_report": null,
+        "report_snapshot_sequence_retained": false,
+        "report_snapshot_sink_enabled": false,
+        "rss_end_bytes": 727326720,
+        "rss_peak_bytes": 765853696,
+        "rss_peak_delta_bytes": 192630784,
+        "rss_start_bytes": 573222912,
+        "trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f"
+      },
+      "online_summary": {
+        "days": 90,
+        "decision_steps": 129597,
+        "elapsed_seconds": 98.60595690004993,
+        "mode": "online_summary_sink",
+        "native_report": {
+          "fill_count": 2,
+          "funding_count": 0,
+          "metrics_sha256": "0c9bb2fbdbd241a24d05c4c9b6a3e864bf37db3ea5e78dc71eb9785ea9e50a45",
+          "snapshot_count": 129600,
+          "terminal_flat": true
+        },
+        "report_snapshot_sequence_retained": false,
+        "report_snapshot_sink_enabled": true,
+        "rss_end_bytes": 725258240,
+        "rss_peak_bytes": 764878848,
+        "rss_peak_delta_bytes": 191209472,
+        "rss_start_bytes": 573669376,
+        "trajectory_sha256": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f"
+      },
+      "trajectory_equivalent": true
+    }
+  ],
+  "market_data_used": false,
+  "measurement_note": "Online-summary-sink and lean-execution cases run in independent child processes. The online summary callback consumes each compact snapshot without retaining a per-barrier snapshot sequence. Each child's rss_start is measured after identical synthetic source generation; online-mode peaks include per-barrier metric reduction and final report assembly.",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.14.7",
+  "research_registry_accessed": false,
+  "schema": "rles.f7-synthetic-native-growth.v2",
+  "scope": "synthetic Train-only native-engine replay; no market data or registry access",
+  "source": {
+    "event_count": 389258,
+    "generation_seconds": 15.537373100058176,
+    "rss_end_bytes": 577933312,
+    "rss_peak_bytes": 621334528,
+    "snapshot_sha256": "626685e11f28160ea015602ff1756331c2f80db2454bcc4d1ceb8d30306809e5"
+  },
+  "source_files_sha256": {
+    "packages/data/src/rles_data/core.py": "54a34bc56d579e1664603de02ee7b66b6c0db11a0cb0578f3fbf00c0dbf88170",
+    "packages/data/src/rles_data/features.py": "883a96e7c1d6b9081cdeff73834aade4532a17fc05f02f64d8dc7dc8dda73709",
+    "packages/gym_bridge/src/rles_gym_bridge/episode.py": "2946e08ece0230cb712571f28608774a10ca58092dced55550118f3fc13be253",
+    "packages/gym_bridge/src/rles_gym_bridge/historical.py": "cc562cb332bed0c637d5e604e3b328b870fbba7468f94d428cc77c86fa81087e",
+    "packages/orchestrator/src/rles_orchestrator/application.py": "f321baf1e09483b1230f6e66d2cfe8a6a648ed023fd5c23bdb7335a13b989131",
+    "packages/research/src/rles_research/metrics.py": "144b1c8e111955e78b2f972a7c8bd121a70110176dff3ec413dead393e452383",
+    "packages/research/src/rles_research/native_metrics.py": "1bc4adbf009fc55a9902662234383cebd4d3f9abd2588e9320769abe3c8b1de7",
+    "qa/profile_f7_synthetic_native_growth.py": "46daa4a0cd659ffad88293e26f9cad1c5ee6c1c5765b8df88261c8ee1a5c6302"
+  },
+  "status": "PASS_SYNTHETIC_ENGINEERING_ONLY",
+  "test_data_used": false
+}

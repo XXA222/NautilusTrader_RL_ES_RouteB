@@ -1,0 +1,27 @@
+{
+  "record_id": "b4_imagined_adverse_bps_native_parity_20261023",
+  "date": "2026-10-23",
+  "finding": "ImaginedAccount market fills used bar open while the pinned Native bar engine uses bar close; the Native ConservativeBpsFillModel also applies directional adverse slippage rounded to instrument ticks.",
+  "change": [
+    "Added market_slippage_bps and price_increment scenario settings to ImaginedAccount.",
+    "Market fills now reference bar close, apply buy-up/sell-down adverse bps, and round outward to the configured tick using Decimal arithmetic.",
+    "Added long/short non-flat Native differential with open=1000.03, close=1002.00, 2 bps slippage, and a 0.01 tick."
+  ],
+  "observed_native": {
+    "buy_fill_price": "1002.21",
+    "sell_fill_price": "1001.79"
+  },
+  "verification": {
+    "focused_adverse_bps_cases": "6 passed",
+    "adapter_plus_world_model_additive": "105 passed, 2 skipped (JAX unavailable in app interpreter)",
+    "isolated_routeb_jax_cpu_selectors": "102 passed, 0 skipped",
+    "default_pr_selector": "913 passed, 4 skipped, 666 deselected in 257.77s",
+    "ruff": "passed for packages, ci, qa, tests",
+    "mypy": "passed for packages and qa; 227 source files"
+  },
+  "limits": [
+    "Verified against the pinned synthetic Native ConservativeBpsFillModel only.",
+    "OHLC bars do not prove real spread, orderbook depth, queue position, or venue-specific execution.",
+    "The complete WorldModel suite still has a separate CLI collection limitation in the learner-only venv because Gymnasium is absent; JAX-specific selectors pass in that venv."
+  ]
+}

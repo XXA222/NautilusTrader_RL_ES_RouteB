@@ -1381,3 +1381,166 @@ def test_native_funding_event_deduplication_rejects_conflicting_records() -> Non
     conflict = PositionAdjusted.from_dict({**record, "pnl_change": "-0.02 USD"})
     with pytest.raises(EngineBoundaryError, match="conflicting facts"):
         NativeFactsReader._unique_events((event, conflict))
+
+@pytest.mark.parametrize("sign", [1, -1])
+def test_b4_imagined_partial_depth_lifecycle_matches_native_bar_engine(sign: int) -> None:
+    """Synthetic bar depth is a one-order capacity; leftover stays pending."""
+    from dataclasses import replace
+    from rles_execution import FillProfile, LatencyProfile, ResolvedExecutionConfig
+    from rles_nautilus_adapter.perpetual import make_perpetual_session
+
+    minute = MINUTE_NS
+    latency = LatencyProfile("depth-parity-base", 0, 0, 0)
+    stress_latency = LatencyProfile("depth-parity-stress", 0, 0, 0)
+    execution = ResolvedExecutionConfig(
+        "0.4.0", Decimal("0.01"), "wait", "MARKET", "GTC", "force_flatten_with_cost",
+        latency, stress_latency,
+        FillProfile("depth-parity-base-fill", Decimal("1")),
+        FillProfile("depth-parity-stress-fill", Decimal("2"),
+                    simulated_depth_fraction=Decimal("0.4")),
+    )
+    rule = {
+        "instrument": "ETHUSDT-PERP.SIM", "quantity_unit": "ETH", "base_currency": "ETH",
+        "quote_currency": "USDT", "contract_multiplier": "1",
+        "tick_size": "0.01", "step_size": "0.001", "min_qty": "0.001",
+        "min_notional": "10", "maker_fee": "0", "taker_fee": "0",
+        "initial_margin_rate": "0.01", "maintenance_margin_rate": "0.005",
+        "effective_ns": 1,
+    }
+    native = make_perpetual_session(
+        rule=rule, execution=execution, mode="stress", starting_balance=Decimal("100000"),
+    )
+    imagined = ImaginedAccount(
+        initial_equity=100_000, fee_maker=0, fee_taker=0,
+        simulated_depth_fraction=0.4,
+    )
+    target = Decimal("0.500") * sign
+    instrument = "ETHUSDT-PERP.SIM"
+
+    def candle(number: int) -> Candle:
+        timestamp = number * minute
+        return Candle(timestamp, timestamp, instrument, 1000, 1000, 1000, 1000, 100)
+
+    try:
+        native.open(SimpleNamespace(dataset_hash="c" * 64, fold_hash="d" * 64,
+                                   config_hash=execution.fingerprint()))
+        native.bootstrap((_perpetual_batch(1),), decision_ts_ns=minute)
+        imagined.on_bar(candle(1))
+        imagined.submit(target_qty=float(target), decision_ns=minute)
+        plan = replace(
+            _perpetual_plan(f"depth-parity-{sign}", str(target)),
+            latency_model_id=stress_latency.model_id,
+            execution_spec_hash=execution.fingerprint(),
+        )
+
+        snapshot = native.advance(
+            plan, batches=(_perpetual_batch(2), _perpetual_batch(3), _perpetual_batch(4)),
+            next_decision_ts_ns=4 * minute,
+        )
+        imagined_fills = [imagined.on_bar(candle(number)) for number in (2, 3, 4)]
+        native_filled = sum(Decimal(fill["last_qty"]) for fill in snapshot.fills)
+        assert native_filled == Decimal("0.200")
+        assert sum(abs(fill.signed_qty) for fill in imagined.fills) == pytest.approx(0.2)
+        assert sum(fill is not None for fill in imagined_fills) == 1
+        assert len(snapshot.orders) == 1
+        assert snapshot.orders[0]["status"] == "PARTIALLY_FILLED"
+        assert Decimal(snapshot.orders[0]["leaves_qty"]) == Decimal("0.300")
+        assert imagined.pending is not None
+        assert imagined.pending.signed_qty == pytest.approx(float(Decimal("0.300") * sign))
+        assert imagined.qty == pytest.approx(float(Decimal("0.200") * sign))
+        native_order_id = snapshot.orders[0]["client_order_id"]
+        cancel = replace(
+            _perpetual_plan(f"depth-parity-cancel-{sign}", str(target)),
+            action="CANCEL", delta_qty=Decimal(0),
+            cancel_policy=PendingOrderPolicy.CANCEL_REPLACE,
+            cancel_order_ids=(native_order_id,), requires_cancel_ack=True,
+            latency_model_id=stress_latency.model_id,
+            execution_spec_hash=execution.fingerprint(),
+        )
+        cancelled = native.advance(
+            cancel, batches=(_perpetual_batch(5),), next_decision_ts_ns=5 * minute,
+        )
+        imagined_cancel_bar_fill = imagined.on_bar(candle(5))
+        assert imagined_cancel_bar_fill is None
+        assert imagined.cancel()
+        assert not imagined.cancel()
+        assert imagined.pending is None
+        assert imagined.qty == pytest.approx(float(Decimal("0.200") * sign))
+        assert len(imagined.fills) == 1
+        assert cancelled.orders == ()
+        assert cancelled.all_orders[-1]["status"] == "CANCELED"
+        assert len(cancelled.positions) == 1
+        assert sum(Decimal(fill["last_qty"]) for fill in cancelled.fills) == Decimal("0.200")
+    finally:
+        native.close()
+
+@pytest.mark.parametrize("sign", [1, -1])
+def test_b4_imagined_adverse_bps_market_fill_matches_native(sign: int) -> None:
+    from dataclasses import replace
+    from rles_execution import FillProfile, LatencyProfile, ResolvedExecutionConfig
+    from rles_nautilus_adapter.perpetual import make_perpetual_session
+
+    minute = MINUTE_NS
+    latency = LatencyProfile("adverse-bps-base", 0, 0, 0)
+    stress_latency = LatencyProfile("adverse-bps-stress", 0, 0, 0)
+    execution = ResolvedExecutionConfig(
+        "0.4.0", Decimal("0.01"), "wait", "MARKET", "GTC", "force_flatten_with_cost",
+        latency, stress_latency,
+        FillProfile("adverse-bps-base-fill", Decimal("1")),
+        FillProfile("adverse-bps-stress-fill", Decimal("2")),
+    )
+    rule = {
+        "instrument": "ETHUSDT-PERP.SIM", "quantity_unit": "ETH", "base_currency": "ETH",
+        "quote_currency": "USDT", "contract_multiplier": "1",
+        "tick_size": "0.01", "step_size": "0.001", "min_qty": "0.001",
+        "min_notional": "10", "maker_fee": "0", "taker_fee": "0",
+        "initial_margin_rate": "0.01", "maintenance_margin_rate": "0.005",
+        "effective_ns": 1,
+    }
+    native = make_perpetual_session(
+        rule=rule, execution=execution, mode="stress", starting_balance=Decimal("100000"),
+    )
+    imagined = ImaginedAccount(
+        initial_equity=100_000, fee_maker=0, fee_taker=0, equity_precision=8,
+        market_slippage_bps=2, price_increment=0.01,
+    )
+
+    def candle(number: int) -> Candle:
+        timestamp = number * minute
+        return Candle(timestamp, timestamp, "ETHUSDT-PERP.SIM", 1000.03, 1002, 1000.03, 1002, 100)
+
+    quantity = Decimal("0.500") * sign
+    try:
+        native.open(SimpleNamespace(dataset_hash="e" * 64, fold_hash="f" * 64,
+                                   config_hash=execution.fingerprint()))
+        native.bootstrap((_perpetual_batch(1),), decision_ts_ns=minute)
+        imagined.on_bar(candle(1))
+        imagined.submit(target_qty=float(quantity), decision_ns=minute)
+        plan = replace(
+            _perpetual_plan(f"adverse-bps-{sign}", str(quantity)),
+            latency_model_id=stress_latency.model_id,
+            execution_spec_hash=execution.fingerprint(),
+        )
+        source_batch = _perpetual_batch(2)
+        source_event = source_batch.events[0]
+        payload = dict(source_event.payload.entries)
+        payload.update({"open": "1000.03", "high": "1002.00", "low": "1000.03",
+                        "close": "1002.00"})
+        price_discovery_batch = VisibleBatch(
+            source_batch.timestamp_ns,
+            (replace(source_event, payload=FrozenFields.from_mapping(payload)),),
+            True,
+        )
+        snapshot = native.advance(
+            plan, batches=(price_discovery_batch,), next_decision_ts_ns=2 * minute,
+        )
+        imagined_fill = imagined.on_bar(candle(2))
+        assert imagined_fill is not None
+        assert len(snapshot.fills) == 1
+        native_price = Decimal(snapshot.fills[0]["last_px"])
+        assert native_price == (Decimal("1002.21") if sign > 0 else Decimal("1001.79"))
+        assert Decimal(str(imagined_fill.price)) == native_price
+        assert imagined.qty == pytest.approx(float(quantity))
+        assert imagined.equity == pytest.approx(float(snapshot.equity), rel=0, abs=1e-8)
+    finally:
+        native.close()

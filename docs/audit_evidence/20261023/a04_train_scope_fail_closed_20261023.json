@@ -1,0 +1,19 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A04 / registered Train reader fail-closed scope validation",
+  "source_identity_sha256": "8ac14ea4f433ea58d30eacabc5907b7c7f332540314d1ff576100f2f39269b3a",
+  "finding": "read_registered_train_window accepted direct configs carrying Test/Holdout scopes and silently skipped overlap checks for malformed evaluation objects or boolean boundaries.",
+  "change": "Reject non-object configs, any configured Test/Holdout scope, malformed non-null evaluation boundaries, and all overlapping Train/evaluation reads before reservation or payload decode.",
+  "red_regression": "3 cases failed before the fix: Test, Holdout, and boolean evaluation boundary were all allowed through.",
+  "verification": {
+    "research_access_and_wfo_source_selector": "159 passed",
+    "research_access_and_wfo_installed_wheel_selector": "159 passed",
+    "default_source_PR_selector": "913 passed, 4 skipped, 677 deselected, 46 dependency warnings, 287.82 seconds",
+    "wheel_manifest": "12 wheels, all_match=true",
+    "installed_provenance": "12 distributions and 6 entry points imported from the isolated wheel environment",
+    "ruff": "passed for changed reader and tests",
+    "mypy": "passed for research_access.py"
+  },
+  "data_access": "Synthetic temporary paths and mocked reservation/read functions only. No project registry, market, account, Train, Validation, Test, or Holdout payload was accessed.",
+  "boundary": "This closes a low-level reader validation defect; it does not recover historical pre-registration access coverage or authorize any formal data window."
+}

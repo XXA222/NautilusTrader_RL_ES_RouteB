@@ -10,23 +10,18 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from rles_contracts.json_utils import ensure_json_nesting_depth
+from .json_utils import loads_unique_json
 
 from .metrics import MetricsError
 
 
-def _reject_json_constant(value: str) -> None:
-    raise json.JSONDecodeError(f"non-standard JSON constant: {value}", "", 0)
-
-
-def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    """Reject duplicate keys so raw response bytes have one unambiguous meaning."""
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise MetricsError("Binance income-history JSON contains a duplicate object key")
-        result[key] = value
-    return result
+def _parse_income_json(payload: bytes, *, context: str) -> Any:
+    try:
+        return loads_unique_json(payload)
+    except ValueError as exc:
+        if "duplicate JSON object key" in str(exc):
+            raise MetricsError(f"{context} contains a duplicate object key") from exc
+        raise MetricsError(f"invalid {context}") from exc
 
 
 @dataclass(frozen=True)
@@ -79,15 +74,7 @@ def import_binance_usdm_transfer_income(
         raw_bytes = payload if isinstance(payload, bytes) else payload.encode("utf-8")
     except UnicodeEncodeError as exc:
         raise MetricsError("Binance transfer payload string is not valid UTF-8 text") from exc
-    try:
-        ensure_json_nesting_depth(raw_bytes)
-    except ValueError as exc:
-        raise MetricsError("invalid Binance income-history JSON payload") from exc
-    try:
-        document = json.loads(raw_bytes, object_pairs_hook=_unique_json_object,
-                                parse_constant=_reject_json_constant)
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
-        raise MetricsError("invalid Binance income-history JSON payload") from exc
+    document = _parse_income_json(raw_bytes, context="Binance income-history JSON payload")
     if not isinstance(document, list):
         raise MetricsError("Binance income-history payload must be a JSON array")
     if (not isinstance(sample_barriers_ns, Sequence)
@@ -213,15 +200,7 @@ def import_binance_usdm_transfer_income_pages(
             raise MetricsError("income page limit must be between 1 and Binance's maximum of 1000")
         if not isinstance(page.payload, bytes):
             raise MetricsError("income page must preserve exact response bytes")
-        try:
-            ensure_json_nesting_depth(page.payload)
-        except ValueError as exc:
-            raise MetricsError("invalid Binance income-history page JSON") from exc
-        try:
-            page_rows = json.loads(page.payload, object_pairs_hook=_unique_json_object,
-                                    parse_constant=_reject_json_constant)
-        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
-            raise MetricsError("invalid Binance income-history page JSON") from exc
+        page_rows = _parse_income_json(page.payload, context="Binance income-history page JSON")
         if not isinstance(page_rows, list):
             raise MetricsError("Binance income-history page must be a JSON array")
         if len(page_rows) >= page.limit:

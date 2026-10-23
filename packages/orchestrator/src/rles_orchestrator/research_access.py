@@ -1,13 +1,12 @@
 """Resolve the shared project ledger; never derive it from an experiment output."""
 from contextvars import ContextVar
 from hashlib import sha256
-import json
 from pathlib import Path
 from time import time_ns
 from typing import Any, Callable
 import uuid
 
-from rles_contracts.json_utils import ensure_json_nesting_depth
+from rles_orchestrator.json_utils import loads_unique_json
 
 from rles_data.core import (CuratedStore, DataError, FoldManifest, MINUTE_NS, digest,
                             require_hash, require_ns)
@@ -19,35 +18,11 @@ ACTIVE_OWNER: ContextVar[str | None] = ContextVar("research_owner", default=None
 DATA_FAMILY = "perpetual-market-v1"
 
 
-def _json_object_without_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise json.JSONDecodeError(f"duplicate JSON object key: {key!r}", "", 0)
-        result[key] = value
-    return result
-
-
-def _reject_json_constant(value: str) -> None:
-    raise json.JSONDecodeError(f"non-standard JSON constant: {value}", "", 0)
-
-
 def _strict_inventory_json(content: bytes) -> dict[str, Any]:
     try:
-        ensure_json_nesting_depth(content)
-    except ValueError as exc:
-        raise DataError("legacy research inventory JSON exceeds the supported nesting depth") from exc
-    try:
-        inventory = json.loads(content, object_pairs_hook=_json_object_without_duplicate_keys,
-                               parse_constant=_reject_json_constant)
-    except json.JSONDecodeError as exc:
-        raise DataError(
-            f"legacy research inventory JSON is invalid or ambiguous: {exc.msg}"
-        ) from exc
-    except UnicodeDecodeError as exc:
-        raise DataError("legacy research inventory JSON is not valid UTF-8") from exc
-    except RecursionError as exc:
-        raise DataError("legacy research inventory JSON exceeds the supported nesting depth") from exc
+        inventory = loads_unique_json(content)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise DataError(f"legacy research inventory JSON is invalid or ambiguous: {exc}") from exc
     if (not isinstance(inventory, dict)
             or inventory.get("schema") != "rles.legacy-research-access.v1"
             or not isinstance(inventory.get("entries"), list)
@@ -443,13 +418,16 @@ def read_registered_train_window(config: dict, window: dict, *, marker_sha256: s
                                   label: str,
                                   allow_legacy_isolated_snapshot: bool = False) -> CuratedStore:
     """Reserve a development interval before decoding a scoped curated snapshot."""
+    if not isinstance(config, dict):
+        raise DataError("invalid registered Train-inner market window")
     environment = config.get("environment")
     if (not isinstance(environment, dict) or not isinstance(environment.get("market_path"), str)
             or not isinstance(window, dict) or set(window) != {"start_ns", "end_ns"}
             or type(window.get("start_ns")) is not int or type(window.get("end_ns")) is not int
             or window["start_ns"] >= window["end_ns"]
             or not isinstance(label, str) or not label.startswith("train-")
-            or type(allow_legacy_isolated_snapshot) is not bool):
+            or type(allow_legacy_isolated_snapshot) is not bool
+            or config.get("test") is not None or config.get("holdout") is not None):
         raise DataError("invalid registered Train-inner market window")
     start_ns, end_ns = require_ns(window["start_ns"]), require_ns(window["end_ns"])
     training_start, training_end = environment.get("start_ns"), environment.get("end_ns")
@@ -457,10 +435,13 @@ def read_registered_train_window(config: dict, window: dict, *, marker_sha256: s
             or start_ns > training_start or end_ns < training_end):
         raise DataError("registered read scope must cover the configured Train-inner interval")
     evaluation = config.get("evaluation")
-    if isinstance(evaluation, dict):
-        eval_start, eval_end = evaluation.get("start_ns"), evaluation.get("end_ns")
-        if (type(eval_start) is int and type(eval_end) is int
-                and start_ns < eval_end and end_ns > eval_start):
+    if evaluation is not None:
+        if (not isinstance(evaluation, dict)
+                or type(evaluation.get("start_ns")) is not int
+                or type(evaluation.get("end_ns")) is not int
+                or evaluation["start_ns"] >= evaluation["end_ns"]):
+            raise DataError("invalid registered Train-inner market window")
+        if start_ns < evaluation["end_ns"] and end_ns > evaluation["start_ns"]:
             raise DataError("registered Train-inner read scope overlaps the evaluation interval")
     marker_sha256 = require_hash(marker_sha256)
     scope = {"start_ns": start_ns, "end_ns": end_ns}

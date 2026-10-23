@@ -1,0 +1,37 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "B4 / ImaginedAccount boolean numeric input rejection; F7 / current 90-day synthetic RSS trajectory parity",
+  "source_identity_sha256": "a949604a39cfe03ced052ce93b665d2123c15b22146270d910e88eac3fe86def",
+  "b4_boolean_numeric_inputs": {
+    "finding": "Python bool values passed several numeric comparisons as 0/1; slippage and tick booleans later failed as Decimal.InvalidOperation instead of at configuration validation.",
+    "change": "Reject bool in numeric account settings, target quantity, Pending signed quantity, and limit price.",
+    "red_regression": "5 cases failed by accepting values; 2 fee fields already rejected through range validation.",
+    "verification": {
+      "new_boolean_regressions": "8 passed",
+      "adapter_and_world_model_selectors": "113 passed, 2 JAX-only skipped",
+      "mypy": "imagined_account.py passed",
+      "ruff": "passed for changed module and test"
+    }
+  },
+  "current_wheels": {
+    "wheel_count": 12,
+    "source_distributions": 12,
+    "wheel_manifest_all_match": true,
+    "source_files": 607,
+    "isolated_python": "3.14.7",
+    "installed_distributions": 12,
+    "entry_points_imported": 6,
+    "default_pr_selector": "913 passed, 4 skipped, 674 deselected, 46 dependency warnings, 287.61 seconds"
+  },
+  "f7_synthetic_90_day": {
+    "decision_steps": 129597,
+    "synthetic_event_count": 389258,
+    "online_summary_rss_peak_delta_bytes": 191209472,
+    "lean_execution_rss_peak_delta_bytes": 192630784,
+    "trajectory_sha256_both_modes": "4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f",
+    "metrics_sha256": "0c9bb2fbdbd241a24d05c4c9b6a3e864bf37db3ea5e78dc71eb9785ea9e50a45",
+    "trajectory_equivalent": true,
+    "evidence": "docs/audit_evidence/20261023/f7_current_synthetic_90d_profile_20261023.json"
+  },
+  "boundary": "Synthetic 90-day data only; no curated market/account/registry or Train/Validation/Test/Holdout payload was read. This is Windows-local evidence; Hosted Linux/Windows/JAX and independent research/provenance gates remain open."
+}

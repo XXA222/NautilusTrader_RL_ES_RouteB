@@ -8,7 +8,7 @@ import os
 import re
 from collections.abc import Mapping
 
-from rles_contracts.json_utils import ensure_json_nesting_depth
+from .json_utils import loads_unique_json
 
 _ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$')
 _EXT = {'.json','.safetensors','.npz','.arrow','.parquet','.txt','.bin','.zip'}
@@ -18,20 +18,6 @@ _HASH_FIELDS = {'data_hash','code_hash','config_hash','seed_hash','deps_hash',
 
 class ArtifactError(RuntimeError):
     pass
-
-
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f'duplicate JSON object key: {key}')
-        result[key] = value
-    return result
-
-
-
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f'non-standard JSON constant: {value}')
 
 
 def _canonical(data: object) -> bytes:
@@ -185,14 +171,9 @@ class ArtifactStore:
             raise ArtifactError('attempt is not committed')
         try:
             index_data=(directory/'integrity.json').read_bytes()
-            ensure_json_nesting_depth(index_data)
-            record=json.loads(index_data, object_pairs_hook=_unique_json_object,
-                              parse_constant=_reject_json_constant)
+            record=loads_unique_json(index_data)
             marker_data=(directory/'COMPLETED').read_bytes()
-            ensure_json_nesting_depth(marker_data)
-            marker=json.loads(marker_data,
-                               object_pairs_hook=_unique_json_object,
-                               parse_constant=_reject_json_constant)
+            marker=loads_unique_json(marker_data)
         except (OSError,ValueError,RecursionError) as exc:
             raise ArtifactError('invalid marker/index') from exc
         if marker!={'integrity_sha256':_digest(index_data),'state':'COMPLETED'}:
@@ -236,10 +217,7 @@ class ArtifactStore:
             raise ArtifactError('L1 manifest digest mismatch')
         try:
             manifest_data=(directory/'manifest.json').read_bytes()
-            ensure_json_nesting_depth(manifest_data)
-            manifest=json.loads(manifest_data,
-                                object_pairs_hook=_unique_json_object,
-                                parse_constant=_reject_json_constant)
+            manifest=loads_unique_json(manifest_data)
         except (OSError,ValueError,RecursionError) as exc:
             raise ArtifactError('unreadable L1 experiment manifest') from exc
         if not isinstance(manifest,dict) or not _HASH_FIELDS.issubset(manifest) or any(

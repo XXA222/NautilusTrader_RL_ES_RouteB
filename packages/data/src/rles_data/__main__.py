@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 from typing import NoReturn
 
-from rles_contracts.json_utils import ensure_json_nesting_depth
+from .json_utils import loads_unique_json
 
 from .core import CuratedStore, DataError
 from .coverage import CoveragePolicy
@@ -56,30 +56,25 @@ def _strict_input(value: dict) -> dict:
     return value
 
 
-def _unique_json_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise DataError(f"duplicate validation manifest key: {key}")
-        result[key] = value
-    return result
-
-
 def _validate(args: argparse.Namespace) -> tuple[dict, int]:
     if args.manifest_json:
         manifest_bytes = Path(args.manifest_json).read_bytes()
         try:
-            ensure_json_nesting_depth(manifest_bytes)
-        except ValueError as exc:
-            raise DataError("validation manifest exceeds the supported nesting depth") from exc
-        try:
-            doc = json.loads(
+            doc = loads_unique_json(
                 manifest_bytes,
-                object_pairs_hook=_unique_json_pairs,
                 parse_constant=lambda value: (_ for _ in ()).throw(DataError(f"invalid JSON constant: {value}")),
             )
-        except RecursionError as exc:
-            raise DataError("validation manifest exceeds the supported nesting depth") from exc
+        except json.JSONDecodeError as exc:
+            if exc.msg.startswith("duplicate JSON object key: "):
+                key = exc.msg.split(": ", 1)[1]
+                raise DataError(f"duplicate validation manifest key: {key}") from exc
+            raise DataError("invalid validation manifest JSON") from exc
+        except DataError:
+            raise
+        except ValueError as exc:
+            if "supported nesting depth" in str(exc):
+                raise DataError("validation manifest exceeds the supported nesting depth") from exc
+            raise DataError("invalid validation manifest JSON") from exc
         if (not isinstance(doc, dict) or set(doc) - {"inputs", "start_ns", "end_ns", "expected_instruments", "coverage_policy"}
                 or not isinstance(doc.get("inputs"), list) or not doc["inputs"]):
             raise DataError("invalid validation manifest")

@@ -1,0 +1,23 @@
+{
+  "record_id": "b4_imagined_partial_depth_native_parity_20261023",
+  "date": "2026-10-23",
+  "scope": "synthetic ETHUSDT-PERP.SIM Native bar execution and ImaginedAccount",
+  "finding": "Finite synthetic depth produced one partial fill, leaving an order partially filled. ImaginedAccount must preserve the residual and retain filled inventory when the remainder is canceled.",
+  "change": [
+    "Added long/short Native-versus-ImaginedAccount coverage over three consecutive bars with a frozen 40% synthetic fill-capacity profile.",
+    "Both paths fill 0.200 of 0.500 and retain 0.300 after replay.",
+    "After explicit cancel, Native reports CANCELED, ImaginedAccount clears the residual order, and both retain the signed 0.200 position and its fill history."
+  ],
+  "verification": {
+    "command": "pytest tests/world_model/test_routeb_additive.py tests/test_nautilus_adapter_smoke.py",
+    "result": "99 passed, 2 skipped (JAX unavailable in the app interpreter)",
+    "ruff": "passed for changed test and source files",
+    "mypy": "passed for packages and qa; 227 source files",
+    "default_pr_selector": "911 passed, 4 skipped, 662 deselected in 257.76s"
+  },
+  "limits": [
+    "Synthetic bar-model capacity is not historical or authentic market depth.",
+    "No claim is made about queue position, venue-specific partial fill rules, or economic eligibility.",
+    "Fresh hosted Linux, Windows, and isolated JAX CI for this revision is pending."
+  ]
+}

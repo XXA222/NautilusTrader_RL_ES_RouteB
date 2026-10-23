@@ -3,7 +3,9 @@ from __future__ import annotations
 from hashlib import sha256
 from pathlib import Path
 
-from rles_data.core import Availability, CuratedStore, Event, MINUTE_NS
+import pytest
+
+from rles_data.core import Availability, CuratedStore, DataError, Event, MINUTE_NS
 from rles_data.io import read_curated_window, write_curated
 from rles_orchestrator import research_access
 
@@ -60,6 +62,36 @@ def test_registered_train_reader_reserves_exact_scope_before_row_group_decode(
     assert events[0][2] == "row_group_scoped_v1" and events[1][2] is False
     assert [event.event_id for event in result.events] == ["bar-3", "bar-4"]
 
+
+@pytest.mark.parametrize("protected_scope", ["test", "holdout", "malformed_evaluation"])
+def test_registered_train_reader_fails_closed_on_formal_or_malformed_scopes(
+    monkeypatch, tmp_path: Path, protected_scope: str,
+) -> None:
+    reserved = False
+
+    def reserve(*_args, **_kwargs):
+        nonlocal reserved
+        reserved = True
+
+    monkeypatch.setattr(research_access, "record_development", reserve)
+    monkeypatch.setattr(research_access, "read_curated_window", lambda *_args, **_kwargs: None)
+    config = {
+        "environment": {"market_path": str(tmp_path / "unused.parquet"),
+                        "start_ns": MINUTE_NS, "end_ns": 3 * MINUTE_NS},
+    }
+    if protected_scope in {"test", "holdout"}:
+        config[protected_scope] = {"start_ns": 3 * MINUTE_NS, "end_ns": 6 * MINUTE_NS}
+    else:
+        config["evaluation"] = {"start_ns": True, "end_ns": 6 * MINUTE_NS}
+
+    with pytest.raises(DataError, match="invalid registered Train-inner market window"):
+        research_access.read_registered_train_window(
+            config,
+            {"start_ns": MINUTE_NS, "end_ns": 6 * MINUTE_NS},
+            marker_sha256="a" * 64,
+            label="train-scoped-read",
+        )
+    assert reserved is False
 
 def test_registered_train_reader_rejects_evaluation_overlap_before_reservation(
     monkeypatch, tmp_path: Path,

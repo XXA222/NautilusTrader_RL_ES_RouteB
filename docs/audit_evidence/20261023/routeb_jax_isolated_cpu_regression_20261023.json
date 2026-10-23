@@ -1,0 +1,17 @@
+{
+  "record_id": "routeb_jax_isolated_cpu_regression_20261023",
+  "date": "2026-10-23",
+  "environment": {
+    "path": "packages/world_model/environment/.venv-win-cpu",
+    "python": "3.12.10",
+    "jax": "0.11.2",
+    "device": "CpuDevice(id=0)"
+  },
+  "command": "pytest tests/world_model/test_routeb_additive.py tests/world_model/test_routeb_e1.py tests/world_model/test_routeb_hierarchy_weights.py tests/world_model/test_routeb_quality_v2.py tests/world_model/test_routeb_r2_regularizer.py tests/world_model/test_routeb_randomness.py",
+  "result": "110 passed, 0 skipped",
+  "full_world_model_collection": {
+    "status": "blocked_by_missing_optional_cli_dependency",
+    "detail": "Collection of tests/world_model/test_cli.py imports the orchestrator Gymnasium bridge; Gymnasium is not installed in the isolated learner environment. No dependency was installed to satisfy collection."
+  },
+  "scope": "JAX model, training, hierarchy, randomness, quality, and regularizer regression; no market or evaluation data accessed"
+}

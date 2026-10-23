@@ -2376,3 +2376,55 @@ Evidence: `docs/audit_evidence/20261023/b4_imagined_native_limit_close_parity_20
 **Data access:** synthetic BTC/USD.SIM OHLC only; no market, account, ledger, Train, Validation, Test, or Holdout data accessed.
 
 **Boundary / next task:** this covers the pinned DefaultFillModel with bar execution. It does not establish queue priority, intrabar sequence, partial-fill, or custom adverse-price fill-model parity. Hosted Linux/Windows/JAX CPU verification is still pending. Continue the locally actionable audit queue and B4 lifecycle checks.
+
+## 2026-10-23 RouteB contracts JSON parser convergence
+
+审计发现 contracts 已提供跨 Python 版本 JSON 深度预检，但 data、research、orchestrator、compute_runtime、es_evotorch、rl_sb3 和 world_model 仍复制重复键与非标准常量解码逻辑，容易出现边界行为分叉。现将共同 `loads_strict_json` 放入 `rles_contracts.json_utils`，上述七个包的 `loads_unique_json` 作为兼容薄层委托；data 自定义常量诊断与 world-model 的显式 NaN 校验选项保留。研究/合同 JSON 入口相同字节接受性回归新增。
+
+验证：相关 contracts、research access、L2 CLI、compute runtime、ES restore、RL actor/checkpoint、world-model CLI/RouteB quality 套件 **243 passed、4 skipped**（1 CUDA-only，3 JAX unavailable in this interpreter）；全仓 Ruff 通过；MyPy 对 packages/qa **227 source files passed**。source manifest v3 已重新生成并自验。仅使用合成输入；没有读取市场、账户、registry 或正式评价数据。
+
+下一步继续收敛尚存的直接 `json.loads` 恢复路径与包级错误归一化，再推进 A01–A14 中其他可本地实施问题及 B4 Native/Imagined 生命周期边界。Hosted CI 仍需对当前独立 RouteB revision 复验。
+
+## 2026-10-23 Strict JSON boundary convergence and restore audit
+
+Consolidated the shared duplicate-key/nonstandard-constant decoder in `rles_contracts.json_utils.loads_strict_json`, retaining package API wrappers for data/research/orchestrator/compute_runtime/es_evotorch/rl_sb3/world_model. Persisted restore callers now delegate to it, including the A04 legacy inventory, research ArtifactStore marker/index/manifest, Binance income pages, L2 validation manifest, canonical DTOs, schema defaults, and error envelopes. Data/world-model-specific constant behavior remains explicit; WFO JSONDecodeError and worker duplicate-key diagnostics retain their prior error class/message contract. Remaining `json.loads` uses are the shared implementation or in-memory `json.dumps` round-trips.
+
+Verification on the actual RouteB tree: strict JSON/contracts/research/WFO/Binance/L2/compute/ES/RL/world-model focused combined suite **389 passed, 4 skipped** (CUDA-only plus three JAX-dependent tests unavailable in the C: interpreter); full Ruff passed; MyPy `packages qa` **227 files passed**; `git diff --check` passed. Source manifest v3 regenerated and verified below. Tests used synthetic inputs only.
+
+Next cursor: continue auditing A01-A14 locally implementable gaps and B4 Native/Imagined lifecycle parity; separately obtain current clean Hosted Linux/Windows/JAX evidence. External cashflow authenticity, historical pre-registration coverage, independent Validation/new sample authorization, and same-window real market depth remain evidence gates and are not certified by these code tests.
+
+### B4 Native/Imagined partial-depth lifecycle parity — 2026-10-23
+
+A three-bar Native-versus-Imagined differential now covers long and short market orders under a frozen 40% synthetic fill-capacity profile. Both paths fill 0.200 of the 0.500 target, retain 0.300, and keep the order partially filled after the following bars. This confirms lifecycle parity for the pinned Native bar configuration tested here; it does not interpret the synthetic capacity as authentic depth.
+
+**Verification:** adapter + WorldModel selectors: **99 passed, 2 skipped** because JAX is unavailable in this app interpreter; full Ruff on `packages ci qa tests` passes; MyPy on `packages qa` passes (**227 source files**). Evidence: `docs/audit_evidence/20261023/b4_imagined_partial_depth_native_parity_20261023.json`.
+
+**Boundary / next cursor:** queue position, multiple fills within a single bar, venue-specific partial-fill rules, authentic depth and economic eligibility remain unverified. Continue the implementation-ready A01–A14 audit and B4 Native parity; fresh Hosted Linux/Windows/JAX CI remains pending for the current local revision.
+### 2026-10-23 — 独立 JAX CPU 模型回归
+
+RouteB 隔离训练环境 Python 3.12.10 / JAX 0.11.2 / `CpuDevice(id=0)` 下，六个直接覆盖模型、层级训练、随机性、质量门和正则项的测试文件 **98 passed、0 skipped**。完整 `tests/world_model` 的收集在 `test_cli.py` 因该 learner 环境未安装 Gymnasium 而停止；这是 CLI 依赖范围限制，不将其记作模型测试失败。没有向隔离 learner 环境新增依赖。证据：`docs/audit_evidence/20261023/routeb_jax_isolated_cpu_regression_20261023.json`。Hosted 与独立 CUDA 验收仍需单独确认。
+### 2026-10-23 B4 adverse-bps 成交价格差分
+
+Native/Imagined 差分确认 Native bar market order 按 close 成交；`ConservativeBpsFillModel` 再按方向施加 adverse bps 并向外取 tick。ImaginedAccount 增加 `market_slippage_bps`、`price_increment`，使用 Decimal 价格和 tick 取整。非平盘 long/short 场景（open 1000.03、close 1002.00、2 bps）成交价与 equity 均匹配，价格为买入 1002.21 / 卖出 1001.79。验证：adverse selector 6 passed；adapter + additive 105 passed、2 个 app JAX skip；隔离 JAX CPU 专项 102 passed；默认 PR selector 913 passed、4 skipped、666 deselected；Ruff 与 MyPy 227 files 通过。证据：`docs/audit_evidence/20261023/b4_imagined_adverse_bps_native_parity_20261023.json`。盘口、队列和真实市场成交仍未认证。
+### 2026-10-23 A10/B4 current wheel boundary verification
+
+Rebuilt all 12 RouteB workspace wheels and sdists from source identity `2d73d2d118be32099b121cd51ba0cd5e8d71f0100408df236e9e3b9fda1770b9`. The source manifest verifies 607 files, and `qa/wheel_manifest.py` reports `12 wheels; all_match=True`. A fresh isolated Python 3.14.7 environment installed the 12 wheels; all workspace modules and 6 declared entry points imported from that environment with local wheel provenance. The strict JSON/B4 selectors passed **114 tests, 2 skips**; the full default PR selector against the installed wheels passed **913 tests, 4 skips, 666 deselected, 46 dependency warnings** in 288.46 seconds. Third-party dependencies were supplied via a temporary `.pth` from the RouteB app environment, so this proves wheel package provenance and behavior, not a dependency-complete offline install. Evidence: `docs/audit_evidence/20261023/a10_current_wheels_strict_json_b4_20261023.json`.
+
+Next: continue A01–A14 source audit and B4 lifecycle parity, then commit/publish only to the RouteB backup branch and obtain fresh Hosted Linux/Windows/JAX CPU results. Current source remains uncommitted/unpushed; external data and independent-validation gates remain open.
+### 2026-10-23 B4 numeric input guard and F7 current 90-day replay
+
+A red regression exposed that boolean values were accepted as numeric `ImaginedAccount` configuration and order fields; `True` slippage/tick values escaped validation and raised `Decimal.InvalidOperation` only when filling. The account now rejects booleans at construction/order boundaries. New boolean regression: **8 passed**; adapter + WorldModel selectors: **113 passed, 2 JAX-only skipped**; Ruff and targeted MyPy passed. Current source identity `a949604a39cfe03ced052ce93b665d2123c15b22146270d910e88eac3fe86def` covers 607 files.
+
+Rebuilt 12 wheels + 12 sdists; wheel manifest reports all 12 source matches. A fresh isolated Python 3.14.7 wheel environment loaded all 12 package modules and 6 entry points. Default PR selector against current installed wheels: **913 passed, 4 skipped, 674 deselected, 46 dependency warnings, 287.61 seconds**.
+
+F7 90-day synthetic Native replay processed **129,597 decisions**. Online-summary and lean trajectories matched exactly (`4954c0…5420f0`); online report metrics match (`0c9bb2…9e50a45`). RSS peak deltas were **191,209,472** and **192,630,784 bytes**. This is synthetic Windows engineering evidence only, not real-history or market-data certification. Evidence: `docs/audit_evidence/20261023/b4_bool_numeric_and_f7_20261023.json` and `docs/audit_evidence/20261023/f7_current_synthetic_90d_profile_20261023.json`.
+
+Next: continue B4 against the Native adapter's actually supported GTC market lifecycle and keep limit/GTD semantics explicitly scenario-only; continue A01–A14 locally actionable source review. Fresh Hosted Linux/Windows/JAX confirmation and external cashflow, history-access, independent Validation, authorized sample/depth, historic trial coverage, and M4.2 remain open gates. No curated market, account, registry, or formal evaluation payload was accessed.
+### 2026-10-23 A04 Train reader fails closed on formal/malformed scopes
+
+A low-level audit found that `read_registered_train_window()` ignored `test`/`holdout` fields and skipped its overlap guard when `evaluation` was malformed (including a boolean timestamp). Three new red cases reproduced all three paths before the fix. The reader now rejects non-object configs, any configured formal Test/Holdout scope, malformed non-null evaluation boundaries, and Train/evaluation overlap before ledger reservation or payload decode.
+
+Research-access/WFO regression selector: **159 passed** against source and newly built installed wheels. Current default source PR selector: **913 passed, 4 skipped, 677 deselected, 46 warnings, 287.82s**. Current source identity is `8ac14ea4f433ea58d30eacabc5907b7c7f332540314d1ff576100f2f39269b3a` over 607 files; 12 wheels all match, 12 distributions and 6 entry points load from the isolated wheel environment; changed Ruff and MyPy pass. Evidence: `docs/audit_evidence/20261023/a04_train_scope_fail_closed_20261023.json`.
+
+No project registry or market/evaluation payload was read. This repair does not recover historical pre-registration coverage. Continue remaining locally actionable A01–A14 checks and B4 Native-supported execution cases; Hosted Linux/Windows/JAX and external provenance/authorization/independent-validation gates remain open.
+**RouteB JAX CPU 更新：**独立 Python 3.12.10/JAX 0.11.2 CPU 环境中，六个模型、训练、层级、随机性、质量和 regularizer 专项文件现通过 **110 passed、0 skipped**（此前证据文件只记载 98 项，已更新为本次结果）。该项不含 `test_cli.py` 的 Gymnasium 混合收集，依赖门槛仍分别处理；未访问市场或正式评价数据。

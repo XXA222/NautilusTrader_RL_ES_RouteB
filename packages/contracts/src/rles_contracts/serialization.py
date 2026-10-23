@@ -19,7 +19,7 @@ from typing import Any, get_args, get_origin, get_type_hints
 from . import dto
 from .errors import ErrorCategory
 from .frozen import FrozenFields
-from .json_utils import ensure_json_nesting_depth
+from .json_utils import loads_strict_json
 from .schema import CONTRACT_VERSION, require_current_version
 
 MAX_METADATA_BYTES = 8 * 1024 * 1024
@@ -95,15 +95,6 @@ def canonical_bytes(value: Any) -> bytes:
 
 def canonical_hash(value: Any) -> str:
     return hashlib.sha256(canonical_bytes(value)).hexdigest()
-
-
-def _no_duplicate_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for k, v in pairs:
-        if k in result:
-            raise ValueError(f"duplicate JSON key {k!r}")
-        result[k] = v
-    return result
 
 
 def _decode(value: Any) -> Any:
@@ -200,16 +191,13 @@ def from_canonical_bytes(blob: bytes) -> Any:
     if len(blob) > MAX_METADATA_BYTES:
         raise ValueError("canonical metadata exceeds 8 MiB limit")
     try:
-        ensure_json_nesting_depth(blob)
-    except ValueError as exc:
-        raise ValueError("canonical JSON exceeds the supported nesting depth") from exc
-    try:
-        payload = json.loads(blob.decode("ascii"), parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)),
-                             object_pairs_hook=_no_duplicate_pairs)
+        payload = loads_strict_json(blob.decode("ascii"))
         obj = _decode(payload)
         canonical = canonical_bytes(obj)
-    except RecursionError as exc:
-        raise ValueError("canonical JSON exceeds the supported nesting depth") from exc
+    except ValueError as exc:
+        if "supported nesting depth" in str(exc):
+            raise ValueError("canonical JSON exceeds the supported nesting depth") from exc
+        raise
     if canonical != blob:
         raise ValueError("not canonical JSON (ordering, normalization, or numeric representation)")
     if type(obj) in _registered_types().values() and hasattr(obj, "schema_version"):

@@ -1,0 +1,29 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / current strict-JSON and B4 changes verified in built and installed RouteB wheels",
+  "source_identity_sha256": "2d73d2d118be32099b121cd51ba0cd5e8d71f0100408df236e9e3b9fda1770b9",
+  "build": {
+    "command": "uv build --all-packages --out-dir C:\\Users\\QX\\Documents\\ChatGPT\\RouteB\\.tmp-routeb-wheel-audit-current",
+    "wheels": 12,
+    "source_distributions": 12,
+    "wheel_manifest_all_match": true,
+    "wheel_manifest_errors": []
+  },
+  "installed_wheel_smoke": {
+    "environment": "C:\\Users\\QX\\Documents\\ChatGPT\\RouteB\\.tmp-routeb-wheel-env-current",
+    "python": "3.14.7",
+    "installed_workspace_distributions": 12,
+    "entry_points_imported": 6,
+    "all_imported_module_paths_within_isolated_venv": true,
+    "third_party_dependencies": "Resolved from the RouteB .venv-win-app through a temporary .pth; RLES package imports and provenance came from the isolated installed-wheel environment."
+  },
+  "regression_selectors": {
+    "strict_json_and_B4_wheel_regression": "114 passed, 2 skipped",
+    "default_PR_selector_against_installed_wheels": "913 passed, 4 skipped, 666 deselected, 46 dependency warnings, 288.46 seconds"
+  },
+  "manifest": {
+    "source_files": 607,
+    "verified_identity": "2d73d2d118be32099b121cd51ba0cd5e8d71f0100408df236e9e3b9fda1770b9"
+  },
+  "boundary": "Local Windows wheel and regression validation only. Hosted Linux/Windows/JAX CI and external research, validation, cashflow, and market-data gates remain independent."
+}
