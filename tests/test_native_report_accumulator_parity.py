@@ -447,3 +447,4 @@ def test_online_accumulator_cannot_continue_after_snapshot_failure(operation):
             accumulator.add_snapshot(_snapshot(21, "999.9"), {})
         else:
             accumulator.finish()
+

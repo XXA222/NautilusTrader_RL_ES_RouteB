@@ -405,3 +405,4 @@ class BarrierEpisode:
             self._session.close()
         finally:
             self._state = "CLOSED"
+

@@ -1202,3 +1202,4 @@ def test_native_fill_references_require_mapping(references) -> None:
     snapshots, _ = _linear_ledger()
     with pytest.raises(MetricsError, match="fill references must be a mapping"):
         account_rows(snapshots, fill_references=references)
+

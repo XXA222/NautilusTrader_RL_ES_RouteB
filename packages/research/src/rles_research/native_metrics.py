@@ -1123,3 +1123,4 @@ class NativeReportAccumulator:
                 "net_external_cashflow": str(self._external_cashflow),
             }
         return report
+

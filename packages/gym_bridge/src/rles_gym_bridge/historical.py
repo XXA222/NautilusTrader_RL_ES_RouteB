@@ -1,14 +1,14 @@
 """Real historical perpetual environment assembly, with no test imports."""
 from __future__ import annotations
 
-from collections import defaultdict
 from collections.abc import Mapping, Sequence as SequenceABC
+from collections import OrderedDict
 from array import array
 from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 import marshal
-from bisect import bisect_left, bisect_right
+from bisect import bisect_right
 from math import gcd
 from pathlib import Path
 from tempfile import TemporaryFile
@@ -644,6 +644,52 @@ def _episode_start(*, lane_start: int, lane_end: int,
     return lane_start + episode_index * stride % positions
 
 
+class _LazyEpisodeBarrierFrames(SequenceABC):
+    """Immutable frame view with a two-entry cache and on-demand Fold access."""
+
+    _length: int
+    _build: Callable[[int], BarrierFrame]
+    _cache: OrderedDict[int, BarrierFrame]
+    __slots__ = ("_length", "_build", "_cache")
+    __rles_immutable__ = True
+
+    def __init__(self, length: int, build: Callable[[int], BarrierFrame]) -> None:
+        if type(length) is not int or length < 1 or not callable(build):
+            raise DataError("lazy episode frame sequence requires a positive length and builder")
+        object.__setattr__(self, "_length", length)
+        object.__setattr__(self, "_build", build)
+        object.__setattr__(self, "_cache", OrderedDict())
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise AttributeError("lazy episode frame sequence is immutable")
+
+    def __len__(self) -> int:
+        return self._length
+
+    @overload
+    def __getitem__(self, index: int) -> BarrierFrame: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[BarrierFrame, ...]: ...
+
+    def __getitem__(self, index: int | slice) -> BarrierFrame | tuple[BarrierFrame, ...]:
+        if isinstance(index, slice):
+            return tuple(self[item] for item in range(*index.indices(self._length)))
+        normalized = range(self._length)[index]
+        cache = self._cache
+        frame = cache.get(normalized)
+        if frame is not None:
+            cache.move_to_end(normalized)
+            return frame
+        frame = self._build(normalized)
+        if type(frame) is not BarrierFrame:
+            raise DataError("lazy episode frame builder returned an invalid frame")
+        cache[normalized] = frame
+        if len(cache) > 2:
+            cache.popitem(last=False)
+        return frame
+
+
 class HistoricalEnvironmentFactory:
     """Freeze data, rules and training-only scaler; create a fresh Engine per Env."""
     def __init__(self, *, market_path: str | Path, rules_path: str | Path,
@@ -809,69 +855,40 @@ class HistoricalEnvironmentFactory:
         self.transition_hash = digest(transition_identity)
         self.snapshots: list[Any] = []
         self.fill_references: dict[str, Decimal] = {}
-        self._market_batch_index: tuple[tuple[int, VisibleBatch], ...] | None = None
-        self._market_batch_times: tuple[int, ...] = ()
-        self._market_batch_groups_by_row: tuple[tuple[VisibleBatch, ...], ...] = ()
-        self._barrier_frames_by_row: tuple[BarrierFrame, ...] | None = None
+    def _episode_barrier_frames(self, *, start_offset: int,
+                                episode_rows: tuple[Any, ...],
+                                feed_start_ns: int) -> SequenceABC[BarrierFrame]:
+        """Build each immutable decision frame on demand instead of caching the full Fold."""
+        if (type(episode_rows) is not tuple or not episode_rows
+                or type(start_offset) is not int or start_offset < 0
+                or start_offset + len(episode_rows) > len(self.rows)
+                or self.rows[start_offset] is not episode_rows[0]
+                or self.rows[start_offset + len(episode_rows) - 1] is not episode_rows[-1]
+                or type(feed_start_ns) is not int or feed_start_ns < 0):
+            raise DataError("valid immutable rows and feed start are required for lazy frames")
 
-    def _visible_market_batch_index(self) -> tuple[tuple[int, VisibleBatch], ...]:
-        """Build one immutable availability-time index for all Episodes in this factory."""
-        if self._market_batch_index is not None:
-            return self._market_batch_index
-        warmup_minutes = max(
-            (field.lookback_bars * field.timeframe_minutes
-             for field in self.features.fields if field.source_kind == "ohlcv_1m"),
-            default=1,
-        ) + 2
-        first_decision_ns = self.rows[0].decision_ts_ns
-        last_decision_ns = self.rows[-1].decision_ts_ns
-        feed_start_ns = max(0, first_decision_ns - warmup_minutes * MINUTE_NS)
-        groups: dict[int, list] = defaultdict(list)
-        for event in self.store.available_event_window(feed_start_ns, last_decision_ns):
-            if event.kind in {"instrument_rule", "funding_update"}:
-                continue
-            if event.payload.get("instrument") != self.instrument:
-                continue
-            available_at_ns = event.available_at_ns
-            if available_at_ns is None:
-                continue
-            groups[available_at_ns].append(to_market_event(
-                event, quality_grade=DataQualityGrade(self.quality.grade.value)))
-        batches = tuple(
-            (timestamp, VisibleBatch(timestamp, tuple(events), True))
-            for timestamp, events in sorted(groups.items())
-        )
-        self._market_batch_times = tuple(timestamp for timestamp, _batch in batches)
-        self._market_batch_groups_by_row = _visible_batches_by_decision(
-            batches, tuple(row.decision_ts_ns for row in self.rows),
-        )
-        self._market_batch_index = batches
-        return batches
-
-    def _episode_market_batch_groups(self, *, start_offset: int,
-                                     episode_rows: tuple[Any, ...],
-                                     feed_start_ns: int) -> tuple[tuple[VisibleBatch, ...], ...]:
-        """Reuse row deltas while restoring the episode's required warmup prefix."""
-        batches = self._visible_market_batch_index()
-        first_batch = bisect_left(self._market_batch_times, feed_start_ns)
-        first_decision_end = bisect_right(
-            self._market_batch_times, episode_rows[0].decision_ts_ns,
-        )
-        initial = tuple(batch for _timestamp, batch in batches[first_batch:first_decision_end])
-        following = self._market_batch_groups_by_row[
-            start_offset + 1:start_offset + len(episode_rows)
-        ]
-        if len(following) != len(episode_rows) - 1:
-            raise DataError("cached visible-batch rows do not cover the Episode window")
-        return (initial, *following)
-
-    def _cached_barrier_frames(self) -> tuple[BarrierFrame, ...]:
-        """Build immutable observation/event frames once for this frozen factory."""
-        if self._barrier_frames_by_row is not None:
-            return self._barrier_frames_by_row
-        self._visible_market_batch_index()
-        frames = []
-        for row, batches in zip(self.rows, self._market_batch_groups_by_row, strict=True):
+        def build(index: int) -> BarrierFrame:
+            row = episode_rows[index]
+            previous_ns = (None if index == 0 else episode_rows[index - 1].decision_ts_ns)
+            available_start_ns = feed_start_ns if previous_ns is None else previous_ns + 1
+            batches: list[VisibleBatch] = []
+            current_timestamp: int | None = None
+            current_events: list[Any] = []
+            for event in self.store.available_event_window(
+                    available_start_ns, row.decision_ts_ns):
+                if (event.kind in {"instrument_rule", "funding_update"}
+                        or event.payload.get("instrument") != self.instrument
+                        or event.available_at_ns is None):
+                    continue
+                if current_timestamp != event.available_at_ns:
+                    if current_timestamp is not None:
+                        batches.append(VisibleBatch(current_timestamp, tuple(current_events), True))
+                    current_timestamp = event.available_at_ns
+                    current_events = []
+                current_events.append(to_market_event(
+                    event, quality_grade=DataQualityGrade(self.quality.grade.value)))
+            if current_timestamp is not None:
+                batches.append(VisibleBatch(current_timestamp, tuple(current_events), True))
             market_features = visible_market_features(
                 row, self.features, self.schema, instrument=self.instrument,
                 decision_ts_ns=row.decision_ts_ns,
@@ -885,29 +902,9 @@ class HistoricalEnvironmentFactory:
                 )
             else:
                 time_features = {}
-            frames.append(BarrierFrame(row.decision_ts_ns, batches,
-                                       market_features, time_features))
-        self._barrier_frames_by_row = tuple(frames)
-        return self._barrier_frames_by_row
+            return BarrierFrame(row.decision_ts_ns, tuple(batches), market_features, time_features)
 
-    def _episode_barrier_frames(self, *, start_offset: int,
-                                episode_rows: tuple[Any, ...],
-                                feed_start_ns: int) -> tuple[BarrierFrame, ...]:
-        """Reuse cached frames, rebuilding only a shifted Episode's warmup frame."""
-        cached_frames = self._cached_barrier_frames()
-        stop = start_offset + len(episode_rows)
-        selected = cached_frames[start_offset:stop]
-        if len(selected) != len(episode_rows):
-            raise DataError("cached barrier frames do not cover the Episode window")
-        if start_offset == 0:
-            return selected
-        first_batches = self._episode_market_batch_groups(
-            start_offset=start_offset, episode_rows=episode_rows[:1],
-            feed_start_ns=feed_start_ns,
-        )[0]
-        first = BarrierFrame(selected[0].timestamp_ns, first_batches,
-                             selected[0].market, selected[0].time_features)
-        return (first, *selected[1:])
+        return _LazyEpisodeBarrierFrames(len(episode_rows), build)
 
     def observation_state(self, snapshot) -> dict:
         cash, free = native_balances(snapshot)
@@ -1257,3 +1254,4 @@ def make_historical_es_env(*, env_config: dict, candidate_context: dict,
     })
     return factory.make_env(env_config["transition_hash"], soft_multipliers=soft_risk_multipliers,
                             retain_report_snapshots=False)
+

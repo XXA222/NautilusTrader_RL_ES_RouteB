@@ -456,3 +456,4 @@ def from_account_facts(facts: Iterable[Mapping[str, object]], *,
         accumulator.add(fact)
     return accumulator.result(periods_per_year=periods_per_year,
                               realized_trade_pnls=realized_trade_pnls)
+

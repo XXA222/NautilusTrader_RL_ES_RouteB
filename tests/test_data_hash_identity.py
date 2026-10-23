@@ -64,3 +64,4 @@ def test_scaler_hash_binding_survives_serialization_and_detects_mutation():
     object.__setattr__(restored, "mean", (2.0,))
     with pytest.raises(DataError, match="scaler mutated after construction"):
         _ = restored.hash
+

@@ -451,3 +451,4 @@ def fit_train(spec: FeatureSpec, window: Window,
     stds = tuple(max(math.sqrt(math.fsum((x - m)**2 for x in col) / len(col)), 1e-12)
                  for col, m in zip(cols, means))
     return Scaler(spec.hash, means, stds, digest(window), len(rows))
+
