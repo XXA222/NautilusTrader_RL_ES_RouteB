@@ -53,6 +53,19 @@ def _hash(value: object) -> str:
                                      allow_nan=False).encode()).hexdigest()
 
 
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate inventory JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"invalid inventory JSON constant: {value}")
+
+
 class ProjectResearchRegistry:
     def __init__(self, path: str | Path):
         self.path = Path(path).resolve()
@@ -160,7 +173,24 @@ class ProjectResearchRegistry:
                     SELECT RAISE(ABORT,'invalid project trial lifecycle transition');
                 END""")
 
-    def import_inventory(self, entries: list[dict], inventory_sha: str) -> None:
+    def import_inventory(self, content: bytes) -> None:
+        if not isinstance(content, bytes) or not content:
+            raise ValueError("legacy research inventory bytes required")
+        inventory_sha = hashlib.sha256(content).hexdigest()
+        try:
+            inventory = json.loads(
+                content.decode("utf-8"), object_pairs_hook=_unique_json_object,
+                parse_constant=_reject_json_constant,
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError) as exc:
+            raise ValueError(f"legacy research inventory is not strict UTF-8 JSON: {exc}") from exc
+        if (not isinstance(inventory, dict)
+                or inventory.get("schema") != "rles.legacy-research-access.v1"
+                or not isinstance(inventory.get("entries"), list)
+                or not isinstance(inventory.get("unresolved"), list)
+                or inventory["unresolved"]):
+            raise ValueError("legacy research inventory schema or resolution state is invalid")
+        entries = inventory["entries"]
         with self._tx() as c:
             if c.execute("SELECT 1 FROM inventory_import WHERE sha=?", (inventory_sha,)).fetchone():
                 return
@@ -168,6 +198,10 @@ class ProjectResearchRegistry:
             # that contamination, it does not grant permission for new reads.
             # Keep the entries and completion marker in one transaction.
             for entry in entries:
+                if not isinstance(entry, dict) or set(entry) != {
+                    "key", "market", "family", "start_ns", "end_ns", "purpose", "identity",
+                }:
+                    raise ValueError("legacy research inventory entry schema is invalid")
                 expected = self._scope(owner="legacy-inventory", **entry)
                 self._reserve_record(c, entry["key"], expected, historical=True)
             c.execute("INSERT OR IGNORE INTO inventory_import VALUES(?)", (inventory_sha,))
@@ -340,7 +374,8 @@ class ProjectResearchRegistry:
 
     def verify_query_intent(self, *, protocol_id: str, intent_id: str, owner: str,
                             market: str, family: str, start_ns: int, end_ns: int,
-                            purpose: str, source_sha256: str, candidate_id: str) -> None:
+                            purpose: str, source_sha256: str,
+                            candidate_id: str) -> dict[str, object]:
         """Bind a later evaluation to a started, exact pre-read query intent."""
         with self._tx() as c:
             row = c.execute(
@@ -357,6 +392,7 @@ class ProjectResearchRegistry:
         if (identity.get("source_sha256") != source_sha256
                 or candidate_id not in identity.get("candidate_ids", [])):
             raise ResearchLockError("formal evaluation source/candidate differs from its pre-read intent")
+        return identity
 
     @staticmethod
     def _reserve_record(c, key: str, expected: tuple, *, historical: bool = False) -> str:
@@ -441,9 +477,9 @@ class ProjectResearchRegistry:
                 except (TypeError, json.JSONDecodeError):
                     prior = {}
                 if purpose not in {"test", "holdout"}:
-                    if previous_owner != owner:
-                        raise ResearchLockError("project formal query intent blocks development access")
-                    continue
+                    # Once a formal interval is frozen, the same owner cannot
+                    # mint a new development reservation over it either.
+                    raise ResearchLockError("project formal query intent blocks development access")
                 current_identity = json.loads(encoded)
                 if (previous_owner != owner or previous_purpose != purpose
                         or prior.get("protocol_id") != current_identity.get("protocol_id")):
@@ -687,14 +723,17 @@ class EvaluationAccess:
 def authorize_evaluation(registry: ProjectResearchRegistry, ledger: ResearchLedger, *,
                          protocol_id: str, query_id: str, owner: str, market: str,
                          family: str, start_ns: int, end_ns: int, split: str,
-                         source_sha: str, bundle_sha: str, mode: str = "base",
+                         source_sha: str, bundle_sha: str, intent_id: str,
+                         candidate_id: str, mode: str = "base",
                          component: str = "policy") -> EvaluationAccess:
     state = ledger.state(protocol_id)
+    query = None
     if component not in ({"policy", "baselines"} if split == "test" else {"policy"}):
         raise ResearchLockError("evaluation component is not part of the fixed protocol")
     if split == "test":
         query = ledger.query(protocol_id, query_id)
-        if (state["state"] != "RECIPE_FROZEN" or query is None or query["kind"] != "test"):
+        if (state["state"] != "RECIPE_FROZEN" or query is None
+                or query["kind"] != "test" or query["candidate"] != candidate_id):
             raise ResearchLockError("Test access requires frozen recipe and durable query")
     elif split == "holdout":
         if (state["state"] != "HOLDOUT_OPENED" or state["retrain_sha"] != bundle_sha
@@ -703,6 +742,13 @@ def authorize_evaluation(registry: ProjectResearchRegistry, ledger: ResearchLedg
             raise ResearchLockError("Holdout access requires registered retrain and matching one-shot scope")
     else:
         raise ResearchLockError("formal access supports only Test/Holdout")
+    intent = registry.verify_query_intent(
+        protocol_id=protocol_id, intent_id=intent_id, owner=owner,
+        market=market, family=family, start_ns=start_ns, end_ns=end_ns,
+        purpose=split, source_sha256=source_sha, candidate_id=candidate_id,
+    )
+    if split == "test" and query is not None and query["fold_id"] != intent.get("fold_id"):
+        raise ResearchLockError("Test access fold differs from its pre-read query intent")
     identity = {"protocol_id": protocol_id, "query_id": query_id, "component": component,
                 "bundle_sha": bundle_sha, "source_sha": source_sha, "market": market,
                 "start_ns": start_ns, "end_ns": end_ns, "split": split, "mode": mode,
@@ -711,3 +757,4 @@ def authorize_evaluation(registry: ProjectResearchRegistry, ledger: ResearchLedg
     token = registry.reserve(key=key, owner=owner, market=market, family=family,
                              start_ns=start_ns, end_ns=end_ns, purpose=split, identity=identity)
     return EvaluationAccess(registry, key, token, json.dumps(identity, sort_keys=True))
+

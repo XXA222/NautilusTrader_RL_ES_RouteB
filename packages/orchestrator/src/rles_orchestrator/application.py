@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 27858)
-Total output lines: 1915
-
 """Configuration-driven training and native historical backtesting application."""
 from __future__ import annotations
 
@@ -751,7 +748,530 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
                 sample_interval_ns=MINUTE_NS,
                 allow_price_improvement=factory.execution.fill(factory.mode).data_granularity == "quote",
                 include_account_rows=include_account_rows,
-                linear_equity…7858 tokens truncated…nd resume_checkpoint.parent.name.startswith("generation-")
+                linear_equity_rounding=Decimal("0.00000001"),
+                account_rows_path=account_rows_path,
+            )
+        else:
+            report = summary_accumulator.finish()
+        native_orders: dict[str, dict] = {}
+        final_snapshot = factory.snapshots[-1] if factory.snapshots else None
+        native_orders = _index_native_orders(getattr(final_snapshot, "all_orders", ()))
+        fills_by_order: dict[str, list[dict]] = {}
+        for fill in report.get("fills", ()):
+            identity = fill.get("client_order_id")
+            if not isinstance(identity, str) or not identity or identity != identity.strip():
+                raise DataError("native fill history lacks client identity")
+            fills_by_order.setdefault(identity, []).append(fill)
+        if decision_identity_errors:
+            report["execution_decision_diagnostics"] = {
+                "components_known": False,
+                "decision_count": len(requested_actions),
+                "missing_or_invalid_identity_count": decision_identity_errors,
+                "action_counts": dict(sorted(plan_actions.items())),
+                "reason_counts": dict(sorted(plan_reasons.items())),
+            }
+        else:
+            submitted_ids = submitted_client_order_ids
+            decision_status_counts: Counter[str] = Counter()
+            submitted_with_fills = 0
+            unfilled_reasons: Counter[str] = Counter()
+            for identity in submitted_ids:
+                order = native_orders.get(identity)
+                order_fills = fills_by_order.get(identity, [])
+                filled_qty = sum((Decimal(str(fill["last_qty"]))
+                                  for fill in order_fills), Decimal(0))
+                status = str(order.get("status", "unknown")).upper() if order else "unknown"
+                decision_status_counts[status] += 1
+                submitted_with_fills += int(bool(order_fills))
+                reason = _unfilled_order_reason(order, filled_qty)
+                if reason is not None:
+                    unfilled_reasons[reason] += 1
+            if include_execution_trace:
+                for row in decision_trace:
+                    if row["action"] != "SUBMIT":
+                        row["submission_status"] = "not_submitted"
+                        row["native_order_status"] = None
+                        row["related_native_orders"] = [
+                            _related_native_order_trace(
+                                identity, native_orders.get(identity), fills_by_order.get(identity, []),
+                            ) for identity in row["related_order_ids"]
+                        ]
+                        row["fills"] = []
+                        row["filled_qty"] = "0"
+                        row.update(_fee_summary([]))
+                        row["unfilled_reason"] = None
+                        continue
+                    identity = row["client_order_id"]
+                    order = native_orders.get(identity)
+                    order_fills = fills_by_order.get(identity, [])
+                    filled_qty = sum((Decimal(str(fill["last_qty"]))
+                                      for fill in order_fills), Decimal(0))
+                    fee_summary = _fee_summary(order_fills)
+                    status = str(order.get("status", "unknown")).upper() if order else "unknown"
+                    row["submission_status"] = "native_order_observed" if order else "unknown"
+                    row["native_order_status"] = status
+                    row["fills"] = [{
+                        "event_id": fill["event_id"], "trade_id": fill.get("trade_id"),
+                        "quantity": fill["last_qty"], "price": fill["last_px"],
+                        "fee": fill["commission"], "ts_event": fill["ts_event"],
+                    } for fill in order_fills]
+                    row["filled_qty"] = str(filled_qty)
+                    row.update(fee_summary)
+                    row["unfilled_reason"] = _unfilled_order_reason(order, filled_qty)
+            report["execution_decision_diagnostics"] = {
+                "components_known": decision_identity_errors == 0,
+                "decision_count": len(requested_actions),
+                "missing_or_invalid_identity_count": 0,
+                "submit_decision_count": plan_actions["SUBMIT"],
+                "native_order_count": sum(identity in native_orders for identity in submitted_ids),
+                "submitted_decisions_with_fills": submitted_with_fills,
+                "native_order_status_counts": dict(sorted(decision_status_counts.items())),
+                "unfilled_reason_counts": dict(sorted(unfilled_reasons.items())),
+                "action_counts": dict(sorted(plan_actions.items())),
+                "reason_counts": dict(sorted(plan_reasons.items())),
+                "trace_included": include_execution_trace,
+            }
+            if include_execution_trace:
+                report["execution_decision_trace"] = decision_trace
+                report["terminal_settlement_trace"] = terminal_settlement_trace
+        report["risk_guard_interventions"] = interventions
+        report["risk_soft_adjustment_steps"] = soft_adjustment_steps
+        report["risk_hard_interventions"] = hard_interventions
+        report["risk_soft_adjustment_total"] = soft_adjustment_total
+        report["risk_hard_adjustment_total"] = hard_adjustment_total
+        report["risk_total_adjustment"] = total_adjustment
+        report["risk_intervention_components_known"] = components_known
+        if (rounded_targets and len(rounded_targets) == len(requested_actions)
+                and all(value is not None for value in rounded_targets)
+                and len(risk_targets) == len(requested_actions)):
+            rounded = np.asarray(rounded_targets, dtype=np.float64)
+            risk_values = np.asarray(risk_targets, dtype=np.float64)
+            report["quantity_rounding_diagnostics"] = {
+                "components_known": True,
+                "count": int(rounded.size),
+                "risk_adjusted_target_abs_mean": float(np.mean(np.abs(risk_values))),
+                "quantity_rounded_target_abs_mean": float(np.mean(np.abs(rounded))),
+                "risk_to_rounded_target_gap_abs_mean": float(np.mean(np.abs(risk_values - rounded))),
+                "rounded_target_to_actual_exposure_gap_abs_mean": float(np.mean(
+                    np.abs(rounded - np.asarray(executed_actions, dtype=np.float64)))),
+            }
+        else:
+            report["quantity_rounding_diagnostics"] = {
+                "components_known": False,
+                "count": sum(value is not None for value in rounded_targets),
+            }
+        requested = np.asarray(requested_actions, dtype=np.float64)
+        executed = np.asarray(executed_actions, dtype=np.float64)
+        action_gap = np.abs(requested - executed)
+        requested_dynamics = _action_dynamics(requested)
+        executed_dynamics = _action_dynamics(executed)
+        report["action_diagnostics"] = {
+            "count": int(requested.size),
+            "requested_mean": float(np.mean(requested)),
+            "requested_abs_mean": float(np.mean(np.abs(requested))),
+            "requested_abs_p95": float(np.quantile(np.abs(requested), 0.95)),
+            "requested_nonzero_fraction": float(np.mean(np.abs(requested) > 1e-6)),
+            "requested_short_fraction": float(np.mean(requested < -1e-6)),
+            "requested_long_fraction": float(np.mean(requested > 1e-6)),
+            "requested_std": float(np.std(requested)),
+            "executed_mean": float(np.mean(executed)),
+            "executed_abs_mean": float(np.mean(np.abs(executed))),
+            "executed_abs_p95": float(np.quantile(np.abs(executed), 0.95)),
+            "executed_nonzero_fraction": float(np.mean(np.abs(executed) > 1e-6)),
+            "requested_executed_gap_abs_mean": float(np.mean(action_gap)),
+            "requested_executed_gap_abs_p95": float(np.quantile(action_gap, 0.95)),
+            "adjusted_fraction": float(np.mean(action_gap > 1e-6)),
+            "requested_target_change_abs_mean": requested_dynamics["change_abs_mean"],
+            "requested_direction_comparison_pair_count": requested_dynamics["direction_comparison_pair_count"],
+            "requested_direction_flip_count": requested_dynamics["direction_flip_count"],
+            "requested_direction_flip_fraction": requested_dynamics["direction_flip_fraction"],
+            "executed_exposure_change_abs_mean": executed_dynamics["change_abs_mean"],
+            "executed_direction_comparison_pair_count": executed_dynamics["direction_comparison_pair_count"],
+            "executed_direction_flip_count": executed_dynamics["direction_flip_count"],
+            "executed_direction_flip_fraction": executed_dynamics["direction_flip_fraction"],
+        }
+        if soft_targets and len(soft_targets) == len(requested) and len(risk_targets) == len(requested):
+            soft = np.asarray(soft_targets, dtype=np.float64)
+            risk = np.asarray(risk_targets, dtype=np.float64)
+            report["risk_target_diagnostics"] = {
+                "components_known": True,
+                "soft_target_abs_mean": float(np.mean(np.abs(soft))),
+                "risk_adjusted_target_abs_mean": float(np.mean(np.abs(risk))),
+                "requested_to_soft_gap_abs_mean": float(np.mean(np.abs(requested - soft))),
+                "soft_to_risk_gap_abs_mean": float(np.mean(np.abs(soft - risk))),
+                "risk_to_executed_gap_abs_mean": float(np.mean(np.abs(risk - executed))),
+            }
+        else:
+            report["risk_target_diagnostics"] = {"components_known": False}
+        report["execution_plan_diagnostics"] = {
+            "components_known": missing_plans == 0,
+            "count": int(requested.size),
+            "missing_count": missing_plans,
+            "action_counts": dict(sorted(plan_actions.items())),
+            "reason_counts": dict(sorted(plan_reasons.items())),
+        }
+        report["execution_attribution"] = attribution.report()
+        report["action_market_response"] = action_feature_response.report()
+        if isinstance(reset_info, dict) and "decision_ts_ns" in reset_info:
+            report["initial_decision_ts_ns"] = int(reset_info["decision_ts_ns"])
+            report["episode_window"] = reset_info.get("episode_window")
+        return report, (np.stack(observations) if collect_observations
+                        else np.empty((0, observation.size), dtype=np.float32))
+    finally:
+        if env is not None:
+            env.close()
+        if not include_account_rows:
+            factory.compact_report_snapshots = original_compact_report_snapshots
+
+
+def _fixed_observation_corpus(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
+                              episodes: int, episode_steps: int) -> tuple[np.ndarray, dict[str, Any]]:
+    """Build a bounded, deterministic parity/distillation corpus across exclusive Train lanes."""
+    full_steps = len(factory.rows) - 3
+    if (type(episodes) is not int or not 1 <= episodes <= 32
+            or type(episode_steps) is not int or episode_steps < 2
+            or episode_steps > full_steps // episodes):
+        raise DataError("fixed observation corpus must fit in 1-32 exclusive Train lanes")
+    offsets = _episode_start_offsets(
+        train_window_steps=full_steps, episode_steps=episode_steps, num_envs=episodes,
+    )
+    batches = []
+    observed_windows = []
+    for rank in range(episodes):
+        report, observations = rollout(
+            factory, predict, seed=(seed + rank) % 2**32, episode_rank=rank,
+            episode_count=episodes, episode_steps=episode_steps,
+            reset_options={"rles_episode_index": 1},
+        )
+        if observations.shape[0] != episode_steps + 1:
+            raise DataError("fixed observation corpus window ended before its registered length")
+        decision_ts = int(report["initial_decision_ts_ns"])
+        start_offset = int(np.searchsorted(
+            [row.decision_ts_ns for row in factory.rows], decision_ts,
+        ))
+        observed_windows.append({"rank": rank, "initial_decision_ts_ns": decision_ts,
+                                 "start_offset": start_offset,
+                                 "episode_window": report["episode_window"]})
+        batches.append(observations)
+    corpus = np.ascontiguousarray(np.concatenate(batches, axis=0), dtype=np.float32)
+    return corpus, {
+        "sampling_policy": "rank_exclusive_deterministic_train_windows_v2",
+        "episode_count": episodes,
+        "episode_steps": episode_steps,
+        "initial_start_offsets": list(offsets),
+        "observed_windows": observed_windows,
+        "unique_decision_timestamps": episodes * episode_steps,
+        "observation_rows_including_window_starts": int(corpus.shape[0]),
+        "observation_width": int(corpus.shape[1]),
+        "observation_sha256": sha256(corpus.tobytes(order="C")).hexdigest(),
+        "scope": "train-only fixed parity/distillation corpus",
+    }
+
+
+def _evaluation_factory(config: dict, training: HistoricalEnvironmentFactory) -> HistoricalEnvironmentFactory:
+    evaluation = config.get("evaluation")
+    if not isinstance(evaluation, dict) or not {"start_ns", "end_ns", "coverage_policy"} <= set(evaluation):
+        raise DataError("explicit disjoint evaluation window and coverage policy required")
+    if set(evaluation) - {"start_ns", "end_ns", "coverage_policy", "mode", "split"}:
+        raise DataError("evaluation cannot hot-swap frozen training risk/execution/data recipe")
+    if evaluation.get("split", "validation") != "validation":
+        raise DataError("training may query only the declared Validation split")
+    if evaluation["start_ns"] < training.end_ns:
+        raise DataError("evaluation window overlaps training")
+    record_development(config, evaluation, label="validation")
+    return HistoricalEnvironmentFactory(**{**config["environment"], **evaluation, "split": "validation",
+                                            "fit_scaler": False, "scaler": training.scaler,
+                                            "reward_scale": training.reward_config.reward_scale})
+
+
+def _resolve_rl_device(requested: Any, route: Route) -> Literal["cpu", "cuda"]:
+    """Resolve the public R1 device before creating run output or dispatching work."""
+    if requested not in {"cpu", "cuda"}:
+        raise DataError("rl_device must be explicitly cpu or cuda")
+    if requested == "cuda" and "R1" not in STAGES[route]:
+        raise DataError(f"route {route.value} has no R1 learner; CUDA request is unsupported")
+    try:
+        return cast(Literal["cpu", "cuda"],
+                    DeviceResolver().resolve("gpu" if requested == "cuda" else "cpu").learner_device)
+    except DeviceUnavailable as exc:
+        raise DataError(f"requested R1 device is unavailable: {exc}") from exc
+
+
+def _training_actor_spec(training: HistoricalEnvironmentFactory, hidden: tuple[int, ...],
+                         config: dict, route: Route) -> ActorGenomeSpec:
+    """Freeze causal account-unit scales for E1 without altering Gym facts."""
+    legacy_resume = False
+    manifest_path = Path(config["output"]) / "run.json"
+    if config.get("resume_checkpoint") is not None and manifest_path.is_file():
+        saved = json.loads(manifest_path.read_text(encoding="utf-8"))
+        legacy_resume = isinstance(saved, dict) and "actor_spec" not in saved
+    scaling = config.get("es_input_scaling", "none" if legacy_resume or "E1" not in STAGES[route]
+                         else "account_units")
+    if not isinstance(scaling, str) or scaling not in {"none", "account_units"}:
+        raise DataError("es_input_scaling must be none or account_units")
+    if scaling == "none" or "E1" not in STAGES[route]:
+        return ActorGenomeSpec(training.schema.names, hidden)
+    marks = [event for event in training.store.visible(training.rows[0].decision_ts_ns, "mark")
+             if event.payload.get("instrument") == training.instrument]
+    if not marks:
+        raise DataError("ES quantity input scale requires an as-of Train mark")
+    reference_mark = Decimal(str(marks[-1].payload["price"]))
+    money_fields = {"account.equity", "account.peak_equity", "account.cash", "account.free_margin",
+                    "account.initial_margin", "account.maintenance_margin", "account.unrealized_pnl"}
+    scales = tuple(float(1 / training.capital) if name in money_fields else
+                   float(reference_mark / training.budget) if name == "account.position_quantity" else 1.0
+                   for name in training.schema.names)
+    return ActorGenomeSpec(training.schema.names, hidden, version=2, input_scale=scales)
+
+
+def _episode_start_offsets(*, train_window_steps: int, episode_steps: int,
+                           num_envs: int) -> tuple[int, ...]:
+    if (type(train_window_steps) is not int or type(episode_steps) is not int
+            or type(num_envs) is not int or train_window_steps < 1
+            or not 1 <= episode_steps <= train_window_steps or num_envs < 1
+            or episode_steps > train_window_steps // num_envs):
+        raise DataError("RL episode must fit inside every rank-exclusive Train time lane")
+    return tuple(rank * train_window_steps // num_envs for rank in range(num_envs))
+
+
+def _rl_sampling_policy(config: dict) -> tuple[int, int | None]:
+    """Validate bounded R1 parallelism before reading data or allocating output."""
+    num_envs = config.get("rl_num_envs", 1)
+    episode_steps = config.get("rl_episode_steps")
+    if (type(num_envs) is not int or not 1 <= num_envs <= 4
+            or (episode_steps is not None
+                and (type(episode_steps) is not int or episode_steps < 2))):
+        raise DataError("RL sampling requires 1-4 environments and episode steps >= 2")
+    if num_envs > 1 and episode_steps is None:
+        raise DataError("multiple RL environments require explicit fixed episode steps")
+    return num_envs, episode_steps
+
+
+def _fixed_corpus_policy(config: dict) -> tuple[int, int]:
+    episodes = config.get("rl_corpus_episodes", 1)
+    episode_steps = config.get("rl_corpus_episode_steps", 256)
+    if (type(episodes) is not int or episodes != 1
+            or type(episode_steps) is not int or episode_steps < 2):
+        raise DataError("fixed observation corpus currently requires one episode and episode steps >= 2")
+    return episodes, episode_steps
+
+
+def _training_coverage_report(*, rl_steps: int, num_envs: int,
+                              train_window_decision_steps: int,
+                              episode_decision_steps: int,
+                              episode_start_offsets: tuple[int, ...]) -> dict[str, Any]:
+    """Report deterministic rotating-lane interaction and coverage bounds."""
+    if (type(rl_steps) is not int or rl_steps < 0 or type(num_envs) is not int or num_envs < 1
+            or type(train_window_decision_steps) is not int or train_window_decision_steps < 1
+            or type(episode_decision_steps) is not int or episode_decision_steps < 1
+            or type(episode_start_offsets) is not tuple or len(episode_start_offsets) != num_envs
+            or any(type(value) is not int or value < 0
+                   or value + episode_decision_steps > train_window_decision_steps
+                   for value in episode_start_offsets)):
+        raise DataError("invalid RL interaction coverage facts")
+    expected_offsets = tuple(
+        rank * train_window_decision_steps // num_envs for rank in range(num_envs)
+    )
+    if episode_start_offsets != expected_offsets:
+        raise DataError("RL coverage offsets differ from rank-exclusive time lanes")
+    quotient, remainder = divmod(rl_steps, num_envs)
+    per_env = [quotient + int(rank < remainder) for rank in range(num_envs)]
+    lane_sizes = [((rank + 1) * train_window_decision_steps // num_envs
+                   - rank * train_window_decision_steps // num_envs)
+                  for rank in range(num_envs)]
+    unique_steps = [min(count, lane_size)
+                    for count, lane_size in zip(per_env, lane_sizes, strict=True)]
+    union_steps = sum(unique_steps)
+    return {
+        "rl_interaction_steps": rl_steps,
+        "environment_count": num_envs,
+        "train_window_decision_steps": train_window_decision_steps,
+        "nominal_episode_decision_steps": episode_decision_steps,
+        "sampling_policy": "rank_exclusive_coprime_rotating_windows_v1",
+        "initial_episode_start_offsets": list(episode_start_offsets),
+        "rank_lane_decision_steps": lane_sizes,
+        "interaction_steps_per_environment": per_env,
+        "upper_bound_unique_decision_steps_per_environment": unique_steps,
+        "upper_bound_unique_train_window_steps": union_steps,
+        "upper_bound_train_window_coverage_fraction": union_steps / train_window_decision_steps,
+        "nominal_full_episode_passes_per_environment": [
+            count // episode_decision_steps for count in per_env
+        ],
+        "nominal_partial_episode_steps_per_environment": [
+            count % episode_decision_steps for count in per_env
+        ],
+        "interpretation": ("upper bound for deterministic rank-exclusive rotating Train episodes; "
+                           "the immutable learning diagnostics record actual timestamp coverage"),
+    }
+
+
+def _worker_memory_policy(config: dict) -> tuple[bool, int, dict]:
+    """Validate resource policy before allocating data, queries, or workers."""
+    enforce_worker_memory_limit = config.get("enforce_worker_memory_limit", os.name == "nt")
+    worker_ram_bytes = config.get("worker_ram_bytes", 2 * 1024**3)
+    if (type(enforce_worker_memory_limit) is not bool or type(worker_ram_bytes) is not int
+            or not 0 < worker_ram_bytes <= 4 * 1024**3):
+        raise DataError("worker memory policy requires a Boolean flag and bytes within the 4 GiB run quota")
+    if enforce_worker_memory_limit and os.name != "nt":
+        raise DataError("Windows Job worker memory enforcement is unavailable on this platform")
+    worker_resources = {"enforcement": "windows_job_commit_memory" if enforce_worker_memory_limit else "quota_only",
+                        "ram_bytes_per_worker": worker_ram_bytes}
+    return enforce_worker_memory_limit, worker_ram_bytes, worker_resources
+
+
+def _gpu_lease_identity(learner_device: str) -> dict[str, Any] | None:
+    """Return a user-wide lock identity shared by distinct run output folders."""
+    if learner_device == "cpu":
+        return None
+    if learner_device != "cuda":
+        raise DataError("GPU lease requires a resolved cpu/cuda learner device")
+    override = os.environ.get("RLES_GPU_LEASE_DIRECTORY")
+    if override is not None:
+        if not override.strip():
+            raise DataError("RLES_GPU_LEASE_DIRECTORY cannot be empty")
+        root = Path(override).expanduser()
+        if not root.is_absolute():
+            raise DataError("RLES_GPU_LEASE_DIRECTORY must be an absolute shared path")
+    elif os.name == "nt":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        root = (Path(local_app_data) if local_app_data else
+                Path.home() / "AppData" / "Local")
+        root = root / "NautilusTrader-RL-ES" / "GPU-leases"
+    else:
+        state_home = os.environ.get("XDG_STATE_HOME")
+        root = (Path(state_home) if state_home else Path.home() / ".local" / "state")
+        root = root / "nautilus-trader-rl-es" / "GPU-leases"
+    return {"scope": "user_shared", "directory": str(root.resolve()), "gpu_index": 0}
+
+
+def _rl_gpu_memory_fraction(value: Any, learner_device: str) -> float | None:
+    """Validate the optional PyTorch caching-allocator budget."""
+    if value is None:
+        return None
+    if (type(value) not in (int, float) or not np.isfinite(value)
+            or not 0 < value <= 1):
+        raise DataError("rl_gpu_memory_fraction must be finite numeric in (0,1]")
+    if learner_device != "cuda":
+        raise DataError("rl_gpu_memory_fraction requires rl_device=cuda")
+    return float(value)
+
+
+def train(config: dict, *, evaluate: bool = True,
+          prepared_training: HistoricalEnvironmentFactory | None = None) -> dict:
+    if "train_data_access" in config and evaluate:
+        raise DataError("scoped Train data access requires evaluate=False")
+    import torch
+
+    torch.set_num_threads(1)
+    fitness_spec = _es_fitness_spec(config)
+    route = Route(config.get("route", "A0"))
+    rl_device = _resolve_rl_device(config.get("rl_device", "cpu"), route)
+    gpu_lease = _gpu_lease_identity(rl_device)
+    rl_gpu_memory_fraction = _rl_gpu_memory_fraction(config.get("rl_gpu_memory_fraction"), rl_device)
+    rl_num_envs, requested_episode_steps = _rl_sampling_policy(config)
+    corpus_episodes, corpus_episode_steps = _fixed_corpus_policy(config)
+    if "R1" not in STAGES[route] and (rl_num_envs != 1 or requested_episode_steps is not None):
+        raise DataError(f"route {route.value} has no R1 learner; RL episode sampling is unsupported")
+    enforce_worker_memory_limit, worker_ram_bytes, worker_resources = _worker_memory_policy(config)
+    if prepared_training is None:
+        training = prepare(config)
+    else:
+        if getattr(prepared_training, "application_training_recipe_hash", None) != _training_factory_recipe_hash(config):
+            raise DataError("reused Train factory does not match this candidate's frozen recipe")
+        training = prepared_training
+    algorithm = config.get("algorithm", "PPO")
+    steps, population, generations = config.get("steps", 32), config.get("population", 4), config.get("generations", 1)
+    seed = config.get("seed", 31)
+    train_window_steps = len(training.rows) - 3
+    rl_episode_steps = train_window_steps if requested_episode_steps is None else requested_episode_steps
+    episode_offsets = _episode_start_offsets(
+        train_window_steps=train_window_steps, episode_steps=rl_episode_steps,
+        num_envs=rl_num_envs,
+    )
+    evaluation = _evaluation_factory(config, training) if evaluate else None
+    hidden = tuple(config.get("hidden_layers", (8,)))
+    actor_spec = _training_actor_spec(training, hidden, config, route)
+    canonical_ppo_output = actor_spec.version == 2 and algorithm == "PPO" and "E1" in STAGES[route]
+    previous_manifest = Path(config["output"]) / "run.json"
+    if config.get("resume_checkpoint") is not None and previous_manifest.is_file():
+        previous = json.loads(previous_manifest.read_text(encoding="utf-8"))
+        canonical_ppo_output = previous.get("canonical_ppo_output", False)
+        if type(canonical_ppo_output) is not bool:
+            raise DataError("saved PPO output bridge flag must be Boolean")
+    policy_hidden = (*hidden, 1) if canonical_ppo_output else hidden
+    risk_space = SoftRiskSpace(tuple(SoftRiskDimension(name, 0.1, 1.0)
+                                     for name in ("exposure_multiplier", "drawdown_throttle")))
+    action_hash = digest({"target_net_exposure": [-1, 1], "shape": [1]})
+    fingerprint = TransitionFingerprint(
+        env_contract=digest("NautilusBarrierEnv-v0.4.0"), dataset=training.store.snapshot_hash,
+        feature=training.features.hash, feature_scaler=training.scaler.hash, observation=training.schema.hash,
+        action=action_hash, action_transform=digest("soft-hard-native-quantity"), execution=training.execution.fingerprint(),
+        hard_risk=training.hard.signature(),
+        soft_risk=digest({name: str(value) for name, value in asdict(training.soft).items()}),
+        reward=(digest({"lambda_dd": 0, "lambda_guard": 0})
+                if training.reward_config.reward_scale == 1.0 else
+                digest({"lambda_dd": 0, "lambda_guard": 0,
+                        "reward_scale": training.reward_config.reward_scale})),
+        normalization=digest({"VecNormalize": config.get("normalize_observation", False)}),
+        engine=digest("nautilus_trader-2.0.0rc6"), adapter=digest("rles.perpetual-native-v2"),
+        fold=(digest([training.start_ns, training.end_ns]) if rl_num_envs == 1
+              and requested_episode_steps is None else digest({
+                  "window": [training.start_ns, training.end_ns],
+                  "rl_episode_sampling": {
+                      "policy": "rank_exclusive_coprime_rotating_windows_v1",
+                      "num_envs": rl_num_envs, "episode_steps": rl_episode_steps,
+                      "initial_start_offsets": episode_offsets,
+                  },
+              })),
+        terminal=digest("force_flatten_with_cost:finite_settlement_no_bootstrap_v1"),
+    )
+    hyperparameters = config.get("hyperparameters", {"n_steps": 8, "batch_size": 8, "n_epochs": 1} if algorithm == "PPO" else
+                                {"learning_starts": 8, "buffer_size": 256, "batch_size": 8, "train_freq": 1, "gradient_steps": 1})
+    rl_config = RLConfig(algorithm, PolicySpec(len(training.schema.names), hidden_layers=policy_hidden, value_layers=hidden,
+                                             observation_schema_hash=training.schema.hash, action_schema_hash=action_hash),
+                         fingerprint, SeedSpec(
+                             seed, tuple((seed + rank + 1) % 2**32 for rank in range(rl_num_envs)),
+                             (seed + rl_num_envs + 1) % 2**32,
+                             (seed + rl_num_envs + 2) % 2**32,
+                         ),
+                         hyperparameters=hyperparameters, device=rl_device,
+                         normalize_observation=config.get("normalize_observation", False),
+                         cuda_allocator_fraction=rl_gpu_memory_fraction)
+    budgets = {
+        stage: (StageBudget(max_rl_steps=steps) if stage == "R1" else
+                StageBudget(
+                    max_population=population,
+                    max_generations=generations,
+                    max_evaluations=(population + int(stage == "E2")) * generations,
+                    max_lane_requests=(population + int(stage == "E2")) * generations,
+                ))
+        for stage in STAGES[route]
+    }
+    output = Path(config["output"])
+    resume_checkpoint = None
+    resume_stage = None
+    resume_rl_checkpoint = None
+    if config.get("resume_checkpoint") is not None:
+        requested_checkpoint = Path(config["resume_checkpoint"])
+        if requested_checkpoint.is_symlink() or requested_checkpoint.parent.is_symlink():
+            raise DataError("resume checkpoint and its directory must not be symlinks")
+        resume_checkpoint = requested_checkpoint.resolve()
+        output_root = output.resolve()
+        if (resume_checkpoint.parent == output_root / "R1-checkpoints"
+                and resume_checkpoint.name.startswith("step-")
+                and resume_checkpoint.name[5:].isdigit()):
+            resume_stage = "R1"
+        elif (resume_checkpoint.parent.parent == output_root / "E1"
+              and resume_checkpoint.parent.name.startswith("generation-")
+              and resume_checkpoint.parent.name[11:].isdigit()):
+            # ESCheckpointStore writes the attempt inside a generation root.
+            resume_stage = "E1"
+        elif (resume_checkpoint.parent == output_root / "E1"
+              and resume_checkpoint.name.startswith("generation-")
+              and resume_checkpoint.name[11:].isdigit()):
+            resume_stage = "E1"
+        elif (resume_checkpoint.parent.parent == output_root / "E2"
+              and resume_checkpoint.parent.name.startswith("generation-")
               and resume_checkpoint.parent.name[11:].isdigit()):
             resume_stage = "E2"
         elif (resume_checkpoint.parent == output_root / "E2"

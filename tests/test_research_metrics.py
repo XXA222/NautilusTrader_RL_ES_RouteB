@@ -14,7 +14,12 @@ from rles_research.metrics import (
     from_account_facts,
     series_metrics,
 )
-from rles_research.native_metrics import account_rows, native_report, reconcile_linear_equity
+from rles_research.native_metrics import (
+    NativeReportAccumulator,
+    account_rows,
+    native_report,
+    reconcile_linear_equity,
+)
 from rles_research.statistics import (
     deflated_sharpe, deflated_sharpe_trial_count_sensitivity,
 )
@@ -544,6 +549,40 @@ def test_native_ledger_rejects_unverifiable_or_ambiguous_external_cashflow_facts
                            snapshots[2])
     with pytest.raises(MetricsError, match="duplicate native barriers"):
         account_rows(duplicate_timestamp, fill_references={}, external_cashflows=(flow,))
+
+
+@pytest.mark.parametrize("amount", [1.25, True, " 1", "1_0"])
+def test_external_cashflow_amount_rejects_float_and_noncanonical_decimal_text(amount) -> None:
+    base = dict(currency="USDT", fills=(), funding=(), positions=(), orders=(),
+                liquidation_capability=True, liquidation_orders=())
+    snapshots = (
+        SimpleNamespace(decision_ts_ns=1, equity=Decimal("1000"), **base),
+        SimpleNamespace(decision_ts_ns=11, equity=Decimal("1001"), **base),
+    )
+    flow = {"event_id": "transfer-1", "decision_ts_ns": 11, "currency": "USDT",
+            "kind": "DEPOSIT", "amount": amount, "source_id": "statement",
+            "source_sha256": "e" * 64}
+    with pytest.raises(MetricsError, match="exact decimal text"):
+        account_rows(snapshots, fill_references={}, external_cashflows=(flow,))
+    with pytest.raises(MetricsError, match="exact decimal text"):
+        NativeReportAccumulator(
+            sample_interval_ns=10, max_return_count=5, contract_multiplier=Decimal(1),
+            external_cashflows=(flow,),
+        )
+
+
+def test_external_cashflow_source_identity_rejects_surrounding_whitespace() -> None:
+    base = dict(currency="USDT", fills=(), funding=(), positions=(), orders=(),
+                liquidation_capability=True, liquidation_orders=())
+    snapshots = (
+        SimpleNamespace(decision_ts_ns=1, equity=Decimal("1000"), **base),
+        SimpleNamespace(decision_ts_ns=11, equity=Decimal("1000"), **base),
+    )
+    flow = {"event_id": "transfer-1", "decision_ts_ns": 11, "currency": "USDT",
+            "kind": "DEPOSIT", "amount": "1", "source_id": " statement ",
+            "source_sha256": "f" * 64}
+    with pytest.raises(MetricsError, match="source identity must be canonical"):
+        account_rows(snapshots, fill_references={}, external_cashflows=(flow,))
 
 
 @pytest.mark.parametrize("kind", [[], {}, None, 1, "TRANSFER"])

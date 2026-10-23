@@ -563,19 +563,13 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                           component: str = "policy", *, intent_id: str,
                           candidate_id: str):
         window = run["evaluation"]
-        registry.verify_query_intent(
-            protocol_id=protocol_id, intent_id=intent_id, owner=owner,
-            market=research_access.market_key(instrument), family=research_access.DATA_FAMILY,
-            start_ns=window["start_ns"], end_ns=window["end_ns"],
-            purpose=window["split"], source_sha256=market_source_identity["snapshot_hash"],
-            candidate_id=candidate_id,
-        )
         return authorize_evaluation(
             registry, ledger, protocol_id=protocol_id, query_id=query_id, owner=owner,
             market=research_access.market_key(instrument), family=research_access.DATA_FAMILY,
             start_ns=window["start_ns"], end_ns=window["end_ns"], split=window["split"],
             source_sha=market_source_identity["snapshot_hash"],
             bundle_sha=_verify_file(bundle_root / "bundle.json"),
+            intent_id=intent_id, candidate_id=candidate_id,
             mode=window.get("mode", "base"), component=component,
         )
 
@@ -1366,3 +1360,4 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
             failure.write_text(json.dumps({"error": type(exc).__name__, "detail": detail},
                                           ensure_ascii=False), encoding="utf-8")
         raise
+

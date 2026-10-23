@@ -7,6 +7,7 @@ from bisect import bisect_left
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+import re
 from typing import Any
 
 from .metrics import MetricsError
@@ -100,8 +101,12 @@ def import_binance_usdm_transfer_income(
         timestamp_ms = row.get("time")
         if type(timestamp_ms) is not int or timestamp_ms < 0:
             raise MetricsError("Binance transfer requires a nonnegative integer time")
+        raw_amount = row.get("income")
+        if (not isinstance(raw_amount, str)
+                or re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)", raw_amount) is None):
+            raise MetricsError("Binance transfer income must be exact decimal text")
         try:
-            amount = Decimal(str(row.get("income")))
+            amount = Decimal(raw_amount)
         except (InvalidOperation, ValueError, TypeError) as exc:
             raise MetricsError("invalid Binance transfer amount") from exc
         if not amount.is_finite() or amount == 0:
@@ -249,3 +254,4 @@ def import_binance_usdm_transfer_income_pages(
         query_time_range_ms=(query_start_ms, query_end_ms),
         page_sha256=tuple(page_hashes),
     )
+

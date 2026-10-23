@@ -165,6 +165,12 @@ def test_wfo_query_intent_is_frozen_before_read_and_later_binds_selected_candida
             family="perpetual-market-v1", start_ns=320, end_ns=330,
             purpose="development", identity={"window": "reused"},
         )
+    with pytest.raises(ResearchLockError, match="formal query intent blocks development"):
+        registry.reserve(
+            key="same-owner-new-development", owner="wfo-owner", market="ETHUSDT",
+            family="perpetual-market-v1", start_ns=320, end_ns=330,
+            purpose="development", identity={"window": "reused"},
+        )
     with pytest.raises(ResearchLockError, match="formal query intent blocks evaluation"):
         registry.reserve(
             key="unintended-evaluation", owner="other-owner", market="ETHUSDT",
@@ -463,7 +469,16 @@ def test_formal_holdout_authorization_requires_matching_retrain_and_single_use_s
     ledger.create("p", "r", validation_budget=1, hpo_budget=0, es_evaluation_budget=0)
     args = dict(protocol_id="p", query_id="final-holdout", owner="owner", market="ETHUSDT",
                 family="perpetual-market-v1", start_ns=100, end_ns=200, split="holdout",
-                source_sha="a" * 64, bundle_sha="b" * 64)
+                source_sha="a" * 64, bundle_sha="b" * 64,
+                intent_id="final-holdout", candidate_id="candidate-a")
+    registry.reserve_query_intent(
+        protocol_id="p", intent_id="final-holdout", owner="owner", market="ETHUSDT",
+        family="perpetual-market-v1", start_ns=100, end_ns=200, purpose="holdout",
+        identity={"protocol_id": "p", "query_id": "final-holdout",
+                  "source_sha256": "a" * 64, "candidate_ids": ["candidate-a"]},
+    )
+    registry.start_query_intents(protocol_id="p", owner="owner",
+                                 intent_ids=("final-holdout",))
     with pytest.raises(ResearchLockError, match="registered retrain"):
         authorize_evaluation(registry, ledger, **args)
     ledger.freeze_recipe("p", recipe_sha="c" * 64, code_sha="d" * 64, selection_spec_sha="e" * 64)
@@ -472,6 +487,10 @@ def test_formal_holdout_authorization_requires_matching_retrain_and_single_use_s
                         reviewer_approval_sha="f" * 64, holdout_start_ns=100)
     with pytest.raises(ResearchLockError, match="matching one-shot"):
         authorize_evaluation(registry, ledger, **{**args, "end_ns": 201})
+    with pytest.raises(ResearchLockError, match="pre-read query intent"):
+        authorize_evaluation(registry, ledger, **{**args, "intent_id": "unregistered-intent"})
+    with pytest.raises(ResearchLockError, match="candidate"):
+        authorize_evaluation(registry, ledger, **{**args, "candidate_id": "candidate-b"})
     access = authorize_evaluation(registry, ledger, **args)
     consume = dict(bundle_sha="b" * 64, split="holdout", start_ns=100, end_ns=200,
                    market="ETHUSDT", mode="base")
@@ -481,6 +500,32 @@ def test_formal_holdout_authorization_requires_matching_retrain_and_single_use_s
     restored = authorize_evaluation(registry, ledger, **args)
     with pytest.raises(ResearchLockError, match="already started"):
         restored.consume(**consume)
+
+
+def test_formal_test_authorization_binds_candidate_and_fold_to_query_intent(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    ledger = ResearchLedger(tmp_path / "run.sqlite")
+    ledger.create("p", "r", validation_budget=1, hpo_budget=0, es_evaluation_budget=0)
+    ledger.freeze_recipe("p", recipe_sha="c" * 64, code_sha="d" * 64,
+                         selection_spec_sha="e" * 64)
+    ledger.record_query("p", "test-query", "test", "candidate-a", "fold-1")
+    registry.reserve_query_intent(
+        protocol_id="p", intent_id="fold-1-test", owner="owner", market="ETHUSDT",
+        family="perpetual-market-v1", start_ns=100, end_ns=200, purpose="test",
+        identity={"protocol_id": "p", "query_id": "fold-1-test",
+                  "source_sha256": "a" * 64,
+                  "candidate_ids": ["candidate-a", "candidate-b"], "fold_id": "fold-1"},
+    )
+    registry.start_query_intents(protocol_id="p", owner="owner",
+                                 intent_ids=("fold-1-test",))
+    args = dict(
+        protocol_id="p", query_id="test-query", owner="owner", market="ETHUSDT",
+        family="perpetual-market-v1", start_ns=100, end_ns=200, split="test",
+        source_sha="a" * 64, bundle_sha="b" * 64,
+        intent_id="fold-1-test", candidate_id="candidate-b",
+    )
+    with pytest.raises(ResearchLockError, match="durable query"):
+        authorize_evaluation(registry, ledger, **args)
 
 
 def test_development_entry_cannot_relabel_previously_reserved_holdout(tmp_path, monkeypatch):
@@ -608,6 +653,8 @@ def test_frozen_test_query_cannot_be_reopened_for_another_window_or_output(tmp_p
 
 
 def test_historical_inventory_records_overlap_atomically_without_authorizing_reads(tmp_path):
+    import hashlib
+    import json
     import sqlite3
 
     registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
@@ -615,20 +662,42 @@ def test_historical_inventory_records_overlap_atomically_without_authorizing_rea
                     start_ns=100, end_ns=200, purpose="development", identity={}),
                dict(key="old-holdout", market="ETHUSDT", family="perpetual-market-v1",
                     start_ns=150, end_ns=250, purpose="holdout", identity={})]
-    registry.import_inventory(entries, "a" * 64)
-    registry.import_inventory(entries, "a" * 64)
+    content = json.dumps({"schema": "rles.legacy-research-access.v1", "entries": entries,
+                          "unresolved": []}, sort_keys=True, separators=(",", ":")).encode()
+    registry.import_inventory(content)
+    registry.import_inventory(content)
     with sqlite3.connect(registry.path) as connection:
+        assert hashlib.sha256(content).hexdigest() == connection.execute(
+            "SELECT sha FROM inventory_import",
+        ).fetchone()[0]
         rows = connection.execute("SELECT access_key,state FROM access ORDER BY access_key").fetchall()
     assert rows == [("old-dev", "recorded"), ("old-holdout", "recorded")]
     with pytest.raises(ResearchLockError, match="interval already"):
         reserve(registry, key="fresh", start=200, end=250)
     bad = [{**entries[0], "key": "would-be-partial"},
            {**entries[1], "key": "invalid", "end_ns": 0}]
+    bad_content = json.dumps({"schema": "rles.legacy-research-access.v1", "entries": bad,
+                              "unresolved": []}, sort_keys=True,
+                             separators=(",", ":")).encode()
     with pytest.raises(ValueError, match="scope"):
-        registry.import_inventory(bad, "b" * 64)
+        registry.import_inventory(bad_content)
     with sqlite3.connect(registry.path) as connection:
         assert connection.execute("SELECT COUNT(*) FROM access").fetchone()[0] == 2
         assert connection.execute("SELECT COUNT(*) FROM inventory_import").fetchone()[0] == 1
+
+
+def test_historical_inventory_rejects_ambiguous_or_unresolved_json(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    with pytest.raises(ValueError, match="duplicate inventory JSON key"):
+        registry.import_inventory(
+            b'{"schema":"rles.legacy-research-access.v1","schema":"other",'
+            b'"entries":[],"unresolved":[]}'
+        )
+    with pytest.raises(ValueError, match="schema or resolution"):
+        registry.import_inventory(
+            b'{"schema":"rles.legacy-research-access.v1","entries":[],'
+            b'"unresolved":[{"reason":"unknown scope"}]}'
+        )
 
 
 def test_fresh_development_reservation_is_one_shot_and_rejects_any_overlap(tmp_path):
@@ -797,3 +866,4 @@ def test_fresh_fold_reader_reads_only_row_groups_after_atomic_scope_record(tmp_p
             fold_sha256="f" * 64, repository_commit="c" * 40,
             source_code_sha256="d" * 64,
         )
+

@@ -9,6 +9,7 @@ from itertools import groupby
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 from typing import Any, Callable, Mapping, Sequence
 
@@ -152,6 +153,22 @@ def _decimal(value: Any, label: str) -> Decimal:
     return result
 
 
+def _external_cashflow_amount(value: Any) -> Decimal:
+    """Parse sourced cash amounts without accepting binary floats or loose syntax."""
+    if isinstance(value, Decimal):
+        amount = value
+    elif type(value) is int:
+        amount = Decimal(value)
+    elif (isinstance(value, str)
+          and re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", value)):
+        amount = Decimal(value)
+    else:
+        raise MetricsError("external cashflow amount must be exact decimal text")
+    if not amount.is_finite():
+        raise MetricsError("external cashflow amount must be finite")
+    return amount
+
+
 def _ordered_snapshots(snapshots: Sequence[Any]) -> list[Any]:
     if (not isinstance(snapshots, SequenceABC)
             or isinstance(snapshots, (str, bytes, bytearray)) or not snapshots):
@@ -293,11 +310,11 @@ def _external_cashflows_by_time(cashflows: Sequence[Mapping[str, Any]],
             raise MetricsError("external cashflow currency differs from native account")
         if not isinstance(kind, str) or kind not in {"DEPOSIT", "WITHDRAWAL"}:
             raise MetricsError("external cashflow kind must be DEPOSIT or WITHDRAWAL")
-        amount = _decimal(fact.get("amount"), "external cashflow amount")
+        amount = _external_cashflow_amount(fact.get("amount"))
         if amount <= 0:
             raise MetricsError("external cashflow amount must be positive")
-        if not isinstance(source, str) or not source.strip():
-            raise MetricsError("external cashflow source identity required")
+        if not isinstance(source, str) or not source or source != source.strip():
+            raise MetricsError("external cashflow source identity must be canonical")
         if (not isinstance(source_hash, str) or len(source_hash) != 64
                 or any(character not in "0123456789abcdef" for character in source_hash)):
             raise MetricsError("external cashflow source SHA-256 required")
@@ -724,12 +741,12 @@ class NativeReportAccumulator:
                 raise MetricsError("external cashflow timestamp must be a nonnegative integer")
             if not isinstance(kind, str) or kind not in {"DEPOSIT", "WITHDRAWAL"}:
                 raise MetricsError("external cashflow kind must be DEPOSIT or WITHDRAWAL")
-            if not isinstance(source, str) or not source.strip():
-                raise MetricsError("external cashflow source identity required")
+            if not isinstance(source, str) or not source or source != source.strip():
+                raise MetricsError("external cashflow source identity must be canonical")
             if (not isinstance(source_hash, str) or len(source_hash) != 64
                     or any(character not in "0123456789abcdef" for character in source_hash)):
                 raise MetricsError("external cashflow source SHA-256 required")
-            amount = _decimal(fact.get("amount"), "external cashflow amount")
+            amount = _external_cashflow_amount(fact.get("amount"))
             if amount <= 0:
                 raise MetricsError("external cashflow amount must be positive")
             if not isinstance(fact.get("currency"), str) or not fact["currency"]:

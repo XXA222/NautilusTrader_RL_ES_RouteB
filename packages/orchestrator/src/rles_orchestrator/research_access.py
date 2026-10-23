@@ -1,7 +1,6 @@
 """Resolve the shared project ledger; never derive it from an experiment output."""
 from contextvars import ContextVar
 from hashlib import sha256
-import json
 from pathlib import Path
 from time import time_ns
 import uuid
@@ -31,10 +30,10 @@ def project_registry() -> ProjectResearchRegistry:
             marker = inventory_path.with_suffix(".json.sha256")
             if not marker.is_file() or marker.read_text(encoding="ascii") != inventory_sha:
                 raise DataError("legacy research inventory integrity mismatch")
-            inventory = json.loads(content)
-            if inventory["unresolved"]:
-                raise DataError("legacy research inventory contains unresolved data access")
-            registry.import_inventory(inventory["entries"], inventory_sha)
+            try:
+                registry.import_inventory(content)
+            except ValueError as exc:
+                raise DataError("legacy research inventory is invalid or unresolved") from exc
             return registry
     raise DataError("project research registry unavailable; run from a workspace checkout")
 
@@ -256,3 +255,4 @@ def finish_application_trial(attempt_key: str | None, *, status: str,
         attempt_key, event_key=f"{status}-{time_ns()}-{uuid.uuid4().hex}",
         status=status, detail=detail,
     )
+
