@@ -1,5 +1,5 @@
-Warning: truncated output (original token count: 24973)
-Total output lines: 466
+Warning: truncated output (original token count: 25365)
+Total output lines: 474
 
 # RouteB v2.2 implementation audit — refreshed 2026-10-22
 
@@ -137,126 +137,7 @@ After installing the rebuilt RouteB wheels, the exact Windows PR marker selector
 
 **A04 paired Test identity follow-up — 2026-10-22:** paired component comparison now validates component values as strings before set operations; malformed query identity fails closed through the reservation conflict path. Final installed-wheel suite: **198 passed**. All 12 wheels match source; 12 module/6 entry point provenance and 69 dependency checks pass; Ruff/MyPy pass. Evidence: `docs/audit_evidence/20261022/query_intent_input_contract_20261022.json`.
 
-**A04 registry operation input follow-up — 2026-10-22:** `consume`, `verify_report`, and `development_result` reject malformed identifiers/digests before SQLite instead of leaking `ProgrammingError` or returning misleading receipt mismatch. Final installed-wheel suite: **205 passed**; 12 wheel/source checks, 12/6 import provenance, 69 dependency check, Ruff/MyPy pass. Candidate-wide lock was reviewed and rejected as incompatible with legitimate R4 fold-scoped attempts. Evidence: `docs/audit_evidence/20261022/query_intent_input_contract_20261022.json`.
-
-**A05 deterministic trial inventory follow-up — 2026-10-22:** summary attempts are explicitly ordered by candidate, seed, and attempt key. The new reverse-insertion regression reproduces old unstable ordering. Installed-wheel suite: **206 passed**; 12 wheel/source matches, provenance, 69 dependency check, Ruff/MyPy pass. Evidence: `docs/audit_evidence/20261022/query_intent_input_contract_20261022.json`.
-
-**A04 duplicate legacy access-key follow-up — 2026-10-22:** the parser and registry import now reject repeated access keys before importing; malformed list-valued keys fail through normal validation instead of `TypeError`. The regression reproduced against the prior installed wheels. Final installed-wheel registry/WFO/CLI/fresh-fold/reconciler selector: **209 passed**; 12 wheels/12 sdists build, all package source comparisons match, 12 package/6 entry-point provenance checks and 69-dependency validation pass; Ruff/MyPy pass. Evidence: `docs/audit_evidence/20261022/legacy_inventory_duplicate_access_keys_20261022.json`. External Hosted CI and unregistered historical-access completeness remain open.
-
-**A04 canonical scope namespace follow-up — 2026-10-22:** reproduced that a padded market value (`ETHUSDT `) could create an overlapping reservation outside the canonical `ETHUSDT` interval key. Registry scopes now require unpadded IDs, uppercase markets, and lowercase family IDs; the strict legacy parser and direct importer apply the same validation. Six old-wheel regressions failed before the fix; the final installed-wheel authorization/WFO/CLI/fresh-fold/reconciler suite passed **215 tests**. 12 wheels/12 sdists source-match, app provenance checks and dependency check pass, Ruff/MyPy pass. Evidence: `docs/audit_evidence/20261022/registry_scope_namespace_canonicalization_20261022.json`. No project ledger or market data was accessed.
-
-**A04/A05 query and trial identifier follow-up — 2026-10-22:** frozen candidate IDs and attempt/protocol/candidate/event/summary identifiers now reject whitespace-only or padded aliases before they can inflate formal candidate sets, duplicate trial identity, or create misleading empty summaries. The five added regressions failed on the previous wheel. Final installed-wheel access/WFO/CLI/fresh-fold/reconciler suite: **220 passed**; 12 wheels/12 sdists source-match, RouteB app provenance and 69-dependency check pass, Ruff/MyPy pass. Evidence: `docs/audit_evidence/20261022/research_identifier_contracts_20261022.json`. No project ledger or evaluation data was accessed.
-
-**A08 cashflow import follow-up — 2026-10-22:** source audit found that Python `Decimal` accepts nonstandard underscore and Unicode-digit lexemes even though Binance USDⓈ-M `income` is a string field represented as a signed decimal amount; `str` payloads with unpaired surrogates and paged metadata with an escaped surrogate could also leak raw `UnicodeEncodeError`. The importer now enforces an ASCII decimal lexical contract, maps invalid UTF-8 text input to `MetricsError`, and uses ASCII escaping for intermediate page serialization while preserving SHA-256 over exact raw pages. Regression coverage includes bad lexical values, invalid text, and page digest preservation. Installed-wheel cashflow selector: **29 passed**; Ruff/MyPy pass; all 12 rebuilt wheels match package source, RouteB `.venv-win-app` imports the package whose file hash matches source, and 69 dependencies are compatible. Source manifest: 569 files, identity `ffe2db1ce9e815563b00149ced3c360deda5c6666617a942cca7914e1035179b`. Evidence: `docs/audit_evidence/20261022/a08_cashflow_input_lexemes_20261022.json`. This is input integrity only; authenticated account identity and complete real cashflows remain external M0.1 evidence gates.
-
-**A13 training-window integrity follow-up — 2026-10-22:** the SB3 Train callback now validates exact episode-window keys, positive ordered inclusive bounds, positive decision-step count, and containment of each observed decision timestamp; conflicting bounds for one worker/episode/start-offset identity fail instead of overwriting. Corrected stale documentation that labeled fixed volatility cut points as empirical quartiles. Full `test_native_training_episode.py`: **30 passed, 16 warnings** against source and rebuilt installed wheel. Ruff/MyPy pass; 12 wheels/12 sdists rebuilt, wheel manifest 12/12 source-matched, app provider hash matches source, and 69 dependencies are compatible. Source identity: 569 files, `3947a3de975b4499c23a767dd6cf7bd6b8d910b0f8140b81f5c94a24b015db65`. Evidence: `docs/audit_evidence/20261022/a13_episode_window_diagnostics_20261022.json`. Synthetic only; this strengthens the coverage diagnostic contract but does not create fresh independent market evidence.
-
-**A02 direct scorer feasibility-evidence follow-up — 2026-10-22:** reproduced that calling the public `ConstraintPriorityFitnessSpec.evaluate_episode()` without native feasibility flags returned a positive-equity `feasible=True` result, even though the worker dispatcher separately required known margin facts. The scorer now fails closed unless insolvency, maintenance-margin breach, and native liquidation are explicit Python booleans and `margin_facts_known=True`; this also rejects placeholder false values when the native source is incomplete. Fitness/worker selector: **49 passed, 8 warnings** against source and final installed RouteB wheel; installed native negative-equity worker case: **1 passed**; Ruff/MyPy pass. All 12 wheels/12 sdists rebuilt, wheel manifest 12/12 source-matched, app fitness SHA matches source, and 69 dependencies are compatible. The dedicated CPU/JAX venv already has PyArrow 25.0.1. Evidence: `docs/audit_evidence/20261022/a02_constraint_priority_explicit_facts_20261022.json`.
-
-
-**A11 M1.3 strict JSON parser follow-up — 2026-10-22:** source audit found that the current and still-callable revision-2 analyzers silently accepted duplicate keys and leaked `UnicodeDecodeError`; both readers now reject repeated keys at every nesting depth across bundle, actor, preregistration and stage reports, and map malformed UTF-8/JSON/I/O to stable `ValueError`; the compatibility analyzer also rejects non-finite/bool numerics, inconsistent maximum residuals and impossible execution/risk counters. Regression: **37 passed, 1 skipped** (symlink permission); Ruff passes; targeted MyPy passes with the untyped wheel diagnostic disabled. This is input-contract hardening only; compatible E1/R1/E2 native artifacts are still absent, so M1.3 remains partial. Evidence: `docs/audit_evidence/20261022/m13_stage_analyzer_strict_json_20261022.json`.
-
-**A04/M0.3 WFO scoped payload isolation — 2026-10-22:** removed the WFO startup read spanning through Holdout and replaced full-snapshot default reads in candidate Train, Validation, stress Validation, Test/baselines, final retrain, and final Holdout with frozen stage windows. Formal Test/Holdout calls now consume `EvaluationAccess` before decoding their own warmup→score-end windows; a Test query cannot expose Holdout rows. Bundle/report identity binds the immutable market source snapshot and rules SHA; the one-shot ledger continues to bind the market source and Holdout time range. Full WFO/application/historical factory selector: **163 passed, 18 warnings**; Ruff and MyPy pass. The consume-before-payload regression uses synthetic temporary fixtures and a temporary registry only. It does not reconstruct project access predating registration and does not replace external research certification. Evidence: `docs/audit_evidence/20261022/wfo_scoped_payload_boundaries_20261022.json`.
-
-**A05 registered R4 control JSON integrity follow-up — 2026-10-22:** both registered R4 hierarchy and E2/E3 comparison runners, all five R4 Fold freezers, and the ADA/DOGE/SOL archive downloaders now reject duplicate JSON object keys in frozen configs and receipts. Registered runners normalize malformed UTF-8, JSON syntax, and IO failures to `ValueError`. Synthetic nested-duplicate and invalid-byte regression included. Focused R4 tests: **11 passed**; Ruff, Python compilation, and MyPy `packages qa` (224 source files) pass with installed untyped-wheel diagnostics disabled. Source manifest verifies 579 files, identity `a4aa67a4ad0216f0333488b2ebd0bfee64100bd37cac93cab016d1a5853ad28c`. Evidence: `docs/audit_evidence/20261022/r4_registered_controls_strict_json_20261022.json`. Downloaders were not run; no market or ledger data was accessed. Continue local A01–A14 audit, with Hosted CI and independent research gates still open.
-
-**Registered world-model QA JSON boundaries — 2026-10-22:** R3 registered ablation and fold ensemble now use the strict world-model JSON reader for forecast requests, E2 reports, and source-preparation identity. Synthetic CLI worker smoke, E3 gradient diagnostic, and seed-stream factorial use the same strict reader for generated reports/checkpoint/training metadata. Combined registered-report, CLI, randomness, and R4 tests: **39 passed, 2 JAX-only skipped**. Ruff, script compilation, and MyPy `packages qa` (224 source files) pass with installed untyped-wheel diagnostics disabled. Current 580-file source manifest verifies as `13e896181c83d6d6011a2270a49fb6dadaf67811b8772c30cb039b42726d22c9`. Evidence: `docs/audit_evidence/20261022/world_model_qa_json_integrity_20261022.json`. No market or ledger data was read; continue remaining local A01–A14 audit. Hosted CI and independent research gates remain open.
-
-**A04/A05 legacy inventory JSON integrity — 2026-10-22:** read-only research-access and trial inventory tools now reject dup…4973 tokens truncated…compatible packages**. The Research and Orchestrator wheel modules match source byte-for-byte. Source manifest verifies **594 files**, identity 0f02c4421cb6da5db27a662bc6872c545b7f7a1ff36b5b53678c650858d6b670. Evidence: docs/audit_evidence/20261022/a09_m01_positionless_fill_multiplier_20261022.json.
-
-Only synthetic data was used. No market, account, ledger, Validation, Test, or Holdout payload was accessed. Authenticated rules, complete cashflow provenance, and hosted CI remain open. Continue the local A01–A14 audit.
-
-## 2026-10-22 — A09/M2 Bar Base/Stress quote-notional multiplier
-
-**Finding:** the Train-inner Bar Base/Stress diagnostic summarized fills as `quantity × price`, even after M4.1 generalized the frozen contract multiplier. Its `filled_quote_notional` was understated for multiplier-above-one contracts.
-
-**Change:** `_order_metrics` now requires a finite positive Decimal multiplier, applies it to each fill's quote notional, and records the multiplier. Each mode passes `HistoricalEnvironmentFactory.contract_multiplier`, sourced from the frozen instrument rules.
-
-**Verification:** a synthetic multiplier-2 regression first failed against the previous signature, then the combined bar-cost/frozen-plan selector passed **9 tests** (including zero/nonfinite multiplier rejection). Ruff, Python compilation, targeted MyPy, and the 595-file source manifest pass; identity `28127481828a9f40b96de186643190c07e741fc8dfc6662e852338e5edcfc859`. Evidence: `docs/audit_evidence/20261022/a09_bar_cost_multiplier_20261022.json`.
-
-No Train-inner comparison or market/account/ledger/Validation/Test/Holdout payload was opened. This fixes diagnostic unit arithmetic only; simulated liquidity and authenticated exchange rules remain unverified. Continue the local A01–A14 audit.
-
-## 2026-10-22 — A08 Binance USD-M aggTrades finite-value boundary
-
-**Finding:** the archive parser parsed trade price and quantity as `Decimal` but compared them to zero without a finiteness check. Positive Infinity passed that parser check and was rejected only later by Event validation; NaN leaked a raw `decimal.InvalidOperation` instead of the parser's stable `DataError` contract.
-
-**Change:** require both price and quantity to be finite before positivity/order comparisons and before aggregation. Added ZIP-backed synthetic cases for NaN and Infinity in each field.
-
-**Verification:** all four cases reproduced before the fix. Afterward, the archive plus data-event selector passed **34 tests** against source and another **34** against the installed RouteB wheel with `PYTHONPATH` unset. Ruff, py_compile, and targeted MyPy pass. All **12 wheels / 12 sdists** built; wheel/source comparison is 12/12 true, and the installed data module SHA matches source. The 595-file source identity is `42726740515c92e3a5244c6980ae8c046f7cedafe3217a37fd0d056475f6ad33`; 69 app dependencies are compatible. Evidence: `docs/audit_evidence/20261022/a08_aggtrade_nonfinite_values_20261022.json`.
-
-Only temporary synthetic ZIP fixtures were used; no archive or research payload was accessed. Continue the local audit.
-
-## 2026-10-22 — A08 Binance archive CSV decoding errors
-
-**Finding:** malformed UTF-8 in the CSV member for aggTrades, bookTicker, and klines escaped `archive_events` as `UnicodeDecodeError`, bypassing the stable `DataError` boundary.
-
-**Change:** all CSV-based archive streams now use a shared streaming decoder that maps Unicode and `csv.Error` failures to `DataError`; iteration remains streaming.
-
-**Verification:** three invalid-byte ZIP cases reproduced before the fix. The archive/data-event selector passed **37 tests** against source and **37** against the installed wheel with `PYTHONPATH` unset. Ruff, py_compile, targeted MyPy pass. All 12 wheels and sdists rebuilt; wheel/source comparison is 12/12 true, installed module hash matches source, and 69 dependencies are compatible. Source identity: 595 files, `105dd6cc2afabd851182e1a3b0484134467b88fa264142cebff53081a315eb03`. Evidence: `docs/audit_evidence/20261022/a08_archive_csv_utf8_errors_20261022.json`.
-
-Synthetic ZIPs only; no market archive or ledger payload was accessed. Continue the local A01–A14 audit.
-
-## 2026-10-22 — A08 Binance archive integer-field errors
-
-**Finding:** invalid integer IDs/timestamps in bookTicker, fundingRate, and kline rows leaked raw `ValueError` instead of `DataError`.
-
-**Change:** added field-labeled integer parsing for those stream fields so malformed records fail through the archive API's stable data error contract.
-
-**Verification:** three synthetic ZIP cases reproduced before the fix. Archive/data-event tests passed **40** against source and **40** against the installed RouteB wheel with `PYTHONPATH` unset. Ruff, py_compile, targeted MyPy pass. Rebuilt 12 wheels and sdists; all wheels match source, installed data module matches the source SHA, and 69 dependencies are compatible. Source identity: 595 files, `e4355283b62ee3113b6b1eaeb8bfa4ed3807025e0a5082d94cb1197f0a73a882`. Evidence: `docs/audit_evidence/20261022/a08_archive_integer_fields_20261022.json`.
-
-Only temporary synthetic archives were used. Continue the local audit.
-
-## 2026-10-22 — A08 aggTrades ASCII decimal lexemes
-
-**Finding:** Python `Decimal` accepts underscore separators and Unicode digits, so malformed aggTrades price/quantity strings such as `2_000` or Arabic digits were silently normalized and aggregated.
-
-**Change:** added an unsigned ASCII fixed-point parser for price and quantity, rejecting noncanonical lexemes and non-finite constants before aggregation.
-
-**Verification:** four synthetic malformed-lexeme cases reproduced acceptance before the fix. The full archive/data-event selector passed **44 tests** from source and **44** against the installed RouteB wheel with `PYTHONPATH` unset. Ruff and targeted MyPy pass. Rebuilt 12 wheels + 12 sdists; all wheels match source, installed module SHA equals source, and 69 dependencies are compatible. Source identity: 595 files, `8c7b7cfa420dfbece8e2bc6828d605e1fc6d40bc157158d429204d2db2dc7d2c`. Evidence: `docs/audit_evidence/20261022/a08_aggtrade_ascii_decimal_20261022.json`.
-
-Only temporary synthetic ZIPs were used. Continue the local A01–A14 audit.
-
-## 2026-10-22 — A08 archive ASCII integer lexemes
-
-**Finding:** `int()` accepts underscores, Unicode digits, and explicit plus signs. Archive IDs and timestamps could therefore be normalized from noncanonical tokens.
-
-**Change:** the shared parser now accepts only unsigned ASCII digits. bookTicker, Funding, kline, and aggTrades integer fields use this contract and fail with field-labeled `DataError`.
-
-**Verification:** five temporary ZIP cases reproduced acceptance before the fix. The archive/data-event selector passed **49 tests** from source and **49** against the installed RouteB wheel with `PYTHONPATH` unset. Ruff, py_compile, targeted MyPy pass. All 12 wheels/sdists rebuilt; 12/12 wheels match source, installed module SHA matches source, and 69 dependencies are compatible. Source identity: 595 files, `246deaf2f0296dd2ceafef840db955fc96db87c6bcb183061d91fb427081680a`. Evidence: `docs/audit_evidence/20261022/a08_archive_ascii_integer_lexemes_20261022.json`.
-
-Only synthetic ZIP fixtures were used. Continue the local audit.
-
-## 2026-10-22 — A08 archive ASCII decimal lexemes
-
-**Finding:** Python float() accepts underscore separators, Unicode digits, leading plus signs, and whitespace, so archive prices/rates could be silently normalized from noncanonical CSV tokens.
-
-**Change:** archive parsing now validates bookTicker quote fields, funding rates, klines, and mark/index-price kline fields as ASCII fixed-point decimals before event construction. Generic event-schema behavior is unchanged.
-
-**Verification:** four synthetic ZIP cases reproduced acceptance before the fix. The archive/data-event selector passed **53 tests** from source and **53** against the installed RouteB wheel with PYTHONPATH unset. Ruff, py_compile, and targeted MyPy passed. All **12 wheels + 12 sdists** built; wheel manifest reports 12/12 source matches; installed parser SHA matches source; wheel import smoke confirms 12 modules and 6 entry points; all **69 app dependencies** are compatible. Source identity: 595 files, d68b5f7c5a00f8e6cd5fb60154334826930910afbed71b7cd30e4dcacd66d21e. Evidence: docs/audit_evidence/20261022/a08_archive_ascii_decimal_lexemes_20261022.json.
-
-Only synthetic temporary ZIP fixtures were used. Continue the local A01–A14 audit; authenticated market/account evidence and Hosted CI remain external gates.
-
-## 2026-10-22 — A08 shared Event ASCII decimal lexemes
-
-**Finding:** the shared Event validator passed numeric strings directly to Python float(), which accepts underscores, Unicode digits, leading plus signs, surrounding whitespace, and exponent notation. This left non-archive Event/Parquet ingestion paths able to normalize malformed source tokens.
-
-**Change:** shared Event numeric strings now require ASCII fixed-point notation; signed fields allow a leading minus and unsigned fields do not. Existing numeric int/float handling and finite/range checks remain.
-
-**Verification:** five synthetic malformed tokens reproduced acceptance before the fix. Data schema, archive, feature, dataset, and RouteB archive integration selectors passed **75 tests** from source and **75** against the installed wheel with PYTHONPATH unset. Ruff, py_compile, and targeted MyPy passed. The wheel manifest reports all **12/12 wheels** match current source; wheel import smoke confirms 12 modules and 6 entry points; all **69 app dependencies** are compatible. Source manifest verifies 595 files, identity 66bf9cbff78d9f56e091f32c213562092b1371b657d8524e69a879486432a5f5. Evidence: docs/audit_evidence/20261022/a08_shared_event_ascii_decimal_lexemes_20261022.json.
-
-Synthetic malformed tokens and existing fixtures only; no market/account/ledger/formal evaluation payload was accessed. Continue local A01–A14 audit.
-
-## 2026-10-22 F7 compact native position-fact reuse and long-window profile
-
-The compact report path now interns unchanged position facts as immutable read-only mappings, avoiding a repeated position dictionary allocation at every barrier. A synthetic native-engine profile compared 1/30/90-day retained and lean runs (1,437 / 43,197 / 129,597 steps). Full trajectory hashes and native metric hashes match before and after. At 90 days, retained-mode RSS peak delta fell from 472,567,808 to 398,458,880 bytes (74,108,928 bytes / 15.68% reduction); 30-day delta fell by 25,395,200 bytes. Ruff, py_compile, targeted MyPy, source tests, installed-wheel tests, 12-wheel source matching, 12/6 import smoke, and the 69-package dependency check pass. Evidence: docs/audit_evidence/20261022/f7_native_growth_position_reuse_20261022.json and the paired profile reports it references.
-
-F7 remains **partial**: compact report snapshots are still retained per barrier, so memory remains O(n). The profile is fixed-action synthetic engineering evidence, not a full real-history Train trace or economic result.
-
-## 2026-10-22 F7 online native return metrics
-
-The native report path with account-row output disabled no longer stores the complete return array. It now accumulates compounding, drawdown, dispersion, downside statistics, and exact lower-tail VaR/CVaR online. The tail heap uses a snapshot-derived upper bound and is trimmed on a copy, preserving exact final quantiles and safe intermediate result calls.
-
-Source and installed-wheel history/metric regression each pass **188 tests**; Ruff, py_compile, MyPy, all-12-wheel source matching, 12-module/6-entry-point import smoke, and the 69-package dependency check pass. The final synthetic 90-day native run covers 129,597 steps and has trajectory and native-metric hashes identical to the pre-change profile. Its RSS measurement is recorded as a single observation because repeated-run absolute peaks varied. Evidence: docs/audit_evidence/20261022/f7_online_native_metrics_20261022.json and f7_synthetic_native_growth_final_20261022.json.
+**A04 registry operation input follow-up — 2026-10-22:** `consume`, `verify_report`, and `development_result` reject malformed identifiers/digests before SQLite instead of leakin…10365 tokens truncated…MyPy, all-12-wheel source matching, 12-module/6-entry-point import smoke, and the 69-package dependency check pass. The final synthetic 90-day native run covers 129,597 steps and has trajectory and native-metric hashes identical to the pre-change profile. Its RSS measurement is recorded as a single observation because repeated-run absolute peaks varied. Evidence: docs/audit_evidence/20261022/f7_online_native_metrics_20261022.json and f7_synthetic_native_growth_final_20261022.json.
 
 F7 remains **partial**: compact per-barrier snapshots are still retained in an O(n) sequence, and include_account_rows=true intentionally materializes report rows. A full real-history Train RSS/trajectory profile remains outstanding.
 
@@ -385,4 +266,12 @@ The historical factory avoids Fold-wide visible-event/batch/BarrierFrame caches,
 **Verification:** source and installed RouteB venv selectors (`test_data_event_guards.py`, `test_data_hash_identity.py`, `test_l2_gym_bridge.py`, `test_layer_invariants.py`, `test_historical_factory.py`) each pass **172 tests, 18 dependency warnings**. Ruff, targeted MyPy, the source manifest, `git diff --check` and 72-package compatibility pass. Installed `rles-data` core/features and GymBridge episode/historical module hashes match source. On a 90-day installed-wheel synthetic Train replay, both modes process 129,597 decisions with identical trajectory SHA-256 `4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f`. Online-summary/lean replay RSS deltas are 193,503,232 / 192,835,584 bytes; runtime is 90.70 / 79.81 seconds. Compared with the immediately prior slotted-FeatureRow build, `CuratedStore` source-generation peak RSS falls 10,440,704 bytes (639,193,088 to 628,752,384), and post-generation RSS falls 8,245,248 bytes (592,838,656 to 584,593,408). The full replay trajectory and Native metrics are unchanged. The slotted FeatureRow object+5-value tuple+floats measures 288 B versus 376 B before slots (about 11.4 MB across 129,600 rows by object-size accounting). Evidence: `docs/audit_evidence/20261023/f7_lazy_barrier_frames_20261023.json`; all eight bound source hashes verify.
 
 **Status:** fold-derived frames, episode metadata churn, per-row instance dictionaries, and duplicated store timestamp arrays are reduced without trajectory changes. F7 remains partial: duplicate event-reference indexes, Native session/cache histories and unique report facts can still grow with history. The profile uses synthetic input, not authenticated real-history Train data. Provenance, independent Validation, market authorization/depth, historical-trial coverage and M4.2 gates remain open.
+
+## 2026-10-23 F7 duplicate event-reference follow-up
+
+The latest source pass resolved three duplicate-retention cases. Chronological per-kind `CuratedStore` views now share one tuple across availability-time and event-time lookup, while late-arriving events retain a separately sorted view. Removed the unused Fold-wide `HistoricalEnvironmentFactory._bars` tuple. Removed Native's duplicate per-cashflow-timestamp barrier-count dictionary and use chronological duplicate detection plus a scalar matched-timestamp count instead.
+
+The affected source selector passed **160 tests**; a broader source data and historical-factory selector had **148 passes** before the unused tuple removal, and its focused historical-frame regression passed again in the 160-test run. Ruff and targeted MyPy passed. A 389,258-event synthetic `CuratedStore` structurally avoids 3,114,064 bytes of repeated tuple pointer slots; removing `_bars` avoids another 1,037,296 pointer slots for 129,662 rows. These figures measure tuple storage, not process RSS. Machine-readable results and source hashes: `docs/audit_evidence/20261023/f7_duplicate_event_indexes_20261023.json`.
+
+F7 is still open: unique report facts scale with history by output-contract design, and no full-history Native RSS/trajectory run or representative fill/Funding/order-history growth profile has closed that risk. Authenticated cashflow provenance, complete historical access, independent Validation, authorized market scope and depth, historic trial coverage, M4.2, and authorized real-history Train remain open gates.
 

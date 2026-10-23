@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 16864)
+Total output lines: 1256
+
 """Real historical perpetual environment assembly, with no test imports."""
 from __future__ import annotations
 
@@ -673,119 +676,7 @@ class _LazyEpisodeBarrierFrames(SequenceABC):
     def __getitem__(self, index: slice) -> tuple[BarrierFrame, ...]: ...
 
     def __getitem__(self, index: int | slice) -> BarrierFrame | tuple[BarrierFrame, ...]:
-        if isinstance(index, slice):
-            return tuple(self[item] for item in range(*index.indices(self._length)))
-        normalized = range(self._length)[index]
-        cache = self._cache
-        frame = cache.get(normalized)
-        if frame is not None:
-            cache.move_to_end(normalized)
-            return frame
-        frame = self._build(normalized)
-        if type(frame) is not BarrierFrame:
-            raise DataError("lazy episode frame builder returned an invalid frame")
-        cache[normalized] = frame
-        if len(cache) > 2:
-            cache.popitem(last=False)
-        return frame
-
-
-class HistoricalEnvironmentFactory:
-    """Freeze data, rules and training-only scaler; create a fresh Engine per Env."""
-    def __init__(self, *, market_path: str | Path, rules_path: str | Path,
-                 instrument: str, start_ns: int, end_ns: int, coverage_policy: dict,
-                 execution: dict, hard_risk: dict, soft_risk: dict,
-                 starting_balance: str, risk_budget_notional: str,
-                 mode: str = "base", scaler: Scaler | None = None,
-                 fit_scaler: bool = False, split: str = "train_inner",
-                 compact_native_history: bool = True,
-                 compact_report_snapshots: bool = False,
-                 feature_profile: str = "legacy", reward_scale: float = 1.0,
-                 reward_lambda_dd: float = 0.0, reward_lambda_guard: float = 0.0,
-                 prepared_store: CuratedStore | None = None) -> None:
-        # Set only by the application layer after prepare() computes its
-        # frozen root-config recipe identity.
-        self.application_training_recipe_hash: str | None = None
-        if split not in {"train_inner", "validation", "test", "holdout"}:
-            raise DataError("unknown historical research split")
-        if fit_scaler and split != "train_inner":
-            raise DataError("only Train-inner may fit feature scaling")
-        if not fit_scaler and scaler is None:
-            raise DataError("evaluation must reuse the frozen training feature scaler")
-        if type(compact_native_history) is not bool:
-            raise DataError("native history compaction flag must be Boolean")
-        if type(compact_report_snapshots) is not bool:
-            raise DataError("report snapshot compaction flag must be Boolean")
-        if not isinstance(feature_profile, str) or feature_profile not in {
-            "legacy", "causal_mtf_v1", "causal_mtf_v2", "causal_mtf_v3",
-        }:
-            raise DataError("unsupported historical feature profile")
-        self.compact_native_history = compact_native_history
-        self.compact_report_snapshots = compact_report_snapshots
-        self.feature_profile = feature_profile
-        self.reward_config = RewardConfig(
-            lambda_dd=reward_lambda_dd, lambda_guard=reward_lambda_guard,
-            reward_scale=reward_scale,
-        )
-        if prepared_store is not None and not isinstance(prepared_store, CuratedStore):
-            raise DataError("prepared history must be a validated CuratedStore")
-        self.store = (prepared_store if prepared_store is not None else
-                      CuratedStore((*read_curated(market_path).events, *load_rules(rules_path))))
-        self.instrument, self.split, self.mode = instrument, split, mode
-        self.start_ns, self.end_ns = start_ns, end_ns
-        self.coverage = CoveragePolicy(**coverage_policy)
-        self.execution = ResolvedExecutionConfig.from_dict(execution)
-        required_kinds = (tuple(sorted(KINDS)) if self.execution.base_fill.data_granularity == "quote" else None)
-        self.quality = self.store.quality(start_ns=start_ns, end_ns=end_ns,
-                                         expected_instruments=(instrument,), coverage_policy=self.coverage,
-                                         **({"required": required_kinds} if required_kinds is not None else {}))
-        self.store.require_usable(self.quality, "rl_es")
-        hard_values: dict[str, Any] = {k: v if type(v) is bool else Decimal(v) for k, v in hard_risk.items()}
-        self.hard = HardRiskConfig(**hard_values)
-        self.soft = SoftRiskParams.from_search_dict(soft_risk)
-        self.capital, self.budget = Decimal(starting_balance), Decimal(risk_budget_notional)
-        if not self.capital.is_finite() or self.capital <= 0 or not self.budget.is_finite() or self.budget <= 0:
-            raise DataError("positive finite capital and risk budget required")
-        if self.hard.max_leverage > 1 or self.hard.incomplete_data_max_leverage > 1:
-            raise DataError("leveraged liquidation replay is not yet certified by this factory")
-        self.rule = self.store.latest_rule(start_ns, instrument)
-        if any(dict(self.store.latest_rule(t, instrument).payload) != dict(self.rule.payload)
-               for t in (end_ns - 1,)):
-            raise DataError("split episode at historical instrument-rule changes")
-        self.contract_multiplier = Decimal(self.rule.payload["contract_multiplier"])
-        self.features = historical_feature_spec(
-            dict(self.coverage.maximum_age_ns), profile=self.feature_profile,
-            quantity_unit=self.rule.payload["quantity_unit"],
-            quote_currency=self.rule.payload["quote_currency"],
-        )
-        account = ("equity", "peak_equity", "drawdown", "cash", "free_margin", "initial_margin",
-                   "maintenance_margin", "unrealized_pnl", "net_exposure", "position_quantity")
-        execution_names = (
-            "prev_executed_target", "prev_raw_target", "pending_order_count",
-            "pending_signed_exposure", "pending_gross_exposure", "fill_rate",
-        )
-        names = tuple("market." + f.name for f in self.features.fields) + tuple("account." + n for n in account)
-        units = tuple(f.unit for f in self.features.fields) + (
-            self.rule.payload["quote_currency"], self.rule.payload["quote_currency"], "ratio",
-            self.rule.payload["quote_currency"], self.rule.payload["quote_currency"],
-            self.rule.payload["quote_currency"], self.rule.payload["quote_currency"],
-            self.rule.payload["quote_currency"], "ratio", self.rule.payload["quantity_unit"],
-        )
-        time_names = (("time.funding_settlement_within_24h",
-                       "time.funding_settlement_time_to_event_24h")
-                      if self.feature_profile == "causal_mtf_v3" else ())
-        if (self.feature_profile == "causal_mtf_v3"
-                and self.coverage.known_schedule_times_ns is None):
-            raise DataError("causal_mtf_v3 requires a source-declared future funding calendar")
-        self.schema = ObservationSchema("0.4.0", names + time_names + ("risk.guard_intervention", "risk.headroom")
-                                        + tuple("execution." + n for n in execution_names),
-                                        units + ("ratio",) * len(time_names)
-                                        + ("ratio", "ratio", "ratio", "ratio", "count", "ratio", "ratio", "ratio"))
-        # Fold membership uses economic event time. Availability still becomes
-        # each row's decision clock, so delayed facts never become observable
-        # early and cannot drift into a different score split merely due to
-        # ingestion latency.
-        bars = [e for e in self.store.events if e.kind == "ohlcv_1m" and e.payload["instrument"] == instrument
+        if isinstance(i…1864 tokens truncated…ore.events if e.kind == "ohlcv_1m" and e.payload["instrument"] == instrument
                 and e.available_at_ns is not None and start_ns <= e.ts_event_ns < end_ns]
         if len(bars) < 5:
             raise DataError("at least five scoring/drain bars plus feature warmup required")
@@ -814,7 +705,6 @@ class HistoricalEnvironmentFactory:
         if any(dict(self.store.latest_rule(row.decision_ts_ns, instrument).payload) != dict(self.rule.payload)
                for row in self.rows):
             raise DataError("split episode at historical instrument-rule changes")
-        self._bars = tuple(bars)
         config_identity: dict[str, Any] = {
             "execution": execution,
             "quote_max_age_ns": (QUOTE_MAX_AGE_NS if self.execution.base_fill.data_granularity == "quote" else None),

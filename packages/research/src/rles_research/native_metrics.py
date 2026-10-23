@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 15326)
+Total output lines: 1123
+
 """Map detached native snapshots into regular economic metric increments."""
 from __future__ import annotations
 
@@ -556,26 +559,7 @@ def reconcile_linear_equity(snapshots: Sequence[Any], *,
                     rounding_per_event, Decimal(len(fills) + len(adjustments) + 1),
                     label="native equity tolerance",
                 )
-                max_residual = max(max_residual, abs(residual))
-                if abs(residual) > tolerance:
-                    raise MetricsError(f"linear native equity mismatch at open barrier {index}: "
-                                       f"residual={residual}, tolerance={tolerance}")
-                checked_open += 1
-                if include_rows:
-                    rows.append({"barrier_index": index, "ts_ns": snapshot.decision_ts_ns,
-                                 "native_equity": str(actual), "expected_equity": str(expected),
-                                     "price_pnl_at_mark": str(_add_decimal_exact(
-                                      cash, marked_notional, label="native marked price pnl",
-                                  )),
-                                 "mark_price": str(mark), "signed_quantity": str(quantity),
-                                 "contract_multiplier": str(multiplier),
-                                 "fee": str(fee), "funding": str(funding),
-                                 "external_cashflow": str(external_cashflow),
-                                 "residual": str(residual), "tolerance": str(tolerance)})
-            else:
-                unchecked_open += 1
-            # The final barrier must retain authoritative terminal state.
-            if index == len(ordered) - 1 and not snapshot.positions:
+                max_residual = max…326 tokens truncated… == len(ordered) - 1 and not snapshot.positions:
                 raise MetricsError("terminal position disagrees with native fill quantity")
             continue
         if _snapshot_records(snapshot, "positions", "position"):
@@ -733,7 +717,7 @@ class NativeReportAccumulator:
         self._funding_facts: dict[str, dict] = {}
         self._cashflow_facts: list[dict] = []
         self._cashflows_by_time: dict[int, Decimal] = {}
-        self._cashflow_barrier_counts: dict[int, int] = {}
+        self._matched_cashflow_timestamps = 0
         self._last_snapshot: Any = None
         self._seen = 0
         self._finished = False
@@ -774,7 +758,6 @@ class NativeReportAccumulator:
             self._cashflows_by_time[timestamp] = _add_cashflow(
                 self._cashflows_by_time.get(timestamp, Decimal(0)), signed,
             )
-            self._cashflow_barrier_counts[timestamp] = 0
             self._cashflow_facts.append(dict(fact))
 
     def _init_reconciliation(self) -> None:
@@ -867,10 +850,10 @@ class NativeReportAccumulator:
                 raise MetricsError("linear reconciliation requires positive initial equity")
         elif currency != self._currency:
             raise MetricsError("native snapshots have conflicting currencies")
-        if timestamp in self._cashflow_barrier_counts:
-            self._cashflow_barrier_counts[timestamp] += 1
-            if self._cashflow_barrier_counts[timestamp] > 1:
+        if timestamp in self._cashflows_by_time:
+            if timestamp == self._last_timestamp:
                 raise MetricsError("external cashflow cannot align to duplicate native barriers")
+            self._matched_cashflow_timestamps += 1
         if (timestamp == self._first_timestamp and timestamp in self._cashflows_by_time):
             raise MetricsError("external cashflow must occur after the initial barrier")
 
@@ -944,8 +927,6 @@ class NativeReportAccumulator:
         if timestamp in self._cashflows_by_time:
             if timestamp <= (self._first_timestamp if self._first_timestamp is not None else timestamp):
                 raise MetricsError("external cashflow must align to a sample after the initial barrier")
-            if self._cashflow_barrier_counts.get(timestamp) != 1:
-                raise MetricsError("external cashflow cannot align to duplicate native barriers")
         snapshot = self._group_snapshot
         self._metrics.add({
             "ts_ns": timestamp, "equity": float(snapshot.equity),
@@ -1080,9 +1061,9 @@ class NativeReportAccumulator:
         if self._seen == 0:
             raise MetricsError("native account snapshots required")
         self._flush_account_group()
-        for timestamp, count in self._cashflow_barrier_counts.items():
-            if count != 1:
-                raise MetricsError("external cashflow must align to exactly one native barrier")
+        if self._matched_cashflow_timestamps != len(self._cashflows_by_time):
+            raise MetricsError("external cashflow must align to exactly one native barrier")
+        for timestamp in self._cashflows_by_time:
             if self._first_timestamp is not None and timestamp <= self._first_timestamp:
                 raise MetricsError("external cashflow must align to a sample after the initial barrier")
         self._finished = True

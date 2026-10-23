@@ -1,5 +1,5 @@
-Warning: truncated output (original token count: 129742)
-Total output lines: 2093
+Warning: truncated output (original token count: 130299)
+Total output lines: 2101
 
 # 2026-10-17 源码审计整改与开发门禁
 
@@ -141,114 +141,7 @@ $env:PYTHONPATH = "$workspacePythonPath;qa"
 
 ## 2026-10-17 M0.1 现金流接口边界、M0.2 默认 CI Quote 与 M2.2 决策 ID
 
-- M0.1 接口核查：锁定环境 NautilusTrader `2.0.0rc6` 的 `AccountState` 公共型定义提供 `balances`、`margins`、`reported`、`event_id`、`info`、`ts_event` 等字段，但无标准化的 deposit/withdrawal 类型或原因字段。对 Engine 原生 ETHUSDT 8 小时回放的只读诊断观察到初始 `reported=True` 账户状态，和 08:00 Funding settlement 对齐的新 reported 状态；两者 `info={}`。因此 `reported=True` 不能当作入金/出金分类依据。尝试性判定会错误拒绝正常 Funding，已撤回，不把错误启发式留在代码中。当前权益残差可拒绝净未解释现金变动，但无法证明彼此抵消的转账与漏记项；M0.1 继续限制为无外部现金流范围，真实账户现金流分类标为 `BLOCKED`（需外部带类型/原因的转账源）。
-- M0.2 实施：将 `test_real_ethusdt_bookticker_drives_native_quote_fills` 额外标为 `micro_golden`，进入默认 PR 命令 `pytest tests/ -m 'contracts or unit or micro_golden or algorithm_smoke'`；同文件 ETHUSDT 小时级/8 小时 long golden 保留 `real_golden` nightly。Quote Parquet 为仓库内已校验来源的 4.67 MiB 样本，不依赖本机 `data/`。实际 Windows PR 选择回归 **477 passed、60 deselected、38 warnings、114.62 秒**，JUnit：`.artifacts/audit-development-20261017/m0-2-pr-windows-final.xml`；Quote 用例单独 **1 passed、6.70 秒**。此次未触发或声称远程 CI 通过。
-- M2.2 最小源码修复：`NautilusBarrierEnv.step` 现在在每步 info 输出原始 `decision_id`、`plan_id`、`idempotency_key`、`delta_qty`、取消订单 ID；SUBMIT 计划按 Nautilus Adapter 相同的 SHA256 算法给出预期 `client_order_id`，NOOP 返回 `None`。历史工厂中的 NOOP 与 SUBMIT 固定样例核对决策时刻、零/非零数量、未造假订单 ID，以及 SUBMIT 的客户端 ID 与原生成交 ID 对齐。完整聚合、终态映射和未成交原因仍未实现。
-- M2.2 检查：`.venv/Scripts/python.exe -m pytest -q tests/test_historical_factory.py` **43 passed、57.09 秒**；`test_native_execution_distinguishes_scaled_deadband_from_risk_target` **2 passed**；Ruff `env.py` 与该测试文件通过；MyPy `env.py` 通过。M2.2 改动后的完整默认 PR 选择复跑 **477 passed、60 deselected、38 warnings、114.62 秒**。M0.1/现金流核查本轮不写数据、不读取正式 Test/Holdout；M0.2 没有远程网络/干净发布触发。
-- 下一续做：在 `packages/orchestrator/src/rles_orchestrator/application.py::rollout` 增加可选逐决策 trace 聚合，将上述 plan ID 对应到最终 native order 状态、fill 数量/费用与 `unknown` 未成交原因；随后审视 T0/T1 连续与 Episode 强制清仓配对。M0.1 外部 transfer 来源缺失不阻塞这些独立工程/Train-inner 工作。
-
-上述测试实际结果为 **17 passed、13 warnings、31.26 秒**；Ruff 和 MyPy（4 源文件）通过；证据 JSON 可解析，三臂 infeasible episode 合计均为 0，summary SHA-256 已记录。`git diff --check` 通过，Git 提示当前工作区多处 LF 将规范化为 CRLF。
-
-## 2026-10-17 M0.1 持仓期间线性权益核对与 90 天 Train 回放
-
-- 实现：`reconcile_linear_equity` 在已有 flat-barrier 权益复算上增加 open-barrier mark-to-market 核对。仅当原生 Position 提供 side、quantity、单位 multiplier、非 inverse 标志、结算币种，且有正的原生 mark 时才核对；持仓数量必须与逐笔成交带符号累计严格一致。公式为 `初始权益 + 净持仓数量 × mark - Σ(带符号成交数量 × 成交价) - 手续费 + 带符号 Funding`。实际 fill price 已包含执行滑点，因此滑点仅作成本归因，不再从权益扣一次。报告压缩保留 mark 与最小 Position 经济字段，不再把每步 Position 成交/调整历史复制进账本。
-- 回归：手算线性开仓/mark/平仓并包含手续费、负 Funding；人为修改持仓屏障权益会失败。真实 ETHUSDT 2024-01-01 归档 golden 覆盖 480 个快照（477 个策略步），含 475 个开仓 mark 屏障、5 个 flat 屏障；475/475 个持仓屏障及终态全部完成，0 未核对，最大残差 `0`，既有终态权益 `9998.21338803`、3 个 fill、1 个 Funding 与经济指标保持不变。对应 `tests/test_real_golden_ethusdt.py`。
-- 长窗回放：复用此前冻结的 Train-inner 市场、scenario rules、candidate bundle 与 scaler，执行 90 天 `long`（目标敞口 0.25）路径，不训练、不选参；登记新的开发诊断用途。129,597 个策略步、129,600 个快照，其中 129,598 个持仓屏障全部核对，0 个未核对，2 个 flat 屏障核对，最大权益残差 `0`；终态已平仓。final equity `10052.48862672`，费用 `0.28397867`、Funding `-14.65498461`、slippage attribution `0.05776`、描述性净收益 `0.5249%`。本数值只证明账本一致性，不是收益门；真实历史规则仍未得到证实。
-- 证据：[m0_1_native_equity_90d.json](audit_evidence/20261017/m0_1_native_equity_90d.json)，SHA-256 `AB3ADF1C347CC3F665E47C7C29FE6558B481F941598E555F07225C6BBA68B7E7`；再现器 [reconcile_native_equity_long_20261017.py](../qa/reconcile_native_equity_long_20261017.py)，使用既有 F7 冻结计划 `.artifacts/audit-development-20261016/f7-growth-v2/plan.json`。90 天训练窗从 2024-01-15 延伸至 2024-04-14；无 Validation/Test/Holdout 访问。合成 DTO 的[线性清算账本交叉证据](audit_evidence/20261017/m0_1_synthetic_linear_liquidation.json)，SHA-256 `E6157F3CDF5D92E1EB0FCE4CB1CB9126F0CF333F093194569D315A1A5C9416A3`；[Nautilus Engine 原生线性强平证据](audit_evidence/20261017/m0_1_linear_native_liquidation.json)，SHA-256 `1D12ECA7ABC174A87B5417037754DD225946DB62C2605E07A5AF871841722A64`。
-- 限制与续做：账本目前要求无外部现金流、单 instrument、quote-settled、单位乘数线性 Position。Nautilus Engine 原生线性强平事件序列现已在合成 stress quote 下核对通过；该事件/费率只证明引擎集成行为，不是历史规则证据。M0.1 仍 `PARTIAL`，下一步为核实和独立核对 NativeAccountFacts 的外部 cashflow/deposit/withdrawal 记录；若当前接口无法可信区分，必须继续显式拒绝该范围。
-- 检查：M0.1 完整受影响回归 **72 passed、21 warnings、80.52 秒**，覆盖 research metrics、全部 historical factory、real ETHUSDT/Quote golden 和 A4 E2 durable recovery；随后 synthetic liquidation cross-check **1 passed**、真实 Engine 线性强平账本 **1 passed**、源清单生成器回归 **1 passed**。最后合并运行 research metrics、两个 Engine liquidation cases 和 source manifest **30 passed、2.26 秒**；Ruff 涉及源码/测试/QA 文件通过，MyPy 对 4 个源码/QA 文件通过。90 天核对器实际完成并写入验证过的证据 JSON；证据均有 SHA-256 sidecar。
-
-90 天线性账本复核命令（PowerShell，仓库根目录）：
-
-```powershell
-$workspacePythonPath = ((Get-ChildItem packages -Directory | ForEach-Object { Join-Path $_.FullName 'src' }) -join ';')
-$env:PYTHONPATH = "$workspacePythonPath;qa"
-.venv\Scripts\python.exe qa\reconcile_native_equity_long_20261017.py --plan .artifacts\audit-development-20261016\f7-growth-v2\plan.json --output .artifacts\audit-development-20261017\m0-1-native-equity-90d
-```
-
-本轮最终回归与静态检查命令：
-
-```powershell
-$workspacePythonPath = ((Get-ChildItem packages -Directory | ForEach-Object { Join-Path $_.FullName 'src' }) -join ';')
-$env:PYTHONPATH = "$workspacePythonPath;tests"
-$env:MYPYPATH = $workspacePythonPath
-.venv\Scripts\python.exe -m pytest -q --basetemp=.artifacts/audit-development-20261017/pytest-m01-confirmed tests/test_research_metrics.py tests/test_historical_factory.py tests/test_real_golden_ethusdt.py tests/test_real_application_flow.py::test_real_archive_a4_recovers_from_durable_stage_checkpoint[E2]
-.venv\Scripts\ruff.exe check packages\research\src\rles_research\native_metrics.py packages\gym_bridge\src\rles_gym_bridge\historical.py tests\test_research_metrics.py tests\test_real_golden_ethusdt.py qa\reconcile_native_equity_long_20261017.py
-.venv\Scripts\mypy.exe packages\research\src\rles_research\native_metrics.py packages\gym_bridge\src\rles_gym_bridge\historical.py qa\reconcile_native_equity_long_20261017.py
-```
-
-本轮主集成复核命令（PowerShell，在仓库根目录执行）：
-
-```powershell
-$workspacePythonPath = ((Get-ChildItem packages -Directory | ForEach-Object { Join-Path $_.FullName 'src' }) -join ';')
-$env:PYTHONPATH = "$workspacePythonPath;tests"
-$env:MYPYPATH = $workspacePythonPath
-.\.venv\Scripts\python.exe -m pytest -q --basetemp=.artifacts/audit-development-20261017/pytest-m12-application tests/test_real_application_flow.py::test_real_archive_a4_recovers_from_durable_stage_checkpoint[E2] tests/test_compute_worker_pool.py::test_constraint_rejections_are_reported_and_checkpointed_with_e2_neutral_protocol tests/test_es_fitness.py
-ruff check packages/es_evotorch packages/orchestrator packages/gym_bridge tests/test_es_fitness.py tests/test_application_cli.py tests/test_compute_worker_pool.py tests/test_real_application_flow.py
-.\.venv\Scripts\python.exe -m mypy packages/es_evotorch/src/rles_es_evotorch/fitness.py packages/es_evotorch/src/rles_es_evotorch/evaluation.py packages/orchestrator/src/rles_orchestrator/es_stage.py packages/orchestrator/src/rles_orchestrator/application.py packages/orchestrator/src/rles_orchestrator/native_es_worker.py packages/gym_bridge/src/rles_gym_bridge/env.py
-git diff --check
-```
-
-## 2026-10-17 M2.2 执行 trace、M2.1 Episode 时域与 M2.3 Bar 成本压力
-
-- M2.2 实现：`rollout()` 增加默认关闭的 `include_execution_trace`。启用时逐决策保留 `decision_id`、时间戳、计划/幂等 ID、Actor/Soft/Hard 目标、取整目标、数量变化、计划原因和原生敞口；用客户端订单 ID 关联原生订单终态与 fill 数量/价格/费用，并为未成交报告 `REJECTED`、`CANCELED`、`EXPIRED` 或 `unknown`。非提交动作记录提交状态及相关挂单结果。默认 report 仅输出漏斗汇总；公开 `backtest` 和 `diagnose-train` CLI 使用 `--execution-trace` 才输出明细。紧凑历史快照保留已观察订单的最后状态，避免已完成订单从 Nautilus 缓存消失；Position 摘要包含 `position_id`。
-- M2.2 验证：历史工厂、原生训练、应用 CLI 相关集 **94 passed**；最新默认 Windows PR 选择 **478 passed、60 deselected、38 warnings、115.26 秒**。Ruff、MyPy 对变更源码通过。trace 集成回归验证真实合成原生 Engine 的 decision→order→…109742 tokens truncated…01_funding_duplicate_identity_20261022.json`. Synthetic ledger facts only; no real market/account/evaluation data accessed.
-
-### M0.1 online accumulator failure closure — 2026-10-22
-
-A malformed or conflicting snapshot could raise after partially mutating `NativeReportAccumulator`, but the same object still accepted later snapshots or finalization. Two regression cases reproduced both unsafe continuations against the old implementation. The accumulator now stores the original failure and refuses subsequent `add_snapshot()` and `finish()` calls, preserving the failure cause. The four-file M0.1 source selector and installed RouteB wheel selector each pass **197 tests**; Ruff, targeted MyPy, py_compile and diff checks pass. The rebuilt `rles-research` wheel is installed only in `.venv-win-app`; its module SHA matches source, all **12 wheels** match package sources, and **69 dependencies** are compatible. Source identity: 600 files, `348f837f699634f23d3d48891c6225c60ba4b0bafe9e6e9ec95912f8241403e3`. Evidence: `docs/audit_evidence/20261022/m01_online_accumulator_fail_closed_20261022.json`. Synthetic facts only. Real authenticated cashflow provenance remains an M0.1 external gate.
-
-### M0.2 reusable CI lane fail-closed validation — 2026-10-22
-
-The reusable workflow previously accepted arbitrary lane strings while every real job was conditionally restricted to `pr`, `nightly`, `gpu`, or `release`; a caller typo could therefore make all jobs skip. The new unconditional `validate-lane` job rejects unknown values, and CPU, JAX, GPU, and release jobs all depend on it. The dispatch options and validator's allowed set are regression-checked together. The new contract suite passes **12 tests**; Ruff, targeted MyPy, YAML parsing and diff checks pass. The built `rles-l6-ci-release` wheel contains the exact validator source; the current 12 RLES workspace wheels match their package sources. Source manifest: **602 files**, `73470b5f5c08dc4a744c70849320a47c61d967462f4fac2d526b8e061513c934`. Evidence: `docs/audit_evidence/20261022/m02_ci_lane_fail_closed_20261022.json`. This is local engineering evidence only; clean hosted Linux/Windows CI remains unrun.
-
-### M0.3 registry SQLite foreign-key enforcement — 2026-10-22
-
-`ProjectResearchRegistry` declared foreign keys for development-result receipts and trial-attempt events, but its per-transaction SQLite connections left enforcement disabled. A new raw-transaction regression proved an orphan receipt could be inserted before the fix. `_tx()` now enables `PRAGMA foreign_keys=ON` before opening each write transaction. Access/WFO/fresh-fold source and installed-wheel selectors each pass **167 tests**; Ruff, targeted MyPy, py_compile and diff checks pass. The existing RouteB registry was checked read-only and has **0 current foreign-key violations**. The rebuilt research wheel matches source, all **12 workspace wheels** match, and **69 app dependencies** are compatible. Source identity: 602 files, `9e4730fd2a0130f2c041a7a28fe50723b27b766eff5a80414b23682dbe6b181e`. Evidence: `docs/audit_evidence/20261022/m03_sqlite_foreign_key_enforcement_20261022.json`. This improves future registry integrity but cannot reconstruct unrecorded pre-registry access history; M0.3 remains partial.
-
-## 2026-10-22 — A09/M4.1 Binance USDⓈ-M current rules acceptance
-
-**Finding and work:** M4.1 already generalized the native linear-perpetual adapter, but its source evidence and integration regression only covered ETH plus synthetic BTC. Downloaded current public GET /fapi/v1/exchangeInfo via Binance's read-only market-data connector and preserved the full returned symbol objects for BTCUSDT, ETHUSDT, and SOLUSDT at server time 2026-10-22T06:35:32.110Z. The fixture records the original endpoint fields and is hashed at SHA-256 4d400184cb16c8adb9987c9f12c1c3a389a682bb4ec479decbe1f452f57772a4.
-
-**Verification:** Added three parameterized native-engine cases that derive tick size, lot step, min quantity, min notional, base/quote/margin currencies, and margin percentages from each selected source row. Each case opens a valid minimum-notional native order, checks source-matched precision and quantity metadata, applies a synthetic funding settlement, and verifies both the adjustment and account equity are denominated in USDT. Focused cases: 3 passed; full tests/test_nautilus_adapter_smoke.py: 36 passed. Source and installed-wheel perpetual.py SHA-256 both equal f5aca5ac71e231a4af70e776893b0ecd17e267df3c0571041c71e5f499573276.
-
-**Evidence boundary:** Funding event is synthetic and intended only to validate unit/sign propagation; fee rates are neutralized because the public symbol endpoint does not provide account-specific fee tiers. The multiplier 1 reflects linear base-asset quantity semantics. This closes current-rule engineering coverage, not historical rule versioning or real account cashflow certification. No project ledger, market history, Validation, Test, or Holdout payload was read. Evidence: docs/audit_evidence/20261022/a09_current_usdm_rules_20261022.json. M4.2 hedge mode and leverage certification remain deferred.
-
-## 2026-10-22 — A08 instrument-rule signed fee rebates
-
-**Finding and fix:** instrument_rule schema called the shared numeric validator with signed values disabled for maker_fee and taker_fee, while the native perpetual fee path explicitly preserves negative rebates. Therefore a source-valid fee rule failed at Event construction and could not reach the native adapter. The schema now accepts finite signed maker/taker rates, retaining the existing nonnegative constraints for initial and maintenance margin rates.
-
-**Reproduction and verification:** two new maker/taker parameter cases failed with DataError against the previous source. After the fix, the focused data-event guard suite passes **19 tests**, execution fee contract tests pass **3**, and the selector spanning event guards, archive ingestion, hash identity, and historical factory passes **167 tests with 18 upstream warnings** against both source and isolated installed wheels. Built **12 wheels + 12 sdists**; all 12 wheel contents match source, and the installed data schema SHA-256 equals source (b3113db9ec4b2047ac2a27cf04715a68db75895d79446308d018a500a8d15cc6). Ruff, py_compile and targeted MyPy pass. The 604-file source identity verifies as e51add80b68e69a1498b56627e984aaeca941a28098c2ff681dacccb0b3c78f1. No market, account, registry, Validation, Test, or Holdout data was read. Evidence: docs/audit_evidence/20261022/a08_signed_fee_rebates_20261022.json.
-
-## 2026-10-22 — A08 canonical Event instrument identifier
-
-**Finding and fix:** the shared payload validator checked that instrument was a nonempty string but accepted whitespace-only values, leading/trailing spaces, and a leading tab. Such an event could carry an invalid scope identity through all downstream event kinds. The validator now requires a nonempty trimmed string while preserving its stable DataError message.
-
-**Reproduction and verification:** four whitespace cases failed to raise before the fix. The data-event, Binance archive, JSON-boundary and hash-identity selector now passes **77 tests** against both source and the freshly installed RouteB data wheel; the historical rule-manifest / missing-rule factory selector passes **2 tests** against both source and wheel. Ruff, py_compile, and targeted MyPy pass. Built **12 wheels + 12 sdists**, all 12 wheel contents match source, and installed/source schema module hashes are equal at 460978f67bb8724c4beb027bd66582117148d5ebcef8f8e3b1a2d57d98c7de51. Current source manifest verifies **604 files**, identity 5af7918e196a72520c0799df1a5a782044ec4809e93a85564359b4469fc03af3. No market/account/registry or Evaluation payload was accessed. Evidence: docs/audit_evidence/20261022/a08_event_instrument_whitespace_20261022.json.
-
-
-## 2026-10-22 — A08 archive ingress, decode, and cache boundaries
-
-**Finding:** `_archive_instrument()` previously checked only the argument type. Empty and whitespace-padded strings passed public ingress, allowing malformed identity to reach fetch/decode before shared Event validation. Separately, non-ASCII bytes in a remote `.CHECKSUM` response escaped as raw `UnicodeDecodeError`, and a content-hash-matching invalid ZIP leaked `BadZipFile`. Finally, an existing archive cache without a receipt could exceed its size limit and be read fully before validation.
-
-**Fix:** a provided instrument now must be a nonempty string equal to its trimmed form. Both importer APIs check this before output creation and archive fetch; `None` still selects the existing default. `fetch_archive()` converts non-ASCII checksum responses to contextual `DataError`; `archive_events()` similarly normalizes malformed or unreadable ZIP container failures. A shared size-limit helper now checks all existing cache paths, including unreceipted files, before `read_bytes()`. Synthetic tests assert no fetch/output for invalid IDs, stable checksum/ZIP errors, and pre-read rejection of oversized cache files.
-
-**Verification:** the archive-ingress, Binance archive-range, and data-event selector passes **100 tests against source and 100 against the installed RouteB wheel**. Ruff, targeted MyPy, py_compile, and diff check pass. Built **12 wheels + 12 sdists**; all 12 wheels match source, the installed archive module SHA equals source (`557e81b945f0983f02f3b1c7834319eec4ce2ccdcc784a6b6f09c7e928d9ed0d`), wheel provenance smoke verifies 12 packages / 6 entry points, and 69 app dependencies are compatible. Source manifest verifies **604 files**, identity `91715791405993ba1d4a89954356a9e48443cf4a8450a79819ff3169a0826099`. Evidence: `docs/audit_evidence/20261022/a08_archive_instrument_identity_20261022.json`. Tests used synthetic values only; no archive network or market/account/ledger/evaluation data was accessed. Continue A01–A14 local code review.
-
-
-## 2026-10-22 — M0.1/A08 transfer import identity canonicalization
-
-**Finding:** both direct and paged Binance USDⓈ-M transfer importers accepted nonempty account scope and currency values with surrounding whitespace. The scope ID was then stripped when constructing transfer event/source IDs, making malformed caller input indistinguishable from its canonical value. A padded currency could also pass if paired with a similarly malformed payload asset.
-
-**Fix:** both import entry points now require account scope ID and currency to be nonempty, already-trimmed strings. Added parameterized regression coverage across leading, trailing, whitespace-only, single-page and paged inputs. The tests use synthetic JSON only.
-
-**Verification:** 12 cases reproduced the old acceptance. The cashflow/metrics/liquidation selector passes **140 tests from source and 140 against the installed RouteB wheel**; Ruff, MyPy on the changed source and py_compile pass. Built **12 wheels + 12 sdists**, all 12 wheels match sources; installed cashflow module SHA equals source (`6744ec54b524bdc0f27bb343cc1610bec039d1cadf115c90e4730d5139108f80`), provenance smoke covers 12 packages and 6 entry points, and 69 app dependencies are compatible. Source manifest: **604 files**, identity `092cebb4581e871856e9b46d1621f8aa480f9a230c1770bd97fd34e70e4717b9`. Evidence: `docs/audit_evidence/20261022/m01_cashflow_identity_canonicalization_20261022.json`. No account or market payload was accessed; real cashflow origin/completeness remains an external M0.1 gate.
-
-## 2026-10-22 — M0.1 canonical amount parsing across batch and online reports
-
-**Finding and fix:** sourced external cashflows used `Decimal(str(value))`, which accepts separators, Unicode digits, leading plus, surrounding spaces, and exponent notation. Added a shared exact-type and ASCII fixed-point parser and applied it in batch accounting and `NativeReportAccumulator`; five malformed-lexeme regressions exercise both APIs.
-
-**Verification:** the five new cases fail against the previous installed wheel and pass against source and the freshly rebuilt `rles-research` wheel. The combined report/metrics/cashflow/liquidation/historical-factory selector passes **245 tests from source and 245 against the installed wheel**, with 18 dependency warnings. Ruff, targeted MyPy, and py_compile pass. All **12 wheels + 12 sdists** build; wheel manifest **all_match=true**; import provenance covers 12 packages / 6 entry points; 69 app dependencies are compatible. Installed `native_metrics.py` SHA matches source (`398ba6e5e413ad11f5bb800f1a087968d4e80b7556e787c22d2de71adda4104f`). Source manifest verifies **604 files**, identity `9469a741ea8de5eaabb202bcc2428d0a34016b618bc86da256316d4aff153326`. Evidence: `docs/audit_evidence/20261022/m01_native_cashflow_amount_lexemes_20261022.json`. Only synthetic cashflow facts were used; authenticated account origin and transfer completeness remain external M0.1 gates. Continue the A01–A14 local source audit.
+- M0.1 接口核查：锁定环境 NautilusTrader `2.0.0rc6` 的 `AccountState` 公共型定义提供 `balances`、`margins`、`reported`、`event_id`、`info`、`ts_event` 等字段，但无标准化的 deposit/withdrawal 类型或原因字段。对 Engine 原生 ETHUSDT 8 小时回放的只读诊断观察到初始 `reported=True` 账户状态，和 08:00 Funding settlement 对齐的新 reported 状态；两者 `info={}`。因此 `reported=True` 不能当作入金/出金分类依据。尝试性判定会错误拒绝正常 Funding，已撤回，不把错误启发式留在代码中。当前权益残差可拒绝净未解释现金变动，但无法证明彼此抵消的转账与漏记…115299 tokens truncated…ile pass. All **12 wheels + 12 sdists** build; wheel manifest **all_match=true**; import provenance covers 12 packages / 6 entry points; 69 app dependencies are compatible. Installed `native_metrics.py` SHA matches source (`398ba6e5e413ad11f5bb800f1a087968d4e80b7556e787c22d2de71adda4104f`). Source manifest verifies **604 files**, identity `9469a741ea8de5eaabb202bcc2428d0a34016b618bc86da256316d4aff153326`. Evidence: `docs/audit_evidence/20261022/m01_native_cashflow_amount_lexemes_20261022.json`. Only synthetic cashflow facts were used; authenticated account origin and transfer completeness remain external M0.1 gates. Continue the A01–A14 local source audit.
 
 
 ## 2026-10-23 — M0.1 exact sourced cashflow aggregation
@@ -400,4 +293,12 @@ Keep F7 open. Next code work must measure and reduce O(n) retained report/event 
 The 90-day installed-wheel replay processes 129,597 decisions with unchanged trajectory SHA-256. Lazy Fold frames and compact metadata keep online/lean replay RSS delta near 193 / 193 MB versus the original 510 / 510 MB baseline. Slotted FeatureRows retain hash and pickle behavior and save 88 bytes per row by object-size accounting. Removing three duplicate timestamp tuples from CuratedStore reduced 90-day source-generation peak RSS by 10,440,704 bytes and post-generation RSS by 8,245,248 bytes; point-in-time query tests pass unchanged. Source and installed-wheel selectors each pass 172 tests. Evidence: `docs/audit_evidence/20261023/f7_lazy_barrier_frames_20261023.json`.
 
 Next code cursor: audit duplicate event-reference indexes and Native session/cache/report history. Preserve late-arriving-event visibility and exact report parity. Authenticated real-history Train, external cashflow provenance, historical-access completeness, independent Validation, market scope/depth, historical trial coverage and M4.2 remain open.
+
+## 2026-10-23 F7 duplicate event-reference follow-up
+
+**Finding and fix:** `CuratedStore` kept separate per-kind tuples for availability-time and event-time lookup even when the event ordering was identical. It now aliases the event-time view to the availability view for chronological histories and keeps a separate sorted tuple only when late arrivals make the orders differ. Removed the unused `HistoricalEnvironmentFactory._bars` Fold-wide OHLCV reference tuple. `NativeReportAccumulator` no longer stores a per-cashflow-timestamp barrier-count dictionary: duplicate barriers are rejected from the chronological previous timestamp, and one scalar count verifies that every cashflow timestamp matched exactly one native barrier.
+
+**Verification:** source selector passed **160 tests** across layer invariants, Native report parity, research metrics, and the lazy-frame historical factory regression. A broader data and historical factory selector passed **148 tests** before removal of `_bars`; the focused historical factory regression was rerun in the 160-test selector. Ruff passed, and MyPy passed for the three changed source modules. On the 389,258-event synthetic store, all 389,258 visible event references shared per-kind tuples for the five event kinds. This avoids **3,114,064 bytes** of duplicate tuple pointer storage; removing the unused 129,662-row `_bars` tuple avoids another **1,037,296 bytes** of pointer slots by tuple-size accounting. These are structural measurements, not process-RSS claims. Evidence: `docs/audit_evidence/20261023/f7_duplicate_event_indexes_20261023.json`.
+
+**Status / next cursor:** these changes reduce duplicate indexes while preserving late-arriving visibility and exact batch/online cashflow-report parity. F7 remains open for the full-history Native RSS/trajectory profile and representative growth of unique fill, Funding, order, and cashflow detail. Continue source-auditing Native session/cache/report retention without dropping report-contract facts. Authenticated cashflow provenance, historical-access completeness, independent Validation, market authorization/depth, historic trial coverage, M4.2, and a separately approved real-history Train profile remain open gates.
 

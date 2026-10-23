@@ -499,15 +499,23 @@ class CuratedStore:
         for event in self._visible_events:
             visible_by_kind.setdefault(event.kind, []).append(event)
         self._visible_by_kind = {kind: tuple(events) for kind, events in visible_by_kind.items()}
-        visible_by_event_time: dict[str, list[Event]] = {}
-        for event in self._visible_events:
-            visible_by_event_time.setdefault(event.kind, []).append(event)
-        self._visible_by_event_time = {
-            kind: tuple(sorted(events, key=lambda event: (event.ts_event_ns,
-                                                           cast(int, event.available_at_ns),
-                                                           event.event_id)))
-            for kind, events in visible_by_event_time.items()
-        }
+        visible_by_event_time: dict[str, tuple[Event, ...]] = {}
+        for kind, events in visible_by_kind.items():
+            # The availability index is already in event-time order for the
+            # common case where facts arrive in chronological order. Reuse
+            # its tuple to avoid a second N-reference index. Late-arriving
+            # facts still receive their own event-time-sorted index.
+            if all((left.ts_event_ns, cast(int, left.available_at_ns), left.event_id)
+                   <= (right.ts_event_ns, cast(int, right.available_at_ns), right.event_id)
+                   for left, right in zip(events, events[1:])):
+                visible_by_event_time[kind] = self._visible_by_kind[kind]
+            else:
+                visible_by_event_time[kind] = tuple(sorted(
+                    events, key=lambda event: (event.ts_event_ns,
+                                               cast(int, event.available_at_ns),
+                                               event.event_id),
+                ))
+        self._visible_by_event_time = visible_by_event_time
         # Derived feature indexes are lazy and excluded from snapshot identity.
         self._feature_cache: dict[tuple[Any, ...], Any] = {}
         rules_by_instrument: dict[str, list[Event]] = {}
