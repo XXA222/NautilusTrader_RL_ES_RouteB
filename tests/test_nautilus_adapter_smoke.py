@@ -715,6 +715,70 @@ def test_native_submitter_cancels_live_strategy_order_and_observes_ack(terminal:
         session.close()
 
 
+
+@pytest.mark.parametrize("sign", [1, -1])
+def test_b4_imagined_unfilled_limit_cancel_matches_native_account(sign: int) -> None:
+    from dataclasses import replace
+    from nautilus_trader.model import ClientOrderId, OrderSide
+
+    submitter = _submitter()
+    session = _native_order_session(submitter)
+    imagined = ImaginedAccount(initial_equity=100_000, fee_maker=.001, fee_taker=.001,
+                               equity_precision=2)
+
+    def candle(number: int) -> Candle:
+        close_ns = number * MINUTE_NS
+        return Candle(close_ns, close_ns, str(_instrument().id), 100, 101, 99, 100, 100)
+
+    try:
+        initial = session.bootstrap((_order_batch(1),), decision_ts_ns=MINUTE_NS)
+        imagined.on_bar(candle(1))
+        target = float(sign)
+        limit_price = 50 if sign > 0 else 150
+        imagined.submit(target_qty=target, decision_ns=MINUTE_NS, kind="limit", limit_price=limit_price)
+
+        native_order = submitter._strategy.order_factory.limit(
+            instrument_id=_instrument().id,
+            order_side=OrderSide.BUY if sign > 0 else OrderSide.SELL,
+            quantity=Quantity.from_str("1.0000"),
+            price=Price.from_str(f"{limit_price:.2f}"),
+            client_order_id=ClientOrderId(f"b4-cancel-{sign}"),
+        )
+        submitter._strategy.submit_order(native_order)
+        wait = replace(_order_plan(f"wait-b4-cancel-{sign}", str(sign)), action="WAIT",
+                       delta_qty=Decimal(0), cancel_policy=PendingOrderPolicy.WAIT)
+        pending = session.advance(wait, batches=(_order_batch(2, high="101", low="99"),),
+                                  next_decision_ts_ns=2 * MINUTE_NS)
+        imagined_fill = imagined.on_bar(candle(2))
+
+        assert imagined_fill is None
+        assert imagined.pending is not None
+        assert pending.positions == pending.fills == ()
+        assert len(pending.orders) == 1
+        assert imagined.equity == pytest.approx(float(initial.equity), rel=0, abs=1e-8)
+        assert pending.equity == initial.equity
+
+        cancel = replace(_order_plan(f"cancel-b4-{sign}", str(sign)), action="CANCEL",
+                         delta_qty=Decimal(0), cancel_policy=PendingOrderPolicy.CANCEL_REPLACE,
+                         cancel_order_ids=(f"b4-cancel-{sign}",), requires_cancel_ack=True)
+        acknowledged = session.advance(
+            cancel, batches=(_order_batch(3, high="101", low="99"),),
+            next_decision_ts_ns=3 * MINUTE_NS,
+        )
+        assert imagined.on_bar(candle(3)) is None
+        assert imagined.cancel()
+        assert not imagined.cancel()
+        assert imagined.pending is None
+        assert imagined.qty == pytest.approx(0)
+        assert imagined.fills == []
+        assert imagined.equity == pytest.approx(float(acknowledged.equity), rel=0, abs=1e-8)
+        assert acknowledged.orders == acknowledged.positions == acknowledged.fills == ()
+        assert acknowledged.all_orders[0]["status"] == "CANCELED"
+        assert acknowledged.equity == initial.equity
+    finally:
+        session.close()
+
+
 def test_native_submitter_rejects_reused_action_and_cross_episode_binding() -> None:
     submitter = _submitter()
     session = _native_order_session(submitter)

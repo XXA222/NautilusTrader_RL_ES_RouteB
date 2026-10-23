@@ -594,4 +594,10 @@ Run `39920709883` found a second runtime-dependent reader after the original A10
 
 Expanded the shared 512-container guard to `qa/source_manifest.py`, `qa/wheel_manifest.py`, `qa/smoke/wheel_imports.py`, and the two M13 report analyzers. These parsers previously only translated `RecursionError`; a runtime that parses beyond that limit could return a generic object/schema error.
 
-**Verification:** source/wheel/M13/provenance/reconciler selector **96 passed, 1 symlink-capability skip**, one expected duplicate-ZIP warning; MyPy **227 files**, Ruff pass; manifest: 606 files, identity `c5d261fa08c2940c83476dcd8df19a69c5c7d0b195284d3a25388e01d00a87a8`. Hosted run `39924080730` fully passed on the reconciler fix before these additional readers changed. Fresh CI for the expanded source remains pending.
+**Verification:** source/wheel/M13/provenance/reconciler selector **96 passed, 1 symlink-capability skip**, one expected duplicate-ZIP warning; MyPy **227 files**, Ruff pass; manifest: 606 files, identity `c5d261fa08c2940c83476dcd8df19a69c5c7d0b195284d3a25388e01d00a87a8`. Hosted run `39924080730` fully passed on the reconciler fix before these additional readers changed. Full Hosted run `39926884607` for the expanded source passed Linux CPU, Windows CPU, and isolated JAX CPU.
+
+### B4 unfilled limit cancellation parity — 2026-10-23
+
+Added long/short Native-versus-ImaginedAccount differential cases. A limit order outside the observed bar range remains pending; after cancellation, Native reports `CANCELED`, ImaginedAccount clears its pending order, both remain flat, and equity remains unchanged. Focused selector: **2 passed**; adapter smoke file: **64 passed**; Ruff passes. Manifest: 606 files, `916c92fc521dd8f931b9f1581fe9e7254c1d945cc48bd21a69b0b66406538596`. Evidence: `docs/audit_evidence/20261023/b4_imagined_limit_cancel_native_parity_20261023.json`.
+
+**Boundary:** synthetic BTC/USD.SIM OHLC only. The test proves pending/cancel ledger behavior, not queue priority, partial limit execution, expiry semantics, or intrabar ordering. The expanded QA JSON guard commit's Hosted Linux/Windows/JAX CPU run `39926884607` passed; this new B4 commit needs fresh hosted verification.
