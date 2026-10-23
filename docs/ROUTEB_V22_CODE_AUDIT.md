@@ -615,3 +615,11 @@ The external L6 report loader had duplicate-key and non-finite checks but no cro
 Hosted run `39930562257` failed before tests in `validate-lane`: that job imports L6 with system Python before workspace sync, and the top-level shared-scanner import required `rles_contracts`. Moved the import into `_loads_strict_json()`, preserving the standalone lane-check startup while applying the same shared depth limit when reports are actually decoded.
 
 **Verification:** standalone `l6_ci_release.workflow_lane` import passed with no RouteB package path; L6 attestation selector **6 passed**; MyPy `packages ci qa` **235 files**, Ruff pass; 606-file manifest `e02e160f776ad42af694c3d50364ba8dffc793bfe05ee4461d39b5e2acdf959f`. The failed run did not reach test jobs; fresh Hosted validation after the correction is pending.
+
+### B4 Native/Imagined limit trigger parity — 2026-10-23
+
+The Native differential exposed a concrete mismatch: with a buy/sell limit touched by bar low/high but still nonmarketable at the close, the Native bar engine kept the order pending while `ImaginedAccount` filled it using an OHLC touch heuristic. `ImaginedAccount` now defaults to a bar-close trigger; its previous OHLC-touch behavior remains available only as the explicit `limit_fill_policy="ohlc_touch"` scenario. Long/short Native differentials cover bar-close marketable fills and intrabar touch without close crossing.
+
+**Verification:** focused limit selectors **11 passed**; adapter plus WorldModel selectors **136 passed, 5 JAX-only skipped**; Ruff, MyPy (`packages ci qa`, 235 files), `py_compile`, and `git diff --check` pass. Manifest verifies 606 files at `9d6d7433a98162ae95fcda9d80a680a7a4a3e108b83e984b7ad22c6217527ac3`. Evidence: `docs/audit_evidence/20261023/b4_imagined_native_limit_close_parity_20261023.json`.
+
+**Boundary / next cursor:** tested against the pinned Native `DefaultFillModel` with bar execution. Queue priority, intrabar sequencing, partial fills, and the custom adverse-price bar fill model remain unverified; economic eligibility remains false. Hosted Linux/Windows/JAX CPU confirmation is pending for this revision. Continue the locally actionable A01–A14 and B4 audit queue.

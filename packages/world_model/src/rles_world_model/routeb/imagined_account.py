@@ -42,18 +42,27 @@ class Fill:
 
 
 class ImaginedAccount:
-    """Market events are passed in, never altered by the action."""
+    """Market events are passed in, never altered by the action.
+
+    The default ``bar_close`` limit policy matches the close-only trigger used
+    by the pinned Native bar engine. ``ohlc_touch`` is an explicit scenario
+    approximation; OHLC bars cannot establish queue position or fill order.
+    """
     def __init__(self,*,initial_equity:float,fee_maker:float,fee_taker:float,
-                 max_abs_qty:float=1e6,equity_precision:int=8):
+                 max_abs_qty:float=1e6,equity_precision:int=8,
+                 limit_fill_policy:str="bar_close"):
         if (initial_equity<=0 or max_abs_qty<=0 or
             not all(math.isfinite(v) for v in (initial_equity,fee_maker,fee_taker,max_abs_qty)) or
             not -1<fee_maker<1 or not -1<fee_taker<1 or
-            type(equity_precision) is not int or not 0<=equity_precision<=18):
+            type(equity_precision) is not int or not 0<=equity_precision<=18 or
+            type(limit_fill_policy) is not str or
+            limit_fill_policy not in {"bar_close", "ohlc_touch"}):
             raise ValueError("invalid scenario account settings")
         self.cash=float(initial_equity)
         self.qty=0.0;self.entry=0.0;self.pending:Pending|None=None
         self.fees_paid=0.0;self.max_abs_qty=max_abs_qty;self.equity_precision=equity_precision
         self.maker=float(fee_maker);self.taker=float(fee_taker)
+        self.limit_fill_policy=limit_fill_policy
         self.last_close:float|None=None
         self.last_bar_ns:int|None=None
         self.instrument_id: str | None = None
@@ -121,8 +130,8 @@ class ImaginedAccount:
         order=self.pending
         result=None
         if order is not None:
-            # Without tick data, NEVER fill an order in a bar whose open
-            # preceded order activation. This avoids intrabar hindsight fills.
+            # Without tick data, never fill an order in a bar whose open
+            # preceded order activation.
             start=bar.ts_close_ns-MINUTE_NS
             if order.active_from_ns<=start:
                 price=None
@@ -132,16 +141,20 @@ class ImaginedAccount:
                     raise ValueError('pending limit order lost its required price')
                 if order.kind=='market':
                     price=bar.open
+                elif self.limit_fill_policy == "bar_close":
+                    # Native bar matching consumes the bar's close. An OHLC
+                    # touch with a close on the other side is insufficient.
+                    if order.signed_qty>0 and limit_price is not None and bar.close<=limit_price:
+                        price=bar.close
+                    elif order.signed_qty<0 and limit_price is not None and bar.close>=limit_price:
+                        price=bar.close
                 elif order.signed_qty>0 and limit_price is not None and bar.low<=limit_price:
-                    price=min(bar.open,limit_price)  # crossed opening price pays taker fee
+                    price=min(bar.open,limit_price)
                     maker=bar.open>limit_price
                 elif order.signed_qty<0 and limit_price is not None and bar.high>=limit_price:
                     price=max(bar.open,limit_price)
                     maker=bar.open<limit_price
                 if price is not None:
-                    # The maker flag is a conservative OHLC-only heuristic:
-                    # a marketable-at-open limit pays taker, an intrabar touch maker.
-                    # Native execution parity is not claimed.
                     result=self._apply_fill(order,bar,float(price),maker=maker)
                     self.pending=None
         self.last_close=bar.close

@@ -2355,3 +2355,24 @@ Added the shared structural-depth check to L6's externally supplied gate report 
 The first hosted attempt for the L6 depth guard failed at `validate-lane`, before any tests, because the workflow imports L6 before installing RouteB packages. Moved the shared scanner import into the JSON decode helper so lane validation stays independent.
 
 **Verification:** standalone lane import passes without RouteB source paths; L6 attestation selector **6 passed**; MyPy `packages ci qa` **235 files**, Ruff pass; manifest identity `e02e160f776ad42af694c3d50364ba8dffc793bfe05ee4461d39b5e2acdf959f`. Fresh Hosted Linux/Windows/JAX CPU confirmation remains pending.
+
+## 2026-10-23 B4 Native/Imagined limit trigger parity
+
+**Task / status:** B4 limit-fill lifecycle — local engineering fix complete; Hosted CI pending.
+
+**Finding and change:** a Native-versus-Imagined test showed an OHLC intrabar touch could fill `ImaginedAccount` while the pinned Native bar engine kept a limit order open because the bar close was still nonmarketable. The default policy now checks marketability at bar close. The former `ohlc_touch` approximation remains opt-in for scenario-only use. Added long/short Native cases for bar-close marketable fills and intrabar touch without close crossing; strengthened cancellation coverage to keep the unfilled case separate.
+
+**Commands and results:**
+
+- RouteB `.venv-win-app` with current source paths: `pytest tests/test_nautilus_adapter_smoke.py tests/world_model/test_routeb_additive.py tests/world_model/test_routeb_quality_v2.py -k limit` — **11 passed**.
+- Same three files without filter — **136 passed, 5 skipped** because JAX is absent from the app venv.
+- Ruff on changed source/tests — **All checks passed**.
+- `mypy packages ci qa` — **235 source files, no issues**.
+- `py_compile` on all changed Python files and `git diff --check` — passed.
+- Source manifest — **606 files**, identity `9d6d7433a98162ae95fcda9d80a680a7a4a3e108b83e984b7ad22c6217527ac3`.
+
+Evidence: `docs/audit_evidence/20261023/b4_imagined_native_limit_close_parity_20261023.json`.
+
+**Data access:** synthetic BTC/USD.SIM OHLC only; no market, account, ledger, Train, Validation, Test, or Holdout data accessed.
+
+**Boundary / next task:** this covers the pinned DefaultFillModel with bar execution. It does not establish queue priority, intrabar sequence, partial-fill, or custom adverse-price fill-model parity. Hosted Linux/Windows/JAX CPU verification is still pending. Continue the locally actionable audit queue and B4 lifecycle checks.

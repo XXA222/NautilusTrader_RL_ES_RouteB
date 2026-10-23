@@ -298,21 +298,22 @@ def test_account_rejects_repeated_bars_and_backdated_order():
         acc.submit(target_qty=1, decision_ns=bb[0].ts_close_ns-MINUTE_NS)
 
 
-def test_limit_marketable_open_is_charged_taker_fee():
+def test_limit_marketable_at_bar_close_is_charged_taker_fee():
     acc = ImaginedAccount(initial_equity=1000, fee_maker=.0001, fee_taker=.001)
     bb = candles(4)
     acc.on_bar(bb[0])
-    # Limit buy above next opening price: marketable at open, not maker.
+    # Limit buy above next close: marketable at the Native bar trigger, not maker.
     acc.submit(target_qty=1, kind='limit', limit_price=bb[1].open*1.1,
                decision_ns=bb[0].ts_close_ns)
     fill = acc.on_bar(bb[1])
     assert fill is not None and not fill.maker
-    assert fill.price == pytest.approx(bb[1].open)
+    assert fill.price == pytest.approx(bb[1].close)
     assert fill.fee == pytest.approx(fill.price*.001)
 
 
 def test_limit_touch_after_open_is_maker_scenario():
-    acc = ImaginedAccount(initial_equity=1000, fee_maker=.0001, fee_taker=.001)
+    acc = ImaginedAccount(initial_equity=1000, fee_maker=.0001, fee_taker=.001,
+                          limit_fill_policy='ohlc_touch')
     bb = candles(4)
     acc.on_bar(bb[0])
     # Price must fall through limit after open for a nominal maker fill.
