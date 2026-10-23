@@ -4,6 +4,13 @@ An experimental workspace for reinforcement learning and evolutionary strategies
 
 This is research software. It does not promise profitable trading and is not financial advice. Backtest results depend on data quality, execution assumptions, fees, and risk settings.
 
+## Canonical local checkout
+
+The only writable local RouteB checkout is `D:\Program Files\NautilusTrader_RL_ES_RouteB`.
+Run `python qa/assert_canonical_workspace.py` before local development. A failed check means the
+checkout is read-only and must not be used for edits or persistent generated output. Hosted CI
+may use its isolated runner checkout for build and test execution.
+
 ## Scope
 
 - Layered contracts, market-data validation, execution planning, risk controls, and NautilusTrader adapters.

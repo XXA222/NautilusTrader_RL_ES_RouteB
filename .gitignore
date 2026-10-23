@@ -4,9 +4,15 @@
 .uv-cache/
 .rles-python/
 .tmp/
+.tmp*/
 .artifacts/
 .pytest_cache/
+.pytest-*/
+pytest-*/
+pytest_*/
 .mypy_cache/
+.mypy_cache*/
+.mypy-cache*/
 .ruff_cache/
 __pycache__/
 *.py[cod]
@@ -20,6 +26,9 @@ dist-*/
 /nautilus_trader/
 outputs/
 runs/
+scratch-*/
+routeb-wheels-*/
+mirror*/
 checkpoints/
 models/
 *.log
