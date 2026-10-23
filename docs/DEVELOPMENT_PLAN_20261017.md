@@ -2349,3 +2349,9 @@ Added the shared structural-depth check to L6's externally supplied gate report 
 **Verification:** joint L6 attestation and adapter selectors **70 passed**; MyPy `packages ci qa` covers **235 source files** with no issues; Ruff passes; 606-file manifest identity `1e71cd34c7f82a90deb092c86c6fb138b0dac8cb3d557114fcbb85c5f1ef2c8f`. Evidence: `docs/audit_evidence/20261023/a10_l6_attestation_json_depth_20261023.json`.
 
 **Next:** publish to the RouteB-only snapshot and await Hosted Linux/Windows/JAX CPU validation. B4 pending-limit cancellation already passed all three Hosted jobs in run `39928798741`.
+
+## 2026-10-23 A10 L6 pre-install lane import repair
+
+The first hosted attempt for the L6 depth guard failed at `validate-lane`, before any tests, because the workflow imports L6 before installing RouteB packages. Moved the shared scanner import into the JSON decode helper so lane validation stays independent.
+
+**Verification:** standalone lane import passes without RouteB source paths; L6 attestation selector **6 passed**; MyPy `packages ci qa` **235 files**, Ruff pass; manifest identity `e02e160f776ad42af694c3d50364ba8dffc793bfe05ee4461d39b5e2acdf959f`. Fresh Hosted Linux/Windows/JAX CPU confirmation remains pending.

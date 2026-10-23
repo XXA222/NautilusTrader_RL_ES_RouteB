@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-23T09:08:58.932792+00:00",
-  "source_identity_sha256": "1e71cd34c7f82a90deb092c86c6fb138b0dac8cb3d557114fcbb85c5f1ef2c8f",
+  "generated_at_utc": "2026-10-23T09:18:31.780214+00:00",
+  "source_identity_sha256": "e02e160f776ad42af694c3d50364ba8dffc793bfe05ee4461d39b5e2acdf959f",
   "scope": {
     "included": [
       ".gitattributes",
@@ -68,8 +68,8 @@
     },
     {
       "path": "ci/l6/src/l6_ci_release/attestation.py",
-      "size_bytes": 6693,
-      "sha256": "cd075ca29bd99af00cbde2601354b6534a0d8968c70d5f1ff5d62dc96033fbfc"
+      "size_bytes": 6697,
+      "sha256": "fda6d69c7e297ec2f2fe2b5384b32793398010d19087c1eee0bafda6297155d7"
     },
     {
       "path": "ci/l6/src/l6_ci_release/gates.py",

@@ -609,3 +609,9 @@ The external L6 report loader had duplicate-key and non-finite checks but no cro
 **Verification:** attestation + adapter smoke selectors **70 passed**; MyPy **235 files** and Ruff pass; source manifest: 606 files, `1e71cd34c7f82a90deb092c86c6fb138b0dac8cb3d557114fcbb85c5f1ef2c8f`. Evidence: `docs/audit_evidence/20261023/a10_l6_attestation_json_depth_20261023.json`. Fresh hosted CI for this change remains pending.
 
 **Hosted B4 status:** run `39928798741` passed Linux CPU, Windows CPU and isolated JAX CPU, including the Native/Imagined pending-limit cancellation case.
+
+### A10 L6 pre-install import boundary correction — 2026-10-23
+
+Hosted run `39930562257` failed before tests in `validate-lane`: that job imports L6 with system Python before workspace sync, and the top-level shared-scanner import required `rles_contracts`. Moved the import into `_loads_strict_json()`, preserving the standalone lane-check startup while applying the same shared depth limit when reports are actually decoded.
+
+**Verification:** standalone `l6_ci_release.workflow_lane` import passed with no RouteB package path; L6 attestation selector **6 passed**; MyPy `packages ci qa` **235 files**, Ruff pass; 606-file manifest `e02e160f776ad42af694c3d50364ba8dffc793bfe05ee4461d39b5e2acdf959f`. The failed run did not reach test jobs; fresh Hosted validation after the correction is pending.
