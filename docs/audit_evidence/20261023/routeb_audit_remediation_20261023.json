@@ -1,0 +1,25 @@
+{
+  "schema": "routeb.audit-remediation.local-evidence.v1",
+  "date": "2026-10-23",
+  "workspace": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
+  "scope": "RouteB source and synthetic/local regression only; no market, account, Validation, Test, or Holdout payload was opened",
+  "source_identity_sha256": "d9fdbb9a100bff7db20e539a3b308fa228ddc25af908958e70772eb8d39cf537",
+  "source_files": 372,
+  "results": {
+    "research_access": "91 passed",
+    "routeb_main_environment": "237 passed, 3 JAX-only skipped",
+    "routeb_jax_cpu": "131 passed",
+    "routeb_b2_cpu_smoke": "PASS",
+    "routeb_b3_cpu_smoke": "PASS",
+    "world_model_mypy": "38 source files, no issues",
+    "ruff": "PASS"
+  },
+  "fixed": ["RB-01", "RB-02", "RB-03", "RB-06", "RB-07", "RB-08", "RB-13", "RB-14"],
+  "bounded_or_partial": {
+    "RB-04": "slow outputs renamed and frozen as latent diagnostics, not market OHLCV; per-path conserved F2 OHLCV remains open",
+    "RB-10": "posterior/prior transition is exposed numerically; real open-loop shift comparison remains open",
+    "RB-11": "economic certification remains false; native account parity remains open"
+  },
+  "open": ["RB-05", "RB-09", "RB-12"],
+  "hosted_ci": "PENDING"
+}

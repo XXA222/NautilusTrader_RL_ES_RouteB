@@ -15,6 +15,7 @@ from ..baselines import score_baselines
 from ..contracts import MarketReplay
 from ..data_audit import audit_replay
 from .fold_evaluation import build_fold_predictive_report
+from .fold_protocol import validate_fold_experiment_protocol
 from .integration import prepare_fold_forecast_batch, prepare_fold_train_sequences
 from .jax_model import PINNED_UPSTREAM
 from .jax_train import SNAPSHOT_SHA
@@ -117,6 +118,11 @@ def run_fold_experiment(*, replay: MarketReplay, fold: FoldManifest,
             or type(forecast_seed) is not int or forecast_seed < 0
             or type(forecast_paths) is not int or forecast_paths < 2):
         raise ValueError("invalid source, reservation, or forecast identity")
+    validate_fold_experiment_protocol(
+        horizons=horizons, anchor_interval_minutes=anchor_interval_minutes,
+        context_lookback=context_lookback, volatility_window=volatility_window,
+        block_length=block_length, bootstrap_replicates=bootstrap_replicates,
+        seed=seed)
     root = Path(output_dir).resolve()
     existing = {path.name for path in root.iterdir()} if root.is_dir() else set()
     if not root.is_dir() or existing not in (set(), {"registration_receipt.json"}):
@@ -166,8 +172,12 @@ def run_fold_experiment(*, replay: MarketReplay, fold: FoldManifest,
         horizon=horizons[-1], n_paths=forecast_paths, seed=forecast_seed,
         anchor_interval_minutes=anchor_interval_minutes,
         context_lookback=context_lookback)
+    distribution_request_path = root / "validation_next_distribution_request.json"
+    distribution_request = {**request, "horizon": 1}
+    _write_json_fresh(distribution_request_path, distribution_request)
     anchors = np.asarray(request["anchor_timestamps_ns"], dtype=np.int64)
     candidate_paths: dict[str, np.ndarray] = {}
+    candidate_distributions: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     forecast_artifacts: dict[str, dict[str, object]] = {}
     for name in ("E1", "E2"):
         output = root / f"{name.lower()}_validation_forecasts.npz"
@@ -200,13 +210,43 @@ def run_fold_experiment(*, replay: MarketReplay, fold: FoldManifest,
             },
         }
 
+        distribution_output = root / f"{name.lower()}_validation_next_distribution.npz"
+        distribution_result = worker.next_distribution_batch(
+            request=distribution_request_path, checkpoint=checkpoints[name],
+            output=distribution_output, configuration=configurations[name],
+            candidate=name)
+        distribution_sha256 = sha256(distribution_output.read_bytes()).hexdigest()
+        expected_distribution_kind = f"{name}_BATCH_NEXT_DISTRIBUTION"
+        if (distribution_result.get("status") != "COMPLETED"
+                or distribution_result.get("kind") != expected_distribution_kind
+                or distribution_result.get("sha256") != distribution_sha256
+                or distribution_result.get("anchors") != len(anchors)
+                or distribution_result.get("horizon") != 1):
+            raise ValueError(f"{name} next-distribution metadata does not match its artifact")
+        with np.load(distribution_output, allow_pickle=False) as artifact:
+            if set(artifact.files) != {"standardized_mean", "standardized_scale"}:
+                raise ValueError(f"{name} next-distribution artifact has unexpected members")
+            mean = np.asarray(artifact["standardized_mean"], dtype=np.float64)
+            scale = np.asarray(artifact["standardized_scale"], dtype=np.float64)
+            if (mean.shape != (len(anchors), 5) or scale.shape != mean.shape
+                    or not np.isfinite(mean).all() or not np.isfinite(scale).all()
+                    or np.any(scale <= 0)):
+                raise ValueError(f"{name} next-distribution artifact is malformed")
+            candidate_distributions[name] = (mean.copy(), scale.copy())
+        forecast_artifacts[name]["next_distribution"] = {
+            "artifact": distribution_output.name,
+            "artifact_sha256": distribution_sha256,
+            "kind": expected_distribution_kind,
+        }
+
     predictive = build_fold_predictive_report(
         replay, fold, candidate_paths, runs,
         {"E1": anchors, "E2": anchors}, train_scope_id=train_scope_id,
         snapshot_sha256=SNAPSHOT_SHA, forecast_seed=forecast_seed,
         horizons=horizons, anchor_interval_minutes=anchor_interval_minutes,
         context_lookback=context_lookback, volatility_window=volatility_window,
-        block_length=block_length, bootstrap_replicates=bootstrap_replicates, seed=seed)
+        block_length=block_length, bootstrap_replicates=bootstrap_replicates, seed=seed,
+        candidate_next_distributions=candidate_distributions, frozen_scaler=scaler)
     baselines = [
         {**score.__dict__} for score in score_baselines(
             replay, fold, seed=seed, ensemble_size=forecast_paths,
@@ -236,6 +276,8 @@ def run_fold_experiment(*, replay: MarketReplay, fold: FoldManifest,
         "forecast_context": {
             "artifact_sha256": request["context_artifact_sha256"],
             "request_sha256": sha256(request_path.read_bytes()).hexdigest(),
+            "next_distribution_request_sha256": sha256(
+                distribution_request_path.read_bytes()).hexdigest(),
             "anchors": len(anchors), "paths": forecast_paths,
             "horizon": horizons[-1], "test_payload_decoded": False,
         },

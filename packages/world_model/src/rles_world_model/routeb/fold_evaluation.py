@@ -15,9 +15,13 @@ import numpy as np
 from rles_data.core import FoldManifest, MINUTE_NS
 
 from ..contracts import MarketReplay
-from .evaluation import build_predictive_comparison_report, return_paths
+from .codec import OHLCVCodec, TrainOnlyStandardizer
+from .evaluation import (build_predictive_comparison_report,
+                         diagonal_gaussian_return_nll, return_paths)
 from .evaluation import _numeric_sha256
+from .fold_protocol import validation_anchor_timestamps, validate_fold_experiment_protocol
 from .jax_model import PINNED_UPSTREAM
+from .market import Candle
 
 
 def _close_returns(closes: np.ndarray) -> np.ndarray:
@@ -51,6 +55,8 @@ def build_fold_predictive_report(
     block_length: int = 8,
     bootstrap_replicates: int = 2000,
     seed: int = 0,
+    candidate_next_distributions: Mapping[str, tuple[np.ndarray, np.ndarray]] | None = None,
+    frozen_scaler: TrainOnlyStandardizer | None = None,
 ) -> dict[str, object]:
     """Build a common-anchor, Train-fitted E0/E1/E2 comparison report.
 
@@ -79,15 +85,11 @@ def build_fold_predictive_report(
             or set(candidate_training_runs) != {"E1", "E2"}
             or set(candidate_anchor_timestamps_ns) != {"E1", "E2"}):
         raise ValueError("the registered comparison requires exactly frozen E1 and E2 candidates")
-    if (not horizons or tuple(sorted(set(horizons))) != horizons
-            or any(type(horizon) is not int or horizon < 1 for horizon in horizons)
-            or type(anchor_interval_minutes) is not int or anchor_interval_minutes < 1
-            or type(context_lookback) is not int or context_lookback < 2
-            or type(volatility_window) is not int or volatility_window < 2
-            or type(block_length) is not int or block_length < 1
-            or type(bootstrap_replicates) is not int or bootstrap_replicates < 1
-            or type(seed) is not int or seed < 0):
-        raise ValueError("invalid fold evaluation protocol")
+    validate_fold_experiment_protocol(
+        horizons=horizons, anchor_interval_minutes=anchor_interval_minutes,
+        context_lookback=context_lookback, volatility_window=volatility_window,
+        block_length=block_length, bootstrap_replicates=bootstrap_replicates,
+        seed=seed)
 
     frames = replay.frames
     by_time = {frame.ts_close_ns: frame for frame in frames}
@@ -103,10 +105,10 @@ def build_fold_predictive_report(
     train_volatility = _rolling_rv(train_returns, volatility_window)
 
     max_horizon = horizons[-1]
-    first_anchor = fold.validation.score_start_ns - MINUTE_NS
-    last_anchor = fold.validation.score_end_ns - max_horizon * MINUTE_NS
+    anchors = validation_anchor_timestamps(
+        fold=fold, max_horizon=max_horizon,
+        anchor_interval_minutes=anchor_interval_minutes)
     anchor_stride = anchor_interval_minutes * MINUTE_NS
-    anchors = np.arange(first_anchor, last_anchor + 1, anchor_stride, dtype=np.int64)
     if anchors.size < 4:
         raise ValueError("Validation score is too short for common-anchor block comparison")
     for name, values in candidate_anchor_timestamps_ns.items():
@@ -213,6 +215,26 @@ def build_fold_predictive_report(
         name: return_paths(values, previous_close=anchor_closes)
         for name, values in candidate_ohlcv_paths.items()
     }
+    nll_by_model: dict[str, dict[int, np.ndarray]] = {}
+    if (candidate_next_distributions is None) != (frozen_scaler is None):
+        raise ValueError("native next-step distributions require the frozen Train scaler")
+    if candidate_next_distributions is not None:
+        if set(candidate_next_distributions) != {"E1", "E2"}:
+            raise ValueError("native next-step distributions must cover exactly E1 and E2")
+        assert frozen_scaler is not None
+        standardized_target = np.empty((len(anchors), 5), dtype=np.float32)
+        for row, anchor in enumerate(anchors):
+            frame = by_time[int(anchor) + MINUTE_NS]
+            encoded = OHLCVCodec.encode((Candle(
+                frame.ts_close_ns, frame.available_at_ns, frame.instrument,
+                frame.open, frame.high, frame.low, frame.close, frame.volume,
+            ),), previous_close=anchor_closes[row])
+            standardized_target[row] = frozen_scaler.transform(encoded)[0]
+        for name, (mean, scale) in candidate_next_distributions.items():
+            nll_by_model[name] = {1: diagonal_gaussian_return_nll(
+                mean, scale, standardized_target,
+                scaler_mean=frozen_scaler.mean, scaler_std=frozen_scaler.std,
+            )}
     from .evaluation import sample_e0_paths
     e0_samples = sample_e0_paths(
         train_returns, visible_contexts, paths=int(n_paths), horizon=max_horizon,
@@ -267,6 +289,7 @@ def build_fold_predictive_report(
         },
         model_provenance=provenance,
         horizons=horizons,
+        nll_by_model=nll_by_model,
         generated_ohlcv_by_model={
             name: np.asarray(candidate_ohlcv_paths[name], dtype=np.float64)
             for name in ("E1", "E2")

@@ -184,6 +184,7 @@ def prepare_fold_forecast_batch(*,fold_replay:MarketReplay,fold,
     clipped to its own anchor. Test is rejected by the replay boundary check.
     """
     from rles_data.core import FoldManifest
+    from .fold_protocol import validation_anchor_timestamps
     from .jax_model import PINNED_UPSTREAM
     from .jax_train import SNAPSHOT_SHA
     if not isinstance(fold_replay,MarketReplay) or not isinstance(fold,FoldManifest):
@@ -214,11 +215,9 @@ def prepare_fold_forecast_batch(*,fold_replay:MarketReplay,fold,
     frames=fold_replay.frames
     times=np.asarray([frame.ts_close_ns for frame in frames],dtype=np.int64)
     by_time={int(timestamp):index for index,timestamp in enumerate(times)}
-    max_horizon=horizon
-    first_anchor=fold.validation.score_start_ns-MINUTE_NS
-    last_anchor=fold.validation.score_end_ns-max_horizon*MINUTE_NS
-    stride=anchor_interval_minutes*MINUTE_NS
-    anchors=np.arange(first_anchor,last_anchor+1,stride,dtype=np.int64)
+    anchors=validation_anchor_timestamps(
+        fold=fold,max_horizon=horizon,
+        anchor_interval_minutes=anchor_interval_minutes)
     if anchors.size<1:
         raise ValueError("Validation interval has no complete forecast anchors")
     contexts=[]; close_times=[]; availability=[]; anchor_closes=[]

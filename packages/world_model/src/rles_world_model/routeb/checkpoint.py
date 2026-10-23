@@ -6,8 +6,9 @@ checkpoint fail before any training step. Training target-step/report cadence
 are deliberately excluded from the immutable optimization recipe, so a run can
 be extended without silently changing its algorithm.
 
-A crash between the NPZ and JSON replace is detectable, not recoverable; callers
-must retain the previous checkpoint if atomic multi-file rollback is required.
+Every save first publishes an immutable generation pair, then refreshes the
+convenience NPZ/JSON pair. Loading falls back to the newest complete matching
+generation after a torn convenience-file publication.
 """
 from __future__ import annotations
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import Any
 import hashlib
 import json
 import os
+import shutil
 import tempfile
 import numpy as np
 from rles_data.io import strict_json_loads
@@ -75,6 +77,29 @@ def save_checkpoint(path: str | Path, *, params, opt_state, step: int,
         }
         # Validate JSON serializability *before* publishing the array file.
         payload = json.dumps(meta, sort_keys=True, separators=(',', ':'), allow_nan=False)
+        generations = path.parent / f"{path.name}.generations"
+        generations.mkdir(exist_ok=True)
+        generation_stem = f"{step:020d}-{str(meta['sha256'])[:16]}"
+        generation_data = generations / f"{generation_stem}.npz"
+        generation_manifest = generations / f"{generation_stem}.json"
+        if not generation_data.exists() or not generation_manifest.exists():
+            with tempfile.NamedTemporaryFile(dir=generations, suffix='.npz',
+                                             delete=False) as generation_stream:
+                generation_tmp = Path(generation_stream.name)
+            shutil.copyfile(tmp, generation_tmp)
+            try:
+                os.replace(generation_tmp, generation_data)
+            finally:
+                generation_tmp.unlink(missing_ok=True)
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8',
+                                             dir=generations, suffix='.json',
+                                             delete=False) as generation_stream:
+                generation_meta_tmp = Path(generation_stream.name)
+                generation_stream.write(payload)
+            try:
+                os.replace(generation_meta_tmp, generation_manifest)
+            finally:
+                generation_meta_tmp.unlink(missing_ok=True)
         os.replace(tmp, path)
         manifest = path.with_suffix('.json')
         with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8',
@@ -86,16 +111,23 @@ def save_checkpoint(path: str | Path, *, params, opt_state, step: int,
             os.replace(meta_tmp, manifest)
         finally:
             meta_tmp.unlink(missing_ok=True)
+        complete = sorted(
+            (item for item in generations.glob('*.json')
+             if item.with_suffix('.npz').is_file()),
+            reverse=True,
+        )
+        for old_manifest in complete[2:]:
+            old_manifest.with_suffix('.npz').unlink(missing_ok=True)
+            old_manifest.unlink(missing_ok=True)
     finally:
         tmp.unlink(missing_ok=True)
 
 
-def load_checkpoint(path: str | Path, *, params_template, opt_template,
-                    expected_identity: dict, expected_config: dict):
+def _load_checkpoint_pair(path: Path, manifest: Path, *, params_template, opt_template,
+                          expected_identity: dict, expected_config: dict):
     import jax
-    path = Path(path)
     meta = strict_json_loads(
-        path.with_suffix('.json').read_bytes(), context='Route B optimizer checkpoint manifest',
+        manifest.read_bytes(), context='Route B optimizer checkpoint manifest',
     )
     if (meta.get('schema') != SCHEMA or meta.get('identity') != expected_identity
         or meta.get('config') != expected_config):
@@ -129,3 +161,31 @@ def load_checkpoint(path: str | Path, *, params_template, opt_template,
         optimizer = restore('o', lo)
     return (jax.tree_util.tree_unflatten(pt, weights),
             jax.tree_util.tree_unflatten(ot, optimizer), meta['step'], meta['seed'])
+
+
+def load_checkpoint(path: str | Path, *, params_template, opt_template,
+                    expected_identity: dict, expected_config: dict):
+    """Load current checkpoint, recovering from the newest complete generation."""
+    target = Path(path).resolve()
+    candidates = [(target, target.with_suffix('.json'))]
+    generations = target.parent / f"{target.name}.generations"
+    if generations.is_dir():
+        candidates.extend(
+            (manifest.with_suffix('.npz'), manifest)
+            for manifest in sorted(generations.glob('*.json'), reverse=True)
+            if manifest.with_suffix('.npz').is_file()
+        )
+    failures: list[Exception] = []
+    for index, (data_path, manifest_path) in enumerate(candidates):
+        try:
+            return _load_checkpoint_pair(
+                data_path, manifest_path, params_template=params_template,
+                opt_template=opt_template, expected_identity=expected_identity,
+                expected_config=expected_config)
+        except (OSError, ValueError) as exc:
+            if index == 0 and 'duplicate JSON key' in str(exc):
+                raise
+            failures.append(exc)
+    if failures:
+        raise failures[0]
+    raise ValueError('checkpoint does not exist')

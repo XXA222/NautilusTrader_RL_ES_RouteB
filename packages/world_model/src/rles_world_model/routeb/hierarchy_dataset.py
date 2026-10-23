@@ -13,7 +13,7 @@ import numpy as np
 from .clock import ClosedBucket, MultiScaleClock
 from .codec import OHLCVCodec, TrainOnlyStandardizer
 from .hierarchy import build_plan
-from .market import Candle, MarketSequence
+from .market import Candle, MarketSequence, MINUTE_NS
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +135,7 @@ def _coords(bars: tuple[Candle, ...]) -> np.ndarray:
 
 
 def build_train_hierarchy(replay: MarketSequence, *, burn_in: int,
+                          score_start_ns: int, score_end_ns: int,
                           frozen_scalers: HierarchyScalers | None = None
                           ) -> tuple[HierarchyTensors, HierarchyScalers]:
     """Prepare B3 Train-only tensors, optionally reusing previously fitted Train scalers.
@@ -148,6 +149,11 @@ def build_train_hierarchy(replay: MarketSequence, *, burn_in: int,
     bars = replay.candles
     if type(burn_in) is not int or burn_in < 1 or burn_in >= len(bars)-1:
         raise ValueError('invalid minute burn-in')
+    if (type(score_start_ns) is not int or type(score_end_ns) is not int
+            or score_start_ns >= score_end_ns
+            or score_start_ns < bars[1].ts_close_ns
+            or score_end_ns > bars[-1].ts_close_ns + MINUTE_NS):
+        raise ValueError('Train score must be an explicit half-open interval inside the replay')
     clock = MultiScaleClock(bars)
     barrier = bars[-1].available_at_ns
     hourly = _bucket_candles(clock.buckets(60, as_of_ns=barrier))
@@ -157,10 +163,24 @@ def build_train_hierarchy(replay: MarketSequence, *, burn_in: int,
     minute_coords = OHLCVCodec.encode(bars[1:], previous_close=bars[0].close)
     hour_coords = _coords(hourly)
     day_coords = _coords(daily)
+    minute_score = np.asarray([
+        score_start_ns <= bar.ts_close_ns < score_end_ns for bar in bars[1:]
+    ], dtype=np.bool_)
+    hour_score = np.asarray([
+        score_start_ns <= bar.ts_close_ns - 59 * MINUTE_NS
+        and bar.ts_close_ns < score_end_ns for bar in hourly
+    ], dtype=np.bool_)
+    day_score = np.asarray([
+        score_start_ns <= bar.ts_close_ns - 1_439 * MINUTE_NS
+        and bar.ts_close_ns < score_end_ns for bar in daily
+    ], dtype=np.bool_)
+    if (minute_score.sum() < 2 or hour_score.sum() < 2 or day_score.sum() < 2):
+        raise ValueError('Train score has too few completed bars to fit every hierarchy scaler')
     if frozen_scalers is None:
         scalers = HierarchyScalers(*(
             TrainOnlyStandardizer.fit(x, dataset_id=replay.dataset_id, scope='train')
-            for x in (minute_coords, hour_coords, day_coords)
+            for x in (minute_coords[minute_score], hour_coords[hour_score],
+                      day_coords[day_score])
         ))
     else:
         scalers = frozen_scalers
@@ -179,15 +199,15 @@ def build_train_hierarchy(replay: MarketSequence, *, burn_in: int,
         selected = idx >= 0
         if selected.any() and np.any(visible_at[idx[selected]] > decisions[selected]):
             raise ValueError(f'{name} slow latent lookahead detected')
-    mask = np.ones(len(bars)-1, dtype=np.float32)
+    mask = minute_score.astype(np.float32)
     mask[:burn_in] = 0.0
     return HierarchyTensors(
         scalers.minute.transform(minute_coords)[None],
         scalers.hour.transform(hour_coords)[None],
         scalers.day.transform(day_coords)[None],
         hour_idx[None], day_idx[None], mask[None],
-        np.ones((1, len(hourly)), dtype=np.float32),
-        np.ones((1, len(daily)), dtype=np.float32),
+        hour_score.astype(np.float32)[None],
+        day_score.astype(np.float32)[None],
         decisions,
         np.asarray(plan.hour_available_at, dtype=np.int64),
         np.asarray(plan.day_available_at, dtype=np.int64),

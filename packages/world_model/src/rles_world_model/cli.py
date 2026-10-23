@@ -23,6 +23,7 @@ from .routeb.sequences import load_worker_batch
 from .routeb.jax_train import SNAPSHOT_SHA
 from .routeb.jax_model import PINNED_UPSTREAM
 from .routeb.fold_experiment import run_fold_experiment
+from .routeb.fold_protocol import validate_fold_experiment_protocol
 from .upstream import inspect_upstream
 
 
@@ -469,6 +470,18 @@ def main(argv: list[str] | None = None) -> int:
                     or type(args.forecast_seed) is not int or args.forecast_seed < 0
                     or type(args.forecast_paths) is not int or not 2 <= args.forecast_paths <= 1024):
                 raise DataError("invalid forecast horizon, worker timeout, seed, or ensemble size")
+            try:
+                validate_fold_experiment_protocol(
+                    horizons=horizons,
+                    anchor_interval_minutes=args.anchor_interval_minutes,
+                    context_lookback=args.context_lookback,
+                    volatility_window=args.volatility_window,
+                    block_length=args.block_length,
+                    bootstrap_replicates=args.bootstrap_replicates,
+                    seed=args.seed,
+                )
+            except ValueError as exc:
+                raise DataError(str(exc)) from exc
             worker_python = Path(args.worker_python).resolve()
             upstream_checkout = Path(args.upstream_checkout).resolve()
             if not worker_python.is_file() or not upstream_checkout.is_dir():

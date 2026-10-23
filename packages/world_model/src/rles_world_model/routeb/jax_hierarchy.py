@@ -161,37 +161,60 @@ def make_hierarchical_model(checkout,*,minute:RSSMConfig,hour:RSSMConfig,day:RSS
             mr=jnp.zeros((B,T),bool).at[:,0].set(True)
             m_actions={"market_dummy":jnp.zeros((B,T,1),jnp.float32),
                        "slow_context":slow_context}
-            mcarry,_,_=m_dyn.observe(m_dyn.initial(B),tokens,m_actions,mr,False)
-            means=[];scales=[];hour_generated=[];day_generated=[]
+            mcarry,_,mfeat=m_dyn.observe(m_dyn.initial(B),tokens,m_actions,mr,False)
+            mstate=jax.tree.map(lambda value:value[:,-1],mfeat)
+            anchor_z=jnp.concatenate([
+                mstate['deter'],mstate['stoch'].reshape((B,-1))],-1)
+            anchor_mean=self.sub('next_minute_mean',nn.Linear,5)(anchor_z)
+            anchor_raw=self.sub('next_minute_scale',nn.Linear,5)(anchor_z)
+            anchor_scale=jax.nn.softplus(jnp.clip(anchor_raw,-12.,8.))+minute.min_scale
+            means=[];scales=[];hour_diagnostics=[];day_diagnostics=[]
+            first_prior_mean=None;first_prior_scale=None
             for hour_event,day_event in zip(future_hour_events,future_day_events):
+                # The next-bar head is trained on posterior[t] -> x[t+1].
+                # Emit from the current posterior/prior state first. Slow events
+                # at the target close may condition only the following target.
+                mz=jnp.concatenate([
+                    mstate['deter'],mstate['stoch'].reshape((B,-1))],-1)
+                mean=self.sub('next_minute_mean',nn.Linear,5)(mz)
+                raw=self.sub('next_minute_scale',nn.Linear,5)(mz)
+                scale=jax.nn.softplus(jnp.clip(raw,-12.,8.))+minute.min_scale
+                means.append(mean);scales.append(scale)
                 if day_event:
                     dcarry,(dprior,_)=d_dyn.imagine(dcarry,
                         {"market_dummy":jnp.zeros((B,1),jnp.float32)},1,False,single=True)
                     dz=jnp.concatenate([dprior['deter'],dprior['stoch'].reshape((B,-1))],-1)
-                    day_generated.append(self.sub('day_reconstruction',nn.Linear,5)(dz))
+                    day_diagnostics.append(self.sub('day_reconstruction',nn.Linear,5)(dz))
                 else:
-                    day_generated.append(jnp.zeros((B,5),jnp.float32))
+                    day_diagnostics.append(jnp.zeros((B,5),jnp.float32))
                 if hour_event:
                     hcarry,(hprior,_)=h_dyn.imagine(hcarry,
                         {"market_dummy":jnp.zeros((B,1),jnp.float32)},1,False,single=True)
                     hz=jnp.concatenate([hprior['deter'],hprior['stoch'].reshape((B,-1))],-1)
-                    hour_generated.append(self.sub('hour_reconstruction',nn.Linear,5)(hz))
+                    hour_diagnostics.append(self.sub('hour_reconstruction',nn.Linear,5)(hz))
                 else:
-                    hour_generated.append(jnp.zeros((B,5),jnp.float32))
+                    hour_diagnostics.append(jnp.zeros((B,5),jnp.float32))
                 hstate=jnp.concatenate([hcarry['deter'],hcarry['stoch'].reshape((B,-1))],-1)
                 dstate=jnp.concatenate([dcarry['deter'],dcarry['stoch'].reshape((B,-1))],-1)
                 context=jnp.concatenate([hstate,dstate],-1)
                 mcarry,(mprior,_)=m_dyn.imagine(mcarry,
                     {"market_dummy":jnp.zeros((B,1),jnp.float32),
                      "slow_context":context},1,False,single=True)
-                mz=jnp.concatenate([mprior['deter'],mprior['stoch'].reshape((B,-1))],-1)
-                mean=self.sub('next_minute_mean',nn.Linear,5)(mz)
-                raw=self.sub('next_minute_scale',nn.Linear,5)(mz)
-                scale=jax.nn.softplus(jnp.clip(raw,-12.,8.))+minute.min_scale
-                means.append(mean);scales.append(scale)
+                mstate=mprior
+                if first_prior_mean is None:
+                    prior_z=jnp.concatenate([
+                        mstate['deter'],mstate['stoch'].reshape((B,-1))],-1)
+                    first_prior_mean=self.sub('next_minute_mean',nn.Linear,5)(prior_z)
+                    prior_raw=self.sub('next_minute_scale',nn.Linear,5)(prior_z)
+                    first_prior_scale=(jax.nn.softplus(jnp.clip(prior_raw,-12.,8.))+
+                                       minute.min_scale)
             return {"minute_mean":jnp.stack(means,axis=1),
                     "minute_scale":jnp.stack(scales,axis=1),
-                    "hour_generated":jnp.stack(hour_generated,axis=1),
-                    "day_generated":jnp.stack(day_generated,axis=1)}
+                    "anchor_minute_mean":anchor_mean,
+                    "anchor_minute_scale":anchor_scale,
+                    "first_prior_minute_mean":first_prior_mean,
+                    "first_prior_minute_scale":first_prior_scale,
+                    "hour_latent_diagnostic":jnp.stack(hour_diagnostics,axis=1),
+                    "day_latent_diagnostic":jnp.stack(day_diagnostics,axis=1)}
 
     return ThreeScale(name='route_b_hierarchical_world_model')

@@ -1,0 +1,35 @@
+{
+  "status": "PASS",
+  "scope": "synthetic_mechanism_only",
+  "environment": {
+    "python": "3.12.10",
+    "jax": "0.11.2",
+    "platform": "cpu",
+    "upstream_sha": "e01491fad6434b2245a3b8ca201dd7faedcc458c"
+  },
+  "synthetic_minute_bars": 5757,
+  "optimizer_updates": 2,
+  "final_step": 2,
+  "train_windows": 718,
+  "parameter_count": 3208,
+  "resume_parity": true,
+  "finite_metrics": true,
+  "all_scale_gradients_nonzero": true,
+  "scale_gradient_norms": {
+    "grad_minute_dyn_norm": 252.40042114257812,
+    "grad_hour_dyn_norm": 332.8233947753906,
+    "grad_day_dyn_norm": 27.624528884887695
+  },
+  "f2_minute_forecast_shape": [1, 5, 5],
+  "f2_hour_latent_diagnostic_shape": [1, 5, 5],
+  "f2_day_latent_diagnostic_shape": [1, 5, 5],
+  "f2_slow_outputs_are_market_ohlcv": false,
+  "f2_first_step_matches_trained_posterior_head": true,
+  "f2_first_prior_state_distinguished": true,
+  "f2_training_and_inference_context_identities_separated": true,
+  "f2_independent_context_loaded": true,
+  "f2_future_event_perturbation_causal": true,
+  "f2_delayed_event_barrier_alignment": true,
+  "real_market_validation": false,
+  "economic_claim": false
+}

@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,20 @@ from rles_research.ledger import ResearchLedger, ResearchLockError
 from rles_data.io import write_curated
 
 pytestmark = pytest.mark.contracts
+
+
+def test_legacy_research_inventory_marker_matches_tracked_bytes():
+    workspace_root = Path(__file__).resolve().parents[1]
+    inventory = (
+        workspace_root
+        / "docs"
+        / "audit_evidence"
+        / "20261016"
+        / "legacy_research_access_v2.json"
+    )
+    marker = inventory.with_suffix(".json.sha256")
+
+    assert marker.read_text(encoding="ascii") == sha256(inventory.read_bytes()).hexdigest()
 
 
 def reserve(registry, *, key="one", owner="run-a", start=100, end=200,

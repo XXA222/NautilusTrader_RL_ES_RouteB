@@ -49,7 +49,7 @@ class HierarchicalModelConfig:
     day: RSSMConfig
 
 
-def _data_sha256(tensors: HierarchyTensors) -> str:
+def hierarchy_tensor_sha256(tensors: HierarchyTensors) -> str:
     digest = sha256()
     for name in ("minute_x", "hour_x", "day_x", "hour_index", "day_index",
                  "minute_mask", "hour_mask", "day_mask", "minute_available_at",
@@ -108,7 +108,7 @@ def train_hierarchical(*, tensors: HierarchyTensors, train_scope_id: str,
     opt_state = optimizer.init(params)
     identity = {"train_scope_id": train_scope_id, "dataset_id": dataset_id,
                 "snapshot_sha": SNAPSHOT_SHA, "upstream_sha": PINNED_UPSTREAM,
-                "hierarchy_tensor_sha256": _data_sha256(tensors),
+                "hierarchy_tensor_sha256": hierarchy_tensor_sha256(tensors),
                 "scaler_sha256": scaler_sha256}
     configuration = optimizer_recipe(model_cfg, cfg)
     start = 0
@@ -169,7 +169,8 @@ def train_hierarchical(*, tensors: HierarchyTensors, train_scope_id: str,
         int(np.prod(x.shape)) for x in jax.tree_util.tree_leaves(params)),
         "train_windows": len(windows.starts), "optimizer_updates": cfg.steps,
         "training_seconds": time.perf_counter() - started,
-        "device": str(jax.devices()[0])})
+        "device": str(jax.devices()[0]),
+        "train_hierarchy_tensor_sha256": identity["hierarchy_tensor_sha256"]})
     return reports
 
 
@@ -177,6 +178,7 @@ def forecast_hierarchical_f2(*, tensors: HierarchyTensors, train_scope_id: str,
         dataset_id: str, scaler_sha256: str, checkout: str | Path,
         checkpoint: str | Path, model_config: HierarchicalModelConfig,
         training_config: HierarchicalTrainingConfig,
+        training_tensor_sha256: str, inference_context_sha256: str,
         future_minute_decisions_ns: np.ndarray,
         hour_availability_delay_ns: int,
         day_availability_delay_ns: int,
@@ -195,6 +197,13 @@ def forecast_hierarchical_f2(*, tensors: HierarchyTensors, train_scope_id: str,
 
     if type(forecast_seed) is not int or forecast_seed < 0:
         raise ValueError("invalid F2 forecast seed")
+    actual_context_sha256 = hierarchy_tensor_sha256(tensors)
+    if (not isinstance(training_tensor_sha256, str)
+            or len(training_tensor_sha256) != 64
+            or any(char not in "0123456789abcdef" for char in training_tensor_sha256)
+            or not isinstance(inference_context_sha256, str)
+            or inference_context_sha256 != actual_context_sha256):
+        raise ValueError("F2 training identity or authorized inference context identity is invalid")
     decision_times = np.asarray(future_minute_decisions_ns)
     if (type(hour_availability_delay_ns) is not int or hour_availability_delay_ns < 0
             or type(day_availability_delay_ns) is not int or day_availability_delay_ns < 0):
@@ -230,7 +239,7 @@ def forecast_hierarchical_f2(*, tensors: HierarchyTensors, train_scope_id: str,
                             optax.adam(training_config.lr))
     identity = {"train_scope_id": train_scope_id, "dataset_id": dataset_id,
         "snapshot_sha": SNAPSHOT_SHA, "upstream_sha": PINNED_UPSTREAM,
-        "hierarchy_tensor_sha256": _data_sha256(tensors),
+        "hierarchy_tensor_sha256": training_tensor_sha256,
         "scaler_sha256": scaler_sha256}
     params, _, _, checkpoint_seed = load_checkpoint(checkpoint,
         params_template=params, opt_template=optimizer.init(params),
@@ -247,9 +256,19 @@ def forecast_hierarchical_f2(*, tensors: HierarchyTensors, train_scope_id: str,
     horizon = len(future_hour_events)
     if (outputs["minute_mean"].shape != (batch_size, horizon, 5)
             or outputs["minute_scale"].shape != (batch_size, horizon, 5)
-            or outputs["hour_generated"].shape != (batch_size, horizon, 5)
-            or outputs["day_generated"].shape != (batch_size, horizon, 5)
+            or outputs["anchor_minute_mean"].shape != (batch_size, 5)
+            or outputs["anchor_minute_scale"].shape != (batch_size, 5)
+            or outputs["first_prior_minute_mean"].shape != (batch_size, 5)
+            or outputs["first_prior_minute_scale"].shape != (batch_size, 5)
+            or outputs["hour_latent_diagnostic"].shape != (batch_size, horizon, 5)
+            or outputs["day_latent_diagnostic"].shape != (batch_size, horizon, 5)
             or any(not np.isfinite(value).all() for value in outputs.values())
-            or np.any(outputs["minute_scale"] <= 0)):
+            or np.any(outputs["minute_scale"] <= 0)
+            or np.any(outputs["anchor_minute_scale"] <= 0)
+            or np.any(outputs["first_prior_minute_scale"] <= 0)
+            or not np.array_equal(outputs["minute_mean"][:, 0],
+                                  outputs["anchor_minute_mean"])
+            or not np.array_equal(outputs["minute_scale"][:, 0],
+                                  outputs["anchor_minute_scale"])):
         raise RuntimeError("F2 produced malformed or nonfinite cross-scale outputs")
     return outputs

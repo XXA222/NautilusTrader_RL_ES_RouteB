@@ -51,7 +51,8 @@ class WorkerClient:
         if not isinstance(result,dict) or result.get('kind') not in {
             'TRAIN_DIAGNOSTIC_ONLY', 'F1_PRIOR_PATHS', 'E2_NEXT_DISTRIBUTION',
             'E1_TRAIN_DIAGNOSTIC_ONLY', 'E1_PRIOR_PATHS', 'E1_NEXT_DISTRIBUTION',
-            'F1_BATCH_PRIOR_PATHS', 'E1_BATCH_PRIOR_PATHS'
+            'F1_BATCH_PRIOR_PATHS', 'E1_BATCH_PRIOR_PATHS',
+            'E1_BATCH_NEXT_DISTRIBUTION', 'E2_BATCH_NEXT_DISTRIBUTION'
         }:
             raise WorkerFailure('worker returned invalid output shape/kind')
         if result.get("status")!="COMPLETED":
@@ -167,8 +168,22 @@ class WorkerClient:
             kind="E1_NEXT_DISTRIBUTION",request=request,checkpoint=checkpoint,
             output=output,configuration=configuration)
 
+    def next_distribution_batch(self, *, request:Path, checkpoint:Path,
+                                output:Path, configuration:Path,
+                                candidate:str)->dict:
+        """Export exact one-step heads for every ordered Validation anchor."""
+        normalized=candidate.upper()
+        if normalized not in {"E1","E2"}:
+            raise ValueError("candidate must be E1 or E2")
+        command=("e1-next-distribution-batch" if normalized=="E1"
+                 else "next-distribution-batch")
+        kind=f"{normalized}_BATCH_NEXT_DISTRIBUTION"
+        return self._next_distribution(command=command,kind=kind,request=request,
+            checkpoint=checkpoint,output=output,configuration=configuration,
+            batch=True)
+
     def _next_distribution(self,*,command:str,kind:str,request:Path,checkpoint:Path,
-                           output:Path,configuration:Path)->dict:
+                           output:Path,configuration:Path,batch:bool=False)->dict:
         result=self._run([command,"--request",str(request),"--checkout",
                           str(self.config.upstream_checkout),"--checkpoint",str(checkpoint),
                           "--output",str(output),"--configuration",str(configuration)])
@@ -183,7 +198,10 @@ class WorkerClient:
                 raise WorkerFailure('worker distribution member schema mismatch')
             mean=np.asarray(distribution['standardized_mean'])
             scale=np.asarray(distribution['standardized_scale'])
-            if (mean.shape!=(1,5) or scale.shape!=mean.shape or not np.isfinite(mean).all()
+            expected_anchors=result.get('anchors') if batch else 1
+            expected_shape=((expected_anchors,5) if batch else (1,5))
+            if (type(expected_anchors) is not int or expected_anchors<1
+                    or mean.shape!=expected_shape or scale.shape!=mean.shape or not np.isfinite(mean).all()
                     or not np.isfinite(scale).all() or np.any(scale<=0)):
                 raise WorkerFailure('worker next-step distribution is invalid')
         return result

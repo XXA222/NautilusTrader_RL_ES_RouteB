@@ -531,3 +531,37 @@ def test_run_registered_fold_reserves_once_then_hands_same_replay_to_pipeline(
     receipt = json.loads((output_dir / "registration_receipt.json").read_text())
     assert receipt["fold_hash"] == fold.hash
     assert receipt["read_scope"]["includes_test"] is False
+
+
+def test_run_registered_fold_rejects_short_horizon_protocol_before_reader(
+        tmp_path, monkeypatch, capsys):
+    from dataclasses import asdict
+    from rles_world_model.routeb.jax_gru import GRUConfig
+    from rles_world_model.routeb.jax_model import RSSMConfig
+    from rles_world_model.routeb.jax_train import TrainingConfig
+
+    fold_config = tmp_path / "fold.json"
+    fold_config.write_text("{}", encoding="utf-8")
+    training = asdict(TrainingConfig(steps=2, batch_size=1))
+    e1_config = tmp_path / "e1.json"
+    e2_config = tmp_path / "e2.json"
+    e1_config.write_text(json.dumps({"model": asdict(GRUConfig()), "training": training}))
+    e2_config.write_text(json.dumps({"model": asdict(RSSMConfig()), "training": training}))
+    worker_python = tmp_path / "python.exe"
+    worker_python.write_bytes(b"fake")
+    checkout = tmp_path / "dreamerv3"
+    checkout.mkdir()
+    monkeypatch.setattr(world_model_cli, "_registered_fold_baseline",
+                        lambda *_args: (_ for _ in ()).throw(
+                            AssertionError("invalid protocol must not consume a Fold read")))
+    assert main([
+        "world-model", "run-registered-fold",
+        "--registered-fold-config", str(fold_config),
+        "--e1-configuration", str(e1_config), "--e2-configuration", str(e2_config),
+        "--worker-python", str(worker_python), "--upstream-checkout", str(checkout),
+        "--output-dir", str(tmp_path / "result"), "--horizons", "1,5",
+        "--volatility-window", "15",
+    ]) == 2
+    detail = json.loads(capsys.readouterr().err)["detail"]
+    assert "volatility_window must not exceed the maximum horizon" in detail
+    assert not (tmp_path / "result").exists()

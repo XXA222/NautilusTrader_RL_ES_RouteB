@@ -70,6 +70,18 @@ def main(argv:list[str]|None=None)->int:
     ebf.add_argument("--checkpoint",required=True)
     ebf.add_argument("--output",required=True)
     ebf.add_argument("--configuration",required=True)
+    bd=subs.add_parser("next-distribution-batch")
+    bd.add_argument("--request",required=True)
+    bd.add_argument("--checkout",required=True)
+    bd.add_argument("--checkpoint",required=True)
+    bd.add_argument("--output",required=True)
+    bd.add_argument("--configuration",required=True)
+    ebd=subs.add_parser("e1-next-distribution-batch")
+    ebd.add_argument("--request",required=True)
+    ebd.add_argument("--checkout",required=True)
+    ebd.add_argument("--checkpoint",required=True)
+    ebd.add_argument("--output",required=True)
+    ebd.add_argument("--configuration",required=True)
     ed=subs.add_parser("e1-next-distribution")
     ed.add_argument("--request",required=True)
     ed.add_argument("--checkout",required=True)
@@ -104,7 +116,9 @@ def main(argv:list[str]|None=None)->int:
             request=strict_json_loads(
                 Path(args.request).read_bytes(), context='Route B worker forecast request',
             )
-            batch=args.command in {'forecast-batch','e1-forecast-batch'}
+            batch=args.command in {
+                'forecast-batch','e1-forecast-batch',
+                'next-distribution-batch','e1-next-distribution-batch'}
             expected={"schema","train_scope_id","dataset_id","history_npz","context_sha256","scaler_sha256","horizon",
                       "n_paths","seed","train_npz_sha256","instrument"}
             expected |= ({"anchor_timestamps_ns"} if batch else
@@ -231,7 +245,8 @@ def main(argv:list[str]|None=None)->int:
                         checkpoint=args.checkpoint,model_config=mc,training_config=tc,
                         train_scope_id=request['train_scope_id'],dataset_id=request['dataset_id'],
                         train_npz_sha256=request["train_npz_sha256"],
-                        scaler_sha256=request['scaler_sha256'],history=context[None,:,:])
+                        scaler_sha256=request['scaler_sha256'],
+                        history=context if batch else context[None,:,:])
                 else:
                     assert isinstance(mc,RSSMConfig)
                     mean,scale=forecast_distribution_standardized(
@@ -239,12 +254,14 @@ def main(argv:list[str]|None=None)->int:
                         model_config=mc,training_config=tc,
                         train_scope_id=request['train_scope_id'],dataset_id=request['dataset_id'],
                         train_npz_sha256=request["train_npz_sha256"],
-                        scaler_sha256=request['scaler_sha256'],history=context[None,:,:])
+                        scaler_sha256=request['scaler_sha256'],
+                        history=context if batch else context[None,:,:])
                 # DreamerV3 commonly emits bfloat16; NumPy otherwise serializes
                 # that dtype as opaque |V2, which downstream scoring cannot read.
                 members={"standardized_mean":np.asarray(mean,dtype=np.float32),
                          "standardized_scale":np.asarray(scale,dtype=np.float32)}
-                kind="E1_NEXT_DISTRIBUTION" if e1 else "E2_NEXT_DISTRIBUTION"
+                kind=("E1_BATCH_NEXT_DISTRIBUTION" if batch else "E1_NEXT_DISTRIBUTION") if e1 else (
+                    "E2_BATCH_NEXT_DISTRIBUTION" if batch else "E2_NEXT_DISTRIBUTION")
             output=Path(args.output).resolve()
             output.parent.mkdir(parents=True,exist_ok=True)
             with tempfile.NamedTemporaryFile(dir=output.parent,suffix='.npz',delete=False) as tmp_file:

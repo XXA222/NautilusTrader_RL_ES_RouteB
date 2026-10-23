@@ -396,32 +396,44 @@ def test_malformed_sequence_reset_masks_rejected():
 
 def test_full_hierarchy_train_tensors_have_causal_indices():
     from rles_world_model.routeb.hierarchy_dataset import build_train_hierarchy
-    # 2 full UTC days + 1 extra hour, synthetic Train only.
-    raw = candles(2940)
+    # 3 full UTC days + 1 extra hour, synthetic Train only.
+    raw = candles(4380)
     seq = MarketSequence(raw, 'hierarchy-train', 'train')
-    sample, fitted = build_train_hierarchy(seq, burn_in=64)
-    assert sample.minute_x.shape == (1, 2939, 5)
-    assert sample.hour_x.shape == (1, 49, 5)
-    assert sample.day_x.shape == (1, 2, 5)
+    score_start = raw[64].ts_close_ns
+    score_end = raw[-1].ts_close_ns + MINUTE_NS
+    sample, fitted = build_train_hierarchy(
+        seq, burn_in=64, score_start_ns=score_start, score_end_ns=score_end)
+    assert sample.minute_x.shape == (1, 4379, 5)
+    assert sample.hour_x.shape == (1, 73, 5)
+    assert sample.day_x.shape == (1, 3, 5)
     assert sample.day_index[0,1437] == -1
     assert sample.day_index[0,1438] == 0
     assert sample.day_index[0,2878] == 1
     assert sample.minute_mask[0,63] == 0
     assert sample.minute_mask[0,64] == 1
+    assert sample.hour_mask[0,0] == 0
+    assert sample.hour_mask[0,1] == 0
+    assert sample.hour_mask[0,2] == 1
+    assert sample.day_mask.tolist() == [[0.0, 1.0, 1.0]]
     for indices, availability in ((sample.hour_index[0],sample.hour_available_at),
                                   (sample.day_index[0],sample.day_available_at)):
         active=indices>=0
         assert np.all(availability[indices[active]]<=sample.minute_available_at[active])
-    same, other = build_train_hierarchy(seq, burn_in=64, frozen_scalers=fitted)
+    same, other = build_train_hierarchy(
+        seq, burn_in=64, score_start_ns=score_start, score_end_ns=score_end,
+        frozen_scalers=fitted)
     assert np.array_equal(same.hour_x,sample.hour_x)
     assert other.day.fingerprint == fitted.day.fingerprint
 
 
 def test_full_hierarchy_rejects_insufficient_daily_context():
     from rles_world_model.routeb.hierarchy_dataset import build_train_hierarchy
-    seq = MarketSequence(candles(1400), 'short', 'train')
+    raw = candles(1400)
+    seq = MarketSequence(raw, 'short', 'train')
     with pytest.raises(ValueError, match='completed'):
-        build_train_hierarchy(seq, burn_in=32)
+        build_train_hierarchy(
+            seq, burn_in=32, score_start_ns=raw[32].ts_close_ns,
+            score_end_ns=raw[-1].ts_close_ns + MINUTE_NS)
 
 
 def test_f2_refuses_incomplete_day_event_without_missing_history_silence():
@@ -452,6 +464,14 @@ def test_checkpoint_detects_corruption_and_tree_permutation(tmp_path):
         load_checkpoint(dest,params_template=invalid_template,opt_template=opt,
                         expected_identity=identity,expected_config=recipe)
     dest.write_bytes(dest.read_bytes()+b'corrupt')
+    recovered_params, _, recovered_step, recovered_seed = load_checkpoint(
+        dest, params_template=params, opt_template=opt,
+        expected_identity=identity, expected_config=recipe)
+    assert recovered_step == 3 and recovered_seed == 11
+    assert np.array_equal(np.asarray(recovered_params['a']), np.asarray(params['a']))
+    generations = dest.parent / f"{dest.name}.generations"
+    for generation in generations.glob('*.npz'):
+        generation.write_bytes(generation.read_bytes() + b'corrupt')
     with pytest.raises(ValueError,match='corruption'):
         load_checkpoint(dest,params_template=params,opt_template=opt,
                         expected_identity=identity,expected_config=recipe)
@@ -613,6 +633,53 @@ def test_worker_cli_returns_provenance_bound_next_distribution(tmp_path, monkeyp
         assert np.all(output['standardized_scale']>0)
 
 
+def test_worker_cli_returns_batch_next_distribution_for_every_anchor(
+        tmp_path, monkeypatch, capsys):
+    import rles_world_model.routeb.worker_cli as cli
+    from dataclasses import asdict
+    bars, _, scaler = prepared()
+    request = prepare_forecast_context(
+        visible_history=bars, frozen_scaler=scaler, anchor_ns=bars[-1].ts_close_ns,
+        train_scope_id='train-allowed', train_npz_sha256='c'*64,
+        output_context_npz=tmp_path/'single.npz',
+        output_request_json=tmp_path/'single.json', horizon=1, n_paths=2, seed=37)
+    with np.load(tmp_path/'single.npz', allow_pickle=False) as source:
+        history = source['history']
+    anchors = np.asarray([bars[-1].ts_close_ns, bars[-1].ts_close_ns + MINUTE_NS])
+    closes = anchors[:, None] - np.arange(
+        len(history)-1, -1, -1, dtype=np.int64)[None, :] * MINUTE_NS
+    context = tmp_path/'batch.npz'
+    np.savez_compressed(
+        context, histories=np.stack([history, history]), scaler_mean=scaler.mean,
+        scaler_std=scaler.std, anchor_timestamps_ns=anchors,
+        close_timestamps=closes, available_timestamps=closes,
+        anchor_closes=np.asarray([bars[-1].close] * 2))
+    request.update({
+        'schema': 'routeb.forecast-batch-request.v1',
+        'history_npz': str(context.resolve()),
+        'context_sha256': hashlib.sha256(context.read_bytes()).hexdigest(),
+        'anchor_timestamps_ns': anchors.tolist(),
+    })
+    for key in ('anchor_ts_ns', 'anchor_close', 'first_future_close_ns'):
+        request.pop(key)
+    (tmp_path/'request.json').write_text(json.dumps(request))
+    (tmp_path/'config.json').write_text(json.dumps({
+        'model':asdict(RSSMConfig()),'training':asdict(TrainingConfig())}))
+    monkeypatch.setattr(cli, 'forecast_distribution_standardized',
+                        lambda **kwargs: (np.zeros((2,5), dtype=np.float32),
+                                          np.ones((2,5), dtype=np.float32)))
+    assert cli.main(['next-distribution-batch','--request',str(tmp_path/'request.json'),
+                     '--checkout',str(tmp_path/'unused'),
+                     '--checkpoint',str(tmp_path/'unused.npz'),
+                     '--output',str(tmp_path/'distribution.npz'),
+                     '--configuration',str(tmp_path/'config.json')]) == 0
+    response = json.loads(capsys.readouterr().out)
+    assert response['kind'] == 'E2_BATCH_NEXT_DISTRIBUTION'
+    assert response['anchors'] == 2
+    with np.load(tmp_path/'distribution.npz', allow_pickle=False) as output:
+        assert output['standardized_mean'].shape == (2,5)
+
+
 def test_worker_client_requires_genuine_artifact(tmp_path, monkeypatch):
     import sys
     from types import SimpleNamespace
@@ -716,6 +783,27 @@ def test_worker_client_validates_next_distribution_artifact(tmp_path, monkeypatc
         checkpoint=tmp_path/'checkpoint.npz',output=tmp_path/'distribution.npz',
         configuration=tmp_path/'config.json')
     assert result['kind']=='E2_NEXT_DISTRIBUTION'
+
+
+def test_worker_client_validates_batch_next_distribution_artifact(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    import rles_world_model.routeb.worker_client as client
+    worker=client.WorkerClient(client.WorkerConfig(
+        python_executable=Path(sys.executable),upstream_checkout=tmp_path))
+    def fake_run(command, **kwargs):
+        output=Path(command[command.index('--output')+1])
+        np.savez_compressed(output,standardized_mean=np.zeros((2,5)),
+                            standardized_scale=np.ones((2,5)))
+        result={'status':'COMPLETED','kind':'E2_BATCH_NEXT_DISTRIBUTION',
+                'output':str(output),'anchors':2,'paths':1,'horizon':1,
+                'sha256':hashlib.sha256(output.read_bytes()).hexdigest()}
+        return SimpleNamespace(returncode=0,stdout=json.dumps(result),stderr='')
+    monkeypatch.setattr(client.subprocess,'run',fake_run)
+    result=worker.next_distribution_batch(request=tmp_path/'request.json',
+        checkpoint=tmp_path/'checkpoint.npz',output=tmp_path/'distribution.npz',
+        configuration=tmp_path/'config.json',candidate='e2')
+    assert result['anchors']==2
 
 
 def test_rssm_config_rejects_nans_and_malformed_architecture():

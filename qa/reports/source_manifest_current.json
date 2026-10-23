@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-23T11:38:01.576010+00:00",
-  "source_identity_sha256": "477362b52a170124ad5608bac552dad1e1dcde27670e97626a3ed05abf1f535c",
+  "generated_at_utc": "2026-10-23T14:57:09.008780+00:00",
+  "source_identity_sha256": "d9fdbb9a100bff7db20e539a3b308fa228ddc25af908958e70772eb8d39cf537",
   "scope": {
     "included": [
       ".gitattributes",
@@ -42,12 +42,7 @@
       "qa/reports"
     ]
   },
-  "upstream_nautilus": {
-    "path": "nautilus_trader",
-    "commit": "b82f3e3c801f4d7d0423f11c34fea8806c09e68a",
-    "tracked_worktree_clean": true,
-    "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-  },
+  "upstream_nautilus": null,
   "files": [
     {
       "path": ".gitattributes",
@@ -830,11 +825,6 @@
       "sha256": "4ec4b16cfa78445e70241ea0f9788bc756cc8e61d98e586dcc9f42b9eb60283f"
     },
     {
-      "path": "packages/world_model/UPSTREAM_PATCH_MANIFEST.json",
-      "size_bytes": 432,
-      "sha256": "50d1d2da027c4eae6771a175d5ff1ab55448265c53a4e88ef7e16c36075d6510"
-    },
-    {
       "path": "packages/world_model/configs/evaluation_protocol.json",
       "size_bytes": 294,
       "sha256": "fd96185af1ef41bf64de8757a79fad35c55e5d114fdd10f2299cb0ecd998fc00"
@@ -891,8 +881,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/cli.py",
-      "size_bytes": 35236,
-      "sha256": "d442e337dd4df1e0cc11833a8b74ee65a9ce824e21a7b631ca32fc62d3602903"
+      "size_bytes": 35870,
+      "sha256": "e3f0ee0e59917a146e590a530983b6411c431c2630afa97be355f45d4172b824"
     },
     {
       "path": "packages/world_model/src/rles_world_model/contracts.py",
@@ -936,8 +926,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/checkpoint.py",
-      "size_bytes": 5916,
-      "sha256": "9e878b9eca406e79e1795539290fc5621d55e6d2b18adcd491152fd0bdf32b28"
+      "size_bytes": 8864,
+      "sha256": "7b09b398517ac7c98c32d4dd9d81a85b618794e510c73893eba17a3f9167639c"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/clock.py",
@@ -956,13 +946,18 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/fold_evaluation.py",
-      "size_bytes": 15311,
-      "sha256": "f7cd372625f145a91ad3266487796a482205f7d5e2dee012494cc625886b7118"
+      "size_bytes": 16551,
+      "sha256": "8ac847d7786dc5f19591ec24e0d98ee59ffe9ffbb70ad3b372048c4833c5adae"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/fold_experiment.py",
-      "size_bytes": 13619,
-      "sha256": "0fbdf94d1121eaac637fe7be0ef976b93cf4f6ce47fec256b37efcde0057eafd"
+      "size_bytes": 16383,
+      "sha256": "70a74c1ee73cadad51cb13a6d0f55f70fd26d1c3c65a51da374b8639dce073d6"
+    },
+    {
+      "path": "packages/world_model/src/rles_world_model/routeb/fold_protocol.py",
+      "size_bytes": 2370,
+      "sha256": "ca5941fba29b6db202d2a7789509a15ba4ceb95a0584232fa1e320844ba64eeb"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/hierarchy.py",
@@ -971,8 +966,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/hierarchy_dataset.py",
-      "size_bytes": 12210,
-      "sha256": "a5e8840db77d29fe831d93b2639e159467ed097ae324ceb5e9a8cf2750de48a6"
+      "size_bytes": 13312,
+      "sha256": "9dd42eb7fcf2859554a1505f8b340499f2dc026c634c7fa870e0c5deb1042633"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/imagined_account.py",
@@ -981,8 +976,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/integration.py",
-      "size_bytes": 16528,
-      "sha256": "99ed6ca955a2e34335b13b40af3a50660dd11819d5e963230b9ad4e7f9ec13a8"
+      "size_bytes": 16460,
+      "sha256": "136dba8265475b19a70420c32a097c8da0d34c87b431dc173cfd951c7ada2201"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/jax_gru.py",
@@ -996,13 +991,13 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/jax_hierarchy.py",
-      "size_bytes": 11998,
-      "sha256": "039b1162f35b6742d7ddcf0f14feba431fdcba123264e79725ea7fc93e267351"
+      "size_bytes": 13504,
+      "sha256": "26673c7b382ee235432bc921b41d1f62f0e069b47767f454f9d52deab4cd5b76"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/jax_hierarchy_train.py",
-      "size_bytes": 13206,
-      "sha256": "bef7aef3085193951267b088606505e08bfb75fcbe53592fcea9661115455fe8"
+      "size_bytes": 14543,
+      "sha256": "98a3d0153c0738a107bf8a43757cad077c1d1d19e68892fa26996c95b58704aa"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/jax_model.py",
@@ -1031,13 +1026,13 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/worker_cli.py",
-      "size_bytes": 16512,
-      "sha256": "532ff47b99caee605e7cbb5a3896bb2729cf42ae9bfd9e4ff16b9d0b2a3f8b8f"
+      "size_bytes": 17403,
+      "sha256": "56ec8f000a39372dbeff031a64a6ea4f4bdc36abfbca6ee97832f46d90b721f6"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/worker_client.py",
-      "size_bytes": 10779,
-      "sha256": "07fddc5f113edbde88923c9a31a323a1c27cffead6c1fdd5fd667343ab2925b7"
+      "size_bytes": 11853,
+      "sha256": "cf9b3416dbaca257aa26589b909f0fe28eb81a34d8b32332b0ea3556526a1b27"
     },
     {
       "path": "packages/world_model/src/rles_world_model/runtime.py",
@@ -1063,6 +1058,11 @@
       "path": "packages/world_model/src/rles_world_model/upstream.py",
       "size_bytes": 3841,
       "sha256": "6ab9c9bb3d9afe9c24b46a0459344ba7c0f0b6cf1c35cda3ebfc88d989580b99"
+    },
+    {
+      "path": "packages/world_model/upstream_patch_manifest.json",
+      "size_bytes": 432,
+      "sha256": "50d1d2da027c4eae6771a175d5ff1ab55448265c53a4e88ef7e16c36075d6510"
     },
     {
       "path": "packaging/dependency_audit.py",
@@ -1181,8 +1181,8 @@
     },
     {
       "path": "qa/world_model/routeb_b3_cpu_smoke.py",
-      "size_bytes": 9436,
-      "sha256": "eca90a355d232aaf5e37208f632bd4abb403b8e3181d3e74398c5536fee69bf0"
+      "size_bytes": 11878,
+      "sha256": "dce539cba6e2bfae424cbed3b5adbf83d43efad6b3c7e35e6b93c6d637f321cb"
     },
     {
       "path": "qa/world_model/routeb_cli_worker_smoke.py",
@@ -1731,8 +1731,8 @@
     },
     {
       "path": "tests/test_research_access.py",
-      "size_bytes": 53309,
-      "sha256": "78a80f8bf4b24c6bda5d990ea195e0485cf08d3c87e80e4d38ec6be0579cc2b5"
+      "size_bytes": 53761,
+      "sha256": "2737f6dfc62526962d8cf27c2aef605a85bf52426a7c990ff51a728f45db19a8"
     },
     {
       "path": "tests/test_research_ledger.py",
@@ -1836,8 +1836,8 @@
     },
     {
       "path": "tests/world_model/test_cli.py",
-      "size_bytes": 24524,
-      "sha256": "47339653a43070c3ec400108332c17e8d06d3b6b9f781fa5a67197d2957c6c0d"
+      "size_bytes": 26228,
+      "sha256": "aba81c8e91fe2c750132f2c8f872c784d8af7494199dcb164e944243441d4210"
     },
     {
       "path": "tests/world_model/test_dataset.py",
@@ -1871,8 +1871,8 @@
     },
     {
       "path": "tests/world_model/test_routeb_fold_evaluation.py",
-      "size_bytes": 14096,
-      "sha256": "3e10bfae143b50adc5c19b5de3883eddb26e6dcf0d70715cc6873a50696a1ec5"
+      "size_bytes": 16909,
+      "sha256": "1efa4f6fa01a81c2f69456e5ac2dee4f1462b6cc09b109c046175394658a81b4"
     },
     {
       "path": "tests/world_model/test_routeb_hierarchy_clock.py",
@@ -1886,8 +1886,8 @@
     },
     {
       "path": "tests/world_model/test_routeb_quality_v2.py",
-      "size_bytes": 35065,
-      "sha256": "5f708769a06664142d25752999a8fc627cab5ef6f7c219bbdcc23a64a7aabe95"
+      "size_bytes": 39828,
+      "sha256": "1a05f0185c11b69ad88a3172d9311307ecf3c3e8dbd5e71943c5855743c566a7"
     },
     {
       "path": "tests/world_model/test_scales_forecast.py",

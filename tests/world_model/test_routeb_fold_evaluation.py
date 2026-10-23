@@ -14,6 +14,7 @@ from rles_world_model.routeb.market import Candle
 from rles_world_model.routeb.fold_experiment import (
     run_fold_experiment, verify_fold_experiment_report_digest,
 )
+from rles_world_model.routeb.fold_protocol import validation_anchor_timestamps
 
 
 def make_fold_replay():
@@ -150,6 +151,38 @@ def test_prepare_fold_forecast_batch_exports_only_causal_common_anchor_contexts(
     assert report["test_payload_decoded"] is False
 
 
+@pytest.mark.parametrize("horizon", (1, 5, 15, 16, 60))
+def test_common_validation_anchors_keep_final_target_before_exclusive_end(horizon):
+    fold, _ = make_fold_replay()
+    anchors = validation_anchor_timestamps(
+        fold=fold, max_horizon=horizon, anchor_interval_minutes=1)
+    assert anchors[0] == fold.validation.score_start_ns - MINUTE_NS
+    assert anchors[-1] + horizon * MINUTE_NS < fold.validation.score_end_ns
+    assert anchors[-1] + (horizon + 1) * MINUTE_NS == fold.validation.score_end_ns
+
+
+def test_one_minute_forecast_batch_excludes_anchor_at_last_validation_minute(tmp_path):
+    fold, replay = make_fold_replay()
+    train_frames = tuple(frame for frame in replay.frames
+                         if frame.ts_close_ns < fold.train.score_end_ns)
+    train_candles = tuple(Candle(
+        frame.ts_close_ns, frame.available_at_ns, frame.instrument, frame.open,
+        frame.high, frame.low, frame.close, frame.volume) for frame in train_frames)
+    scaler = TrainOnlyStandardizer.fit(
+        OHLCVCodec.encode(train_candles[1:], previous_close=train_candles[0].close),
+        dataset_id=fold.dataset_hash, scope="train")
+    prepare_fold_forecast_batch(
+        fold_replay=replay, fold=fold, frozen_scaler=scaler,
+        train_scope_id="routeb-fold-fresh", train_npz_sha256="1" * 64,
+        output_context_npz=tmp_path / "contexts.npz",
+        output_request_json=tmp_path / "request.json", horizon=1,
+        n_paths=8, seed=31, anchor_interval_minutes=1, context_lookback=32)
+    with np.load(tmp_path / "contexts.npz", allow_pickle=False) as contexts:
+        anchors = contexts["anchor_timestamps_ns"]
+        assert anchors[-1] == fold.validation.score_end_ns - 2 * MINUTE_NS
+        assert anchors[-1] + MINUTE_NS < fold.validation.score_end_ns
+
+
 def test_run_fold_experiment_uses_one_replay_for_train_and_validation(tmp_path):
     fold, replay = make_fold_replay()
 
@@ -184,6 +217,21 @@ def test_run_fold_experiment_uses_one_replay_for_train_and_validation(tmp_path):
                     "anchors": len(anchors), "paths": payload["n_paths"],
                     "horizon": payload["horizon"]}
 
+        def next_distribution_batch(self, *, request, output, candidate, **kwargs):
+            payload = json.loads(request.read_text())
+            assert payload["horizon"] == 1
+            anchors = np.asarray(payload["anchor_timestamps_ns"], dtype=np.int64)
+            np.savez_compressed(
+                output,
+                standardized_mean=np.zeros((len(anchors), 5), dtype=np.float32),
+                standardized_scale=np.ones((len(anchors), 5), dtype=np.float32),
+            )
+            import hashlib
+            return {"status": "COMPLETED",
+                    "kind": f"{candidate}_BATCH_NEXT_DISTRIBUTION",
+                    "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+                    "anchors": len(anchors), "paths": 1, "horizon": 1}
+
     training = {"seed": 31, "steps": 2, "batch_size": 1, "lr": 0.001,
                 "grad_clip": 10.0, "report_interval": 1}
     report = run_fold_experiment(
@@ -204,6 +252,8 @@ def test_run_fold_experiment_uses_one_replay_for_train_and_validation(tmp_path):
     assert set(report["forecast_artifacts"]) == {"E1", "E2"}
     assert len(report["forecast_artifacts"]["E1"]["artifact_sha256"]) == 64
     assert report["forecast_context"]["request_sha256"]
+    assert np.isfinite(report["predictive_comparison"]["overall"]["E1"][0]["nll"])
+    assert np.isfinite(report["predictive_comparison"]["overall"]["E2"][0]["nll"])
     assert verify_fold_experiment_report_digest(report)
     tampered = {**report, "marker_sha256": "0" * 64}
     assert not verify_fold_experiment_report_digest(tampered)
