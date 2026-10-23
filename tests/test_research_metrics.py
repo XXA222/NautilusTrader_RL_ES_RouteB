@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from decimal import Decimal
+import hashlib
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -136,6 +138,43 @@ def test_disk_backed_tail_selection_avoids_fraction_sized_heap(monkeypatch) -> N
         assert actual == expected
     finally:
         returns.close()
+
+
+def test_in_memory_tail_heap_uses_fixed_cap_and_spills_larger_exact_tails(monkeypatch) -> None:
+    values = [((index * 37) % 101 - 50) / 100 for index in range(257)]
+    expected = series_metrics(values, periods_per_year=1, tail_quantile=0.3)
+    monkeypatch.setattr(research_metrics, "_TAIL_HEAP_MAX_COUNT", 2)
+    monkeypatch.setattr(research_metrics, "_TAIL_SORT_CHUNK", 3)
+    monkeypatch.setattr(research_metrics, "_TAIL_MERGE_FAN_IN", 2)
+
+    def reject_uncapped_heap(*_args, **_kwargs):
+        pytest.fail("tail larger than the fixed heap cap must use external selection")
+
+    monkeypatch.setattr(research_metrics.heapq, "nsmallest", reject_uncapped_heap)
+
+    actual = series_metrics(values, periods_per_year=1, tail_quantile=0.3)
+
+    assert actual == expected
+
+
+def test_in_memory_tail_heap_keeps_small_selection_within_fixed_cap(monkeypatch) -> None:
+    values = [-0.2, 0.1, -0.1, 0.3, 0.0, 0.2]
+    expected = series_metrics(values, periods_per_year=1, tail_quantile=0.1)
+    original = research_metrics.heapq.nsmallest
+    requested_counts = []
+
+    def bounded_heap(count, iterable):
+        requested_counts.append(count)
+        assert count <= 2
+        return original(count, iterable)
+
+    monkeypatch.setattr(research_metrics, "_TAIL_HEAP_MAX_COUNT", 2)
+    monkeypatch.setattr(research_metrics.heapq, "nsmallest", bounded_heap)
+
+    actual = series_metrics(values, periods_per_year=1, tail_quantile=0.1)
+
+    assert actual == expected
+    assert requested_counts == [1]
 
 
 def test_account_return_limit_rejects_before_advancing_accumulator_state() -> None:
@@ -397,6 +436,59 @@ def test_linear_ledger_reconciles_every_flat_barrier_without_double_costs() -> N
     assert compact["metrics"] == report["metrics"]
     assert "rows" not in compact["equity_reconciliation"]
     assert {k: v for k, v in check.items() if k != "rows"} == compact["equity_reconciliation"]
+
+
+def test_native_report_streams_all_detail_rows_to_atomic_checksummed_jsonl(tmp_path) -> None:
+    snapshots, references = _linear_ledger()
+    output = tmp_path / "account-details.jsonl"
+
+    report = native_report(
+        snapshots, fill_references=references, sample_interval_ns=10,
+        linear_equity_rounding=Decimal(0), account_rows_path=output,
+    )
+    records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    account = [{key: value for key, value in row.items() if key != "record_type"}
+               for row in records if row["record_type"] == "account_row"]
+    reconciliation = [{key: value for key, value in row.items() if key != "record_type"}
+                      for row in records if row["record_type"] == "equity_reconciliation_row"]
+    materialized = native_report(
+        snapshots, fill_references=references, sample_interval_ns=10,
+        linear_equity_rounding=Decimal(0),
+    )
+
+    assert report["metrics"] == materialized["metrics"]
+    assert report["equity_reconciliation"] == {
+        key: value for key, value in materialized["equity_reconciliation"].items()
+        if key != "rows"
+    }
+    assert "account_rows" not in report
+    assert report["account_rows_streamed"] == len(materialized["account_rows"]) == 4
+    assert report["account_rows_artifact"] == {
+        "file": output.name,
+        "format": "rles.native-report-rows.jsonl.v1",
+        "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+        "account_row_count": 4,
+        "equity_reconciliation_row_count": 4,
+    }
+    assert account == materialized["account_rows"]
+    assert reconciliation == materialized["equity_reconciliation"]["rows"]
+
+
+def test_native_report_row_output_never_overwrites_or_leaves_partial_artifact(tmp_path) -> None:
+    snapshots, references = _linear_ledger()
+    destination = tmp_path / "rows.jsonl"
+    destination.write_text("keep", encoding="utf-8")
+    with pytest.raises(MetricsError, match="already exists"):
+        native_report(snapshots, fill_references=references, sample_interval_ns=10,
+                      account_rows_path=destination)
+    assert destination.read_text(encoding="utf-8") == "keep"
+
+    destination.unlink()
+    with pytest.raises(MetricsError, match="reference"):
+        native_report(snapshots, fill_references={}, sample_interval_ns=10,
+                      account_rows_path=destination)
+    assert not destination.exists()
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_native_ledger_reconciles_explicit_source_identified_deposit_and_withdrawal() -> None:
@@ -875,3 +967,4 @@ def test_native_fill_references_require_mapping(references) -> None:
     snapshots, _ = _linear_ledger()
     with pytest.raises(MetricsError, match="fill references must be a mapping"):
         account_rows(snapshots, fill_references=references)
+
