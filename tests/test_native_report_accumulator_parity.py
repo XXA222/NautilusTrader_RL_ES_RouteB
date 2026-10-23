@@ -305,6 +305,28 @@ def test_native_report_accumulator_closes_disk_return_spool_after_finish():
     assert accumulator._metrics._released
 
 
+@pytest.mark.parametrize("failure_phase", ["snapshot", "finalization"])
+def test_native_report_accumulator_closes_disk_return_spool_after_failure(failure_phase):
+    accumulator = NativeReportAccumulator(
+        sample_interval_ns=10, max_return_count=200_000,
+        contract_multiplier=Decimal(1),
+    )
+    accumulator.add_snapshot(_snapshot(1, "1000"), {})
+    spool_file = accumulator._metrics._return_metrics.returns._file
+    assert not spool_file.closed
+
+    if failure_phase == "snapshot":
+        with pytest.raises(MetricsError, match="not chronological"):
+            accumulator.add_snapshot(_snapshot(0, "1000"), {})
+    else:
+        accumulator.add_snapshot(_snapshot(11, "1010"), {})
+        with pytest.raises(MetricsError, match="regular account snapshots"):
+            accumulator.finish()
+
+    assert spool_file.closed
+    assert accumulator._metrics._released
+
+
 def test_batch_native_report_detaches_cashflow_facts_without_a_staging_copy():
     cashflow = _flow("batch-detached-deposit", 11, "DEPOSIT", "100")
     snapshots = (_snapshot(1, "1000"), _snapshot(11, "1100"), _snapshot(21, "1200"))

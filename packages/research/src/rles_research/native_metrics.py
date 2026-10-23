@@ -805,6 +805,10 @@ class NativeReportAccumulator:
         except Exception as exc:
             self._failure = exc
             self._failure_context = "snapshot"
+            try:
+                self._metrics.release()
+            except Exception as cleanup_exc:
+                exc.add_note(f"metric storage cleanup also failed: {cleanup_exc!r}")
             raise
 
     def _add_snapshot(self, snapshot: Any,
@@ -1066,6 +1070,10 @@ class NativeReportAccumulator:
         except Exception as exc:
             self._failure = exc
             self._failure_context = "report finalization"
+            try:
+                self._metrics.release()
+            except Exception as cleanup_exc:
+                exc.add_note(f"metric storage cleanup also failed: {cleanup_exc!r}")
             raise
 
     def _finish_report(self) -> dict:

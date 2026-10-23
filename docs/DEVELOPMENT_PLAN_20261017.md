@@ -2124,3 +2124,9 @@ Evidence: `docs/audit_evidence/20261023/f7_current_source_native_growth_20261023
 **Verification:** Native accumulator parity and research metrics selector: **132 passed**; Ruff and MyPy for both research modules passed. Regression forces the disk-backed path with a declared 200,000-return capacity, verifies the spool is open before `finish()`, confirms the returned metrics, then verifies the spool is closed. Evidence: `docs/audit_evidence/20261023/f7_accumulator_spool_release_20261023.json`.
 
 **Boundary / next cursor:** synthetic lifecycle evidence only; it does not establish full-history RSS or remove required O(n) report facts. Continue A01–A14 local source audit and keep data-authentication, independent-validation, scope, and M4.2 gates unchanged.
+
+### F7 spool cleanup on terminal Native failures — 2026-10-23
+
+Failure-path review found that both snapshot ingestion errors and finalization errors permanently poison the online accumulator while previously leaving the exact-tail temporary spool open. Those terminal error handlers now release metric storage immediately while preserving the original exception and report-event indexes for diagnosis. The focused Native/research selector passes **134 tests**, with Ruff and MyPy passing for the changed modules. Synthetic regressions verify spool closure after a nonchronological snapshot and after an insufficient-series finalization error. Evidence: `docs/audit_evidence/20261023/f7_accumulator_spool_failure_cleanup_20261023.json`.
+
+**Boundary / next cursor:** only lifecycle behavior was tested; full-history RSS/trajectory and all externally gated provenance/independent-validation requirements remain open. Continue A01–A14 locally actionable audit work.

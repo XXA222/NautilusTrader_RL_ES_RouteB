@@ -1,0 +1,20 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "F7 / release Native metric spool after terminal failure",
+  "finding": "Spool cleanup initially covered successful report finalization only. A failed snapshot update or failed report finalization permanently poisoned the Native accumulator but left its temporary return spool open.",
+  "change": "Both terminal failure boundaries now release metric return storage immediately. The original validation error remains primary; a cleanup error, if any, is attached as an exception note. Existing failure state and event indexes remain available for diagnosis.",
+  "verification": {
+    "source_selector": "tests/test_native_report_accumulator_parity.py tests/test_research_metrics.py: 134 passed",
+    "ruff": "passed for native_metrics.py, metrics.py, and test_native_report_accumulator_parity.py",
+    "mypy": "passed for metrics.py and native_metrics.py",
+    "failure_lifecycle_regressions": [
+      "A non-chronological snapshot closes the disk-backed return spool.",
+      "A finalization failure with an insufficient account series closes the disk-backed return spool."
+    ]
+  },
+  "source_sha256": {
+    "packages/research/src/rles_research/native_metrics.py": "A56F6386B84CEFA4D2CDC9CB8B3D0138BE9F52DD7DC0DF3DCE9CFCA0E493A9E3",
+    "tests/test_native_report_accumulator_parity.py": "4C4F99A3272E7DD97962B2253C2C02B519B43731E16CA1DE69787E0CDC3DFBB9"
+  },
+  "boundary": "Synthetic failure-path lifecycle tests only. This does not establish full-history process RSS or alter the O(n) output-fact contract."
+}

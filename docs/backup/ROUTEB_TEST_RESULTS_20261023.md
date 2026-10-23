@@ -17,6 +17,8 @@ is stored under `docs/audit_evidence/20261023/`.
 - After adding disk-backed return spool cleanup, the Native accumulator parity
   and research metric selector passed **132 tests**; Ruff and MyPy passed for
   both changed research modules.
+- The follow-up terminal-failure spool cleanup selector passed **134 tests**;
+  Ruff and MyPy passed for the changed research modules.
 - Ruff on changed source and test files: **passed**.
 - MyPy on the changed Native metrics module: **passed**. The changed data,
   Native metrics and historical modules also passed together with package
@@ -50,3 +52,5 @@ measurement are recorded in
 `f7_accumulator_finalize_index_release_20261023.json`.
 The return-spool lifecycle regression is recorded in
 `f7_accumulator_spool_release_20261023.json`.
+The terminal failure-path cleanup regression is recorded in
+`f7_accumulator_spool_failure_cleanup_20261023.json`.
