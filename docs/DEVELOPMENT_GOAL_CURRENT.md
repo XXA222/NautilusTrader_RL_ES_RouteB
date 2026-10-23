@@ -627,3 +627,13 @@ Added a second long/short native differential: after opening one unit, a two-uni
 Added a Native-versus-Imagined long/short scenario that enters one unit at 100, reduces half at 105, and flattens the remaining half at 95. At the reduction barrier, both paths agree on the remaining signed quantity and equity including realized PnL, residual mark-to-market PnL, and fees. Both finish flat at initial equity less `$0.20` in per-fill USD fees. Focused selector: **2 passed**; adapter + WorldModel selectors: **126 passed, 5 JAX-only skipped**; Ruff and MyPy (226 files) pass; 605-file manifest identity `233c1576ad8cbfe1ebdc2c037e120775ffaa32f3405ac3b3aa1325f94ddc1398`. Evidence remains in `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.
 
 Next: continue auditing B4 supported account paths for multiple fills within one bar, order cancellation/expiry, and exact native fee classifications, alongside remaining implementation-ready A01–A14 work. Do not widen economic claims beyond synthetic Native scenarios.
+
+### B4 continuation — enforce the single-instrument account boundary — 2026-10-23
+
+**Finding:** the `MarketSequence` contract rejects mixed instruments, but direct `ImaginedAccount.on_bar()` calls did not. A pending order could be executed against a different instrument's bar and contaminate position PnL.
+
+**Fix:** lock each account to the first accepted candle instrument and fail before any clock, order, fill, or equity mutation if a later candle changes instrument. A regression confirms the error leaves the pending order and prior ledger state intact.
+
+**Verification:** regression **1 passed**; adapter + WorldModel selectors **127 passed, 5 JAX-only skipped**; Ruff and MyPy (226 files) pass; 605-file source manifest self-verifies as `d4f99c1e0c86cc4578f4a7b582c7e3ff5df6b045925360decffcb0e009dee143`. Evidence: `docs/audit_evidence/20261023/b4_imagined_account_single_instrument_20261023.json`.
+
+**Boundary:** multi-asset account economics remain out of scope until there is an explicit multi-position and currency ledger.

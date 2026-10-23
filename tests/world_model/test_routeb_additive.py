@@ -187,6 +187,22 @@ def test_imagined_account_applies_maker_rebate_on_resting_limit_fill():
     assert account.fees_paid == pytest.approx(-.0995)
     assert account.equity == pytest.approx(1000.5995)
 
+
+def test_imagined_account_fails_closed_on_mixed_market_instruments():
+    account = ImaginedAccount(initial_equity=1000, fee_maker=.0001, fee_taker=.001)
+    account.on_bar(Candle(MINUTE_NS, MINUTE_NS, "BTC/USD.SIM", 100, 101, 99, 100, 1000))
+    account.submit(target_qty=1, decision_ns=MINUTE_NS)
+
+    with pytest.raises(ValueError, match="cannot mix instruments"):
+        account.on_bar(Candle(2 * MINUTE_NS, 2 * MINUTE_NS, "ETH/USD.SIM", 200, 201, 199, 200, 1000))
+
+    assert account.qty == 0
+    assert account.pending is not None
+    assert account.last_bar_ns == MINUTE_NS
+    assert account.last_close == 100
+    assert account.fills == []
+
+
 def test_imagined_limit_market_cancellation_and_equity():
     account=ImaginedAccount(initial_equity=1000,fee_maker=0,fee_taker=.001)
     history=bars(5)

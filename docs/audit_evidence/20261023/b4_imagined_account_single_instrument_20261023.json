@@ -1,0 +1,36 @@
+{
+  "schema": "rles.audit-evidence.v1",
+  "task": "B4 ImaginedAccount single-instrument input boundary",
+  "status": "ENGINEERING_PASS",
+  "checkout": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
+  "finding": "MarketSequence rejects mixed instruments, but direct ImaginedAccount.on_bar calls could mix instruments in a single position ledger. A pending BTC order could therefore be filled and marked using an ETH bar.",
+  "fix": "ImaginedAccount binds to the first accepted Candle.instrument and rejects any later instrument change before mutating the clock, position, pending order, or fills.",
+  "assertions": [
+    "A same-clock-next-minute bar for a different instrument raises a stable ValueError.",
+    "On rejection, the account retains its prior bar clock/close, flat position, pending order, and empty fill list."
+  ],
+  "verification": [
+    {
+      "command": "RouteB .venv-win-app source PYTHONPATH: pytest tests/world_model/test_routeb_additive.py::test_imagined_account_fails_closed_on_mixed_market_instruments",
+      "result": "1 passed"
+    },
+    {
+      "command": "RouteB .venv-win-app source PYTHONPATH: pytest tests/test_nautilus_adapter_smoke.py tests/world_model/test_routeb_additive.py tests/world_model/test_routeb_quality_v2.py",
+      "result": "127 passed, 5 JAX-only skipped (JAX unavailable in app venv)"
+    },
+    {
+      "command": "RouteB .venv-win-app: python -m mypy packages qa",
+      "result": "Success: no issues found in 226 source files"
+    },
+    {
+      "command": "RouteB .venv-win-app: python -m ruff check changed source and tests",
+      "result": "All checks passed"
+    },
+    {
+      "command": "RouteB .venv-win-app: python qa/source_manifest.py --output qa/reports/source_manifest_current.json --verify",
+      "result": "verified 605 files; identity d4f99c1e0c86cc4578f4a7b582c7e3ff5df6b045925360decffcb0e009dee143"
+    }
+  ],
+  "data_access": "Synthetic deterministic candles only; no market, account, Train, Validation, Test, or Holdout data accessed.",
+  "remaining": "This enforces the current single-instrument account design. Multi-asset account economics require a different explicit position/currency ledger and are not modeled."
+}

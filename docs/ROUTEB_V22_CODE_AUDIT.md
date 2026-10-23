@@ -543,6 +543,16 @@ Hosted run `39906921812` on commit `19f633038b06b9bd3ed17e33a0fabca0d7f45213` co
 **Result:** Native Nautilus and `ImaginedAccount` agree on the residual signed position and account equity after the partial reduction, where realized PnL and remaining mark-to-market PnL coexist. Both paths finish flat with terminal equity equal to initial equity less `$0.20` of per-fill fees. Focused selector: **2 passed**; combined adapter/WorldModel selector: **126 passed, 5 JAX-only skipped**; Ruff passes; MyPy passes 226 files; manifest verifies 605 files with identity `233c1576ad8cbfe1ebdc2c037e120775ffaa32f3405ac3b3aa1325f94ddc1398`.
 
 **Scope:** deterministic synthetic BTC/USD.SIM only. This case does not close Native limit, partial-fill, funding, margin/leverage, liquidation, fee-tier, or intrabar sequencing parity. Continue locally actionable A01–A14 audit and B4 lifecycle cases.
+
+### ImaginedAccount instrument boundary — 2026-10-23
+
+**Finding:** callers may bypass `MarketSequence` and stream `Candle` values directly into `ImaginedAccount`; before this fix the account accepted a new instrument mid-replay and could fill an existing order with its price.
+
+**Fix:** capture the first accepted instrument ID and reject mismatches before state mutation. The regression submits a BTC order, feeds an ETH candle at the next valid clock, and verifies the pending order, flat quantity, previous clock/close and fills are unchanged.
+
+**Evidence:** focused test **1 passed**; combined adapter/WorldModel selector **127 passed, 5 JAX-only skipped**; Ruff/MyPy pass; source manifest identity `d4f99c1e0c86cc4578f4a7b582c7e3ff5df6b045925360decffcb0e009dee143` over 605 files. Machine evidence: `docs/audit_evidence/20261023/b4_imagined_account_single_instrument_20261023.json`.
+
+**Boundary:** this constrains the single-instrument account API; multi-asset accounting remains unimplemented.
 ### B4 native market-position reversal — 2026-10-23
 
 Added a second long/short native differential: after opening one unit, a two-unit opposing market order reverses the NETTING position, then a final market order flattens it. At each stage, `ImaginedAccount` and Nautilus match on net quantity and equity after realized PnL and 0.1% taker fees; the terminal native snapshot is flat. The test accounts for the adapter returning cumulative fill history and asserts the latest reversal fill side and quantity. The reversal selector passes **2 tests**; full adapter suite passes **42 tests**; adapter + WorldModel source selectors pass **106 tests with 5 JAX-only skips**. MyPy passes 226 files, Ruff passes, and the current 605-file source identity is `b7323e51f4c30d82c3c4c2f937c2070bae884b8c1490f7c6356a21b3e042ff64`. Evidence remains in `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.

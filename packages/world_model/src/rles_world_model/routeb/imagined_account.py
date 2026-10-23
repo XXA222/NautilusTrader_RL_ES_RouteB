@@ -56,6 +56,7 @@ class ImaginedAccount:
         self.maker=float(fee_maker);self.taker=float(fee_taker)
         self.last_close:float|None=None
         self.last_bar_ns:int|None=None
+        self.instrument_id: str | None = None
         self.fills:list[Fill]=[]
 
     def submit(self,*,target_qty:float,decision_ns:int,kind:str="market",
@@ -112,6 +113,10 @@ class ImaginedAccount:
     def on_bar(self,bar:Candle)->Fill|None:
         if self.last_bar_ns is not None and bar.ts_close_ns != self.last_bar_ns+MINUTE_NS:
             raise ValueError('imagined bar replay must be strictly increasing and contiguous')
+        if self.instrument_id is not None and bar.instrument != self.instrument_id:
+            raise ValueError('imagined account cannot mix instruments')
+        if self.instrument_id is None:
+            self.instrument_id = bar.instrument
         self.last_bar_ns=bar.ts_close_ns
         order=self.pending
         result=None

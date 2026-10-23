@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-23T06:18:59.408474+00:00",
-  "source_identity_sha256": "233c1576ad8cbfe1ebdc2c037e120775ffaa32f3405ac3b3aa1325f94ddc1398",
+  "generated_at_utc": "2026-10-23T06:25:55.549019+00:00",
+  "source_identity_sha256": "d4f99c1e0c86cc4578f4a7b582c7e3ff5df6b045925360decffcb0e009dee143",
   "scope": {
     "included": [
       ".gitattributes",
@@ -1658,8 +1658,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/imagined_account.py",
-      "size_bytes": 6935,
-      "sha256": "6f3d8e0b0f7157ce76d2057ef04a8ca9796e044e5ae94c7ae3826750652c54ba"
+      "size_bytes": 7224,
+      "sha256": "d238d275cfa24270f6814eb96281da28f62a41a3d21f97b91df9ea74dccec881"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/integration.py",
@@ -2948,8 +2948,8 @@
     },
     {
       "path": "tests/world_model/test_routeb_additive.py",
-      "size_bytes": 18111,
-      "sha256": "9473dbdf4d83420484fd2f5d15056fcf0715bef70509fd1bda95a35162f79efa"
+      "size_bytes": 18764,
+      "sha256": "6a502ad4ea496b59f79b36673a6745f552b20c824bb317ff32241400bc1bc2c5"
     },
     {
       "path": "tests/world_model/test_routeb_e0.py",
