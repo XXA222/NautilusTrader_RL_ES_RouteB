@@ -1,4 +1,4 @@
-Warning: truncated output (original token count: 25365)
+Warning: truncated output (original token count: 25417)
 Total output lines: 474
 
 # RouteB v2.2 implementation audit — refreshed 2026-10-22
@@ -137,7 +137,7 @@ After installing the rebuilt RouteB wheels, the exact Windows PR marker selector
 
 **A04 paired Test identity follow-up — 2026-10-22:** paired component comparison now validates component values as strings before set operations; malformed query identity fails closed through the reservation conflict path. Final installed-wheel suite: **198 passed**. All 12 wheels match source; 12 module/6 entry point provenance and 69 dependency checks pass; Ruff/MyPy pass. Evidence: `docs/audit_evidence/20261022/query_intent_input_contract_20261022.json`.
 
-**A04 registry operation input follow-up — 2026-10-22:** `consume`, `verify_report`, and `development_result` reject malformed identifiers/digests before SQLite instead of leakin…10365 tokens truncated…MyPy, all-12-wheel source matching, 12-module/6-entry-point import smoke, and the 69-package dependency check pass. The final synthetic 90-day native run covers 129,597 steps and has trajectory and native-metric hashes identical to the pre-change profile. Its RSS measurement is recorded as a single observation because repeated-run absolute peaks varied. Evidence: docs/audit_evidence/20261022/f7_online_native_metrics_20261022.json and f7_synthetic_native_growth_final_20261022.json.
+**A04 registry operation input follow-up — 2026-10-22:** `consume`, `verify_report`, and `development_result` reject malformed identifiers/digests before SQLite instead of leakin…10417 tokens truncated…etric hashes identical to the pre-change profile. Its RSS measurement is recorded as a single observation because repeated-run absolute peaks varied. Evidence: docs/audit_evidence/20261022/f7_online_native_metrics_20261022.json and f7_synthetic_native_growth_final_20261022.json.
 
 F7 remains **partial**: compact per-barrier snapshots are still retained in an O(n) sequence, and include_account_rows=true intentionally materializes report rows. A full real-history Train RSS/trajectory profile remains outstanding.
 
@@ -269,9 +269,9 @@ The historical factory avoids Fold-wide visible-event/batch/BarrierFrame caches,
 
 ## 2026-10-23 F7 duplicate event-reference follow-up
 
-The latest source pass resolved three duplicate-retention cases. Chronological per-kind `CuratedStore` views now share one tuple across availability-time and event-time lookup, while late-arriving events retain a separately sorted view. Removed the unused Fold-wide `HistoricalEnvironmentFactory._bars` tuple. Removed Native's duplicate per-cashflow-timestamp barrier-count dictionary and use chronological duplicate detection plus a scalar matched-timestamp count instead.
+The latest source pass resolved five duplicate-retention cases. Chronological per-kind `CuratedStore` views now share one tuple across availability-time and event-time lookup, while late-arriving events retain a separately sorted view. Removed the unused Fold-wide `HistoricalEnvironmentFactory._bars` tuple. Removed Native's duplicate per-cashflow-timestamp barrier-count dictionary and use chronological duplicate detection plus a scalar matched-timestamp count instead. Batch and online cashflow preparation retain the detached normalized fact directly instead of staging and making another dictionary copy.
 
-The affected source selector passed **160 tests**; a broader source data and historical-factory selector had **148 passes** before the unused tuple removal, and its focused historical-frame regression passed again in the 160-test run. Ruff and targeted MyPy passed. A 389,258-event synthetic `CuratedStore` structurally avoids 3,114,064 bytes of repeated tuple pointer slots; removing `_bars` avoids another 1,037,296 pointer slots for 129,662 rows. These figures measure tuple storage, not process RSS. Machine-readable results and source hashes: `docs/audit_evidence/20261023/f7_duplicate_event_indexes_20261023.json`.
+The affected source selector passed **160 tests**; a separate cashflow detachment/report selector passed **130 tests**. A broader source data and historical-factory selector had **148 passes** before the unused tuple removal, and its focused historical-frame regression passed again in the 160-test run. Ruff and targeted MyPy passed. A 389,258-event synthetic `CuratedStore` structurally avoids 3,114,064 bytes of repeated tuple pointer slots; removing `_bars` avoids another 1,037,296 pointer slots for 129,662 rows. These figures measure tuple storage, not process RSS. Machine-readable results and source hashes: `docs/audit_evidence/20261023/f7_duplicate_event_indexes_20261023.json`.
 
 F7 is still open: unique report facts scale with history by output-contract design, and no full-history Native RSS/trajectory run or representative fill/Funding/order-history growth profile has closed that risk. Authenticated cashflow provenance, complete historical access, independent Validation, authorized market scope and depth, historic trial coverage, M4.2, and authorized real-history Train remain open gates.
 

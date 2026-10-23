@@ -1,5 +1,5 @@
-Warning: truncated output (original token count: 15326)
-Total output lines: 1123
+Warning: truncated output (original token count: 15324)
+Total output lines: 1120
 
 """Map detached native snapshots into regular economic metric increments."""
 from __future__ import annotations
@@ -266,16 +266,10 @@ def _external_cashflows_by_time(cashflows: Sequence[Mapping[str, Any]],
     allowed_times = set(times)
     first_time = ordered[0].decision_ts_ns
     currency = ordered[0].currency
-    normalized: list[dict] = []
-    for raw in cashflows:
-        if not isinstance(raw, Mapping):
-            raise MetricsError("external cashflow must be an explicitly sourced mapping")
-        normalized.append(dict(raw))
-
     seen: dict[str, dict] = {}
     by_time: dict[int, Decimal] = {}
     unique: list[dict] = []
-    for fact in _new_facts(normalized, seen, "external cashflow"):
+    for fact in _new_facts(cashflows, seen, "external cashflow"):
         timestamp = fact.get("decision_ts_ns")
         source = fact.get("source_id")
         source_hash = fact.get("source_sha256")
@@ -559,10 +553,10 @@ def reconcile_linear_equity(snapshots: Sequence[Any], *,
                     rounding_per_event, Decimal(len(fills) + len(adjustments) + 1),
                     label="native equity tolerance",
                 )
-                max_residual = max…326 tokens truncated… == len(ordered) - 1 and not snapshot.positions:
-                raise MetricsError("terminal position disagrees with native fill quantity")
-            continue
-        if _snapshot_records(snapshot, "positions", "position"):
+                max_residual = max(max_residual, abs(residual))
+                if abs(residual) > tolerance:
+                    raise MetricsError(f"linear native equity mismatch at open barrier {index}: "
+                                       f"residual={residu…324 tokens truncated…ion"):
             raise MetricsError("flat fill quantity disagrees with native positions")
         expected = _sum_decimal_exact(
             (initial, cash, fee.copy_negate(), funding, external_cashflow),
@@ -758,7 +752,10 @@ class NativeReportAccumulator:
             self._cashflows_by_time[timestamp] = _add_cashflow(
                 self._cashflows_by_time.get(timestamp, Decimal(0)), signed,
             )
-            self._cashflow_facts.append(dict(fact))
+            # _new_facts already detached and normalized the input mapping.
+            # Retain that object directly instead of duplicating every cashflow
+            # fact while the temporary identity index is still alive.
+            self._cashflow_facts.append(fact)
 
     def _init_reconciliation(self) -> None:
         self._initial_equity = Decimal(0)

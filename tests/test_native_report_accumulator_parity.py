@@ -247,6 +247,34 @@ def test_cashflow_withdrawal_sign_preserves_digits_in_low_precision_context():
     assert online._cashflows_by_time[11] == expected
 
 
+def test_native_report_accumulator_detaches_cashflow_facts_without_a_second_copy():
+    cashflow = _flow("detached-deposit", 11, "DEPOSIT", "100")
+    online = NativeReportAccumulator(
+        sample_interval_ns=10, max_return_count=4,
+        contract_multiplier=Decimal(1), external_cashflows=(cashflow,),
+    )
+    cashflow["amount"] = "999"
+    for snapshot in (_snapshot(1, "1000"), _snapshot(11, "1100"), _snapshot(21, "1200")):
+        online.add_snapshot(snapshot, {})
+
+    report = online.finish()
+
+    assert report["external_cashflows"] == [_flow("detached-deposit", 11, "DEPOSIT", "100")]
+
+
+def test_batch_native_report_detaches_cashflow_facts_without_a_staging_copy():
+    cashflow = _flow("batch-detached-deposit", 11, "DEPOSIT", "100")
+    snapshots = (_snapshot(1, "1000"), _snapshot(11, "1100"), _snapshot(21, "1200"))
+
+    report = native_report(
+        snapshots, fill_references={}, sample_interval_ns=10,
+        include_account_rows=False, external_cashflows=(cashflow,),
+    )
+    cashflow["amount"] = "999"
+
+    assert report["external_cashflows"] == [_flow("batch-detached-deposit", 11, "DEPOSIT", "100")]
+
+
 def test_batch_and_online_cashflow_sum_rejects_excessive_exact_precision():
     cashflows = (
         _flow("wide-transfer", 11, "DEPOSIT", Decimal("1E+4095")),
