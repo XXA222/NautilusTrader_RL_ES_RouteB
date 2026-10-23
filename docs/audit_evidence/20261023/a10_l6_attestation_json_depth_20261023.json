@@ -3,14 +3,18 @@
   "task": "A10 cross-version JSON depth guard for L6 gate attestation reports",
   "status": "LOCAL_PASS_HOSTED_CONFIRMATION_PENDING",
   "finding": "The L6 release attestation loader rejects duplicate keys and non-standard constants but parsed externally supplied gate reports and trusted-producer registries without the shared structural depth preflight. A deeply nested input could leak RecursionError on one runtime or reach a later schema check on another.",
-  "change": "Run rles_contracts.json_utils.ensure_json_nesting_depth before every strict L6 JSON decode. Also add the missing type annotation for GateRunner._reports uncovered by expanding MyPy to include the CI package.",
+  "change": "Run rles_contracts.json_utils.ensure_json_nesting_depth before every strict L6 JSON decode. Also add the missing type annotation for GateRunner._reports uncovered by expanding MyPy to include the CI package. The scanner import is lazy inside the strict JSON decode function so the pre-install standalone workflow-lane validator remains dependency-free.",
   "verification": {
     "pytest": "L6 attestation integrity + full Native adapter smoke selector: 70 passed",
     "mypy": "packages ci qa: Success, no issues found in 235 source files",
     "ruff": "ruff check packages ci qa tests: All checks passed",
     "source_manifest": "606 files; identity 1e71cd34c7f82a90deb092c86c6fb138b0dac8cb3d557114fcbb85c5f1ef2c8f",
-    "preceding_hosted_ci": "Run 39928798741 passed Linux CPU, Windows CPU, and isolated JAX CPU for the B4 snapshot; this L6 change needs a fresh run."
+    "preceding_hosted_ci": "Run 39928798741 passed Linux CPU, Windows CPU, and isolated JAX CPU for the B4 snapshot; this L6 change needs a fresh run.",
+    "l6_focused_after_lazy_import_fix": "6 passed",
+    "standalone_lane_import": "Imported l6_ci_release.workflow_lane with ci/l6/src added to sys.path and without RouteB packages installed: passed.",
+    "hosted_ci_initial_attempt": "Run 39930562257 failed in validate-lane before test jobs: importing l6_ci_release.workflow_lane imported attestation.py, which eagerly imported rles_contracts before uv sync. No test job ran."
   },
   "data_scope": "Synthetic 20,000-level JSON only; no gate approvals, account, market, Validation, Test, or Holdout reports were opened.",
-  "next": "Push the L6 guard and expanded type-check correction to the RouteB-only snapshot, then confirm fresh Hosted Linux/Windows/JAX CPU results."
+  "next": "Publish the lazy-import correction and require a fresh Hosted Linux/Windows/JAX CPU run.",
+  "source_manifest": "606 files; identity e02e160f776ad42af694c3d50364ba8dffc793bfe05ee4461d39b5e2acdf959f"
 }

@@ -12,8 +12,6 @@ from collections.abc import Mapping
 from typing import cast
 from pathlib import Path
 
-from rles_contracts.json_utils import ensure_json_nesting_depth
-
 from .gates import EvidenceRef, GATE_CHECKS, GATES, PREREQUISITES, GateBlocked, verify_evidence
 
 
@@ -31,6 +29,8 @@ def _reject_json_constant(value: str) -> None:
 
 
 def _loads_strict_json(raw: str) -> object:
+    from rles_contracts.json_utils import ensure_json_nesting_depth
+
     ensure_json_nesting_depth(raw)
     return json.loads(raw, object_pairs_hook=_unique_json_object,
                       parse_constant=_reject_json_constant)

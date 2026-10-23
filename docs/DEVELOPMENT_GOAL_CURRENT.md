@@ -675,3 +675,7 @@ Next: continue locally testable B4 lifecycle parity. OHLC-only inputs cannot est
 The L6 release attestation loader strictly rejects duplicate keys and non-standard constants but did not preflight nesting on external gate reports or the trusted-producer registry. It now uses the shared 512-level scanner before decoding. An expanded MyPy check also found an untyped L6 `_reports` state; its dictionary type is now explicit. Joint L6/adapter regression: **70 passed**; MyPy `packages ci qa`: **235 files pass**; Ruff passes; 606-file manifest identity `1e71cd34c7f82a90deb092c86c6fb138b0dac8cb3d557114fcbb85c5f1ef2c8f`. Evidence: `docs/audit_evidence/20261023/a10_l6_attestation_json_depth_20261023.json`.
 
 The preceding B4 cancellation snapshot has full Hosted confirmation: run `39928798741` passed Linux CPU, Windows CPU, and isolated JAX CPU. The L6 guard is the current pending CI change.
+
+### 2026-10-23 A10 L6 standalone import correction
+
+Run `39930562257` stopped in `validate-lane` before tests because L6's top-level import of the shared JSON scanner required RouteB packages before `uv sync`. The scanner is now imported only when strict JSON decoding runs; the early lane module imports successfully with no RouteB package installed. L6 JSON selector: **6 passed**; expanded MyPy `packages ci qa`: **235 files pass**; Ruff pass; manifest identity `e02e160f776ad42af694c3d50364ba8dffc793bfe05ee4461d39b5e2acdf959f`. Evidence records the initial pre-test CI failure and repair. New hosted validation remains pending.
