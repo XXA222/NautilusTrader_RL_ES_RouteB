@@ -1,7 +1,7 @@
 {
-  "schema": "rles.source-manifest.v1",
-  "generated_at_utc": "2026-10-22T20:56:47.416184+00:00",
-  "source_identity_sha256": "a2fd164e9c63a2bc13989bba8d38d4ed6c2ed894da9a1c85d94ead126809d69f",
+  "schema": "rles.source-manifest.v3",
+  "generated_at_utc": "2026-10-23T05:10:31.725133+00:00",
+  "source_identity_sha256": "cbd98ba52db1e2ffcd3e564060aefdcab2e75f0b5ca30090c7e5d2477f0b3a82",
   "scope": {
     "included": [
       ".gitattributes",
@@ -27,290 +27,6 @@
       "dist*",
       "docs/audit reports",
       "qa/reports"
-    ]
-  },
-  "runtime": {
-    "python": "3.14.7",
-    "platform": "Windows-11-10.0.26200-SP0",
-    "machine": "AMD64",
-    "os_name": "nt",
-    "installed_distributions": [
-      {
-        "name": "ast_serialize",
-        "version": "0.12.1"
-      },
-      {
-        "name": "attrs",
-        "version": "26.1.0"
-      },
-      {
-        "name": "certifi",
-        "version": "2026.7.22"
-      },
-      {
-        "name": "charset-normalizer",
-        "version": "3.5.2"
-      },
-      {
-        "name": "click",
-        "version": "8.5.0"
-      },
-      {
-        "name": "cloudpickle",
-        "version": "3.1.2"
-      },
-      {
-        "name": "cma",
-        "version": "4.5.0"
-      },
-      {
-        "name": "colorama",
-        "version": "0.4.6"
-      },
-      {
-        "name": "contourpy",
-        "version": "1.4.0"
-      },
-      {
-        "name": "cycler",
-        "version": "0.12.1"
-      },
-      {
-        "name": "evotorch",
-        "version": "0.6.1"
-      },
-      {
-        "name": "Farama-Notifications",
-        "version": "0.0.6"
-      },
-      {
-        "name": "filelock",
-        "version": "4.1.0"
-      },
-      {
-        "name": "fonttools",
-        "version": "4.66.1"
-      },
-      {
-        "name": "fsspec",
-        "version": "2026.9.0"
-      },
-      {
-        "name": "gymnasium",
-        "version": "1.3.0"
-      },
-      {
-        "name": "idna",
-        "version": "3.20"
-      },
-      {
-        "name": "iniconfig",
-        "version": "2.3.1"
-      },
-      {
-        "name": "Jinja2",
-        "version": "3.1.6"
-      },
-      {
-        "name": "jsonschema",
-        "version": "4.26.0"
-      },
-      {
-        "name": "jsonschema-specifications",
-        "version": "2025.9.1"
-      },
-      {
-        "name": "kiwisolver",
-        "version": "1.5.1"
-      },
-      {
-        "name": "librt",
-        "version": "0.16.0"
-      },
-      {
-        "name": "MarkupSafe",
-        "version": "3.0.4"
-      },
-      {
-        "name": "matplotlib",
-        "version": "3.11.2"
-      },
-      {
-        "name": "mpmath",
-        "version": "1.3.0"
-      },
-      {
-        "name": "msgpack",
-        "version": "1.2.3"
-      },
-      {
-        "name": "mypy",
-        "version": "2.3.0"
-      },
-      {
-        "name": "mypy_extensions",
-        "version": "1.1.0"
-      },
-      {
-        "name": "nautilus-trader",
-        "version": "2.0.0rc6"
-      },
-      {
-        "name": "networkx",
-        "version": "3.7"
-      },
-      {
-        "name": "numpy",
-        "version": "2.5.4"
-      },
-      {
-        "name": "packaging",
-        "version": "26.3"
-      },
-      {
-        "name": "pandas",
-        "version": "3.0.6"
-      },
-      {
-        "name": "pathspec",
-        "version": "1.1.1"
-      },
-      {
-        "name": "pillow",
-        "version": "12.3.0"
-      },
-      {
-        "name": "pluggy",
-        "version": "1.6.0"
-      },
-      {
-        "name": "protobuf",
-        "version": "7.36.2"
-      },
-      {
-        "name": "pyarrow",
-        "version": "25.0.1"
-      },
-      {
-        "name": "Pygments",
-        "version": "2.21.0"
-      },
-      {
-        "name": "pyparsing",
-        "version": "3.3.3"
-      },
-      {
-        "name": "pytest",
-        "version": "9.1.1"
-      },
-      {
-        "name": "python-dateutil",
-        "version": "2.9.0.post0"
-      },
-      {
-        "name": "PyYAML",
-        "version": "6.0.3"
-      },
-      {
-        "name": "ray",
-        "version": "2.59.0"
-      },
-      {
-        "name": "referencing",
-        "version": "0.37.0"
-      },
-      {
-        "name": "requests",
-        "version": "2.34.2"
-      },
-      {
-        "name": "rles-compute-runtime",
-        "version": "0.4.1"
-      },
-      {
-        "name": "rles-contracts",
-        "version": "0.4.0"
-      },
-      {
-        "name": "rles-data",
-        "version": "0.4.1"
-      },
-      {
-        "name": "rles-es-evotorch",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rles-execution",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rles-gym-bridge",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rles-nautilus-adapter",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rles-orchestrator",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rles-research",
-        "version": "0.4.1"
-      },
-      {
-        "name": "rles-risk",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rles-rl-sb3",
-        "version": "0.4.1"
-      },
-      {
-        "name": "rles-world-model",
-        "version": "0.1.0.dev0"
-      },
-      {
-        "name": "rpds-py",
-        "version": "2026.9.1"
-      },
-      {
-        "name": "ruff",
-        "version": "0.17.0"
-      },
-      {
-        "name": "setuptools",
-        "version": "84.0.0"
-      },
-      {
-        "name": "six",
-        "version": "1.17.0"
-      },
-      {
-        "name": "stable_baselines3",
-        "version": "2.9.0"
-      },
-      {
-        "name": "sympy",
-        "version": "1.14.0"
-      },
-      {
-        "name": "torch",
-        "version": "2.14.1"
-      },
-      {
-        "name": "typing_extensions",
-        "version": "4.16.0"
-      },
-      {
-        "name": "tzdata",
-        "version": "2026.5"
-      },
-      {
-        "name": "urllib3",
-        "version": "2.8.0"
-      }
     ]
   },
   "upstream_nautilus": null,
@@ -1207,8 +923,8 @@
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/json_utils.py",
-      "size_bytes": 772,
-      "sha256": "325c848c1f46f370b0c6bdc41fc34079ca4db716f3d2911072d6973a313694a3"
+      "size_bytes": 906,
+      "sha256": "b8a6fa1b931e6f302b388fbbbb110c9c38e81aff5734402aef9ce0085a1a2b7f"
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/lanes.py",
@@ -1237,8 +953,8 @@
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/transport.py",
-      "size_bytes": 3383,
-      "sha256": "eb3c07e982837453096cdf045d73772a827c58450244ba7b4dbc8e02fde8d4bb"
+      "size_bytes": 3894,
+      "sha256": "b6fdafe8f91b0f5b9393cffd87cc4695fada41eb83900375939bbf0fb902f124"
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/validation.py",
@@ -1287,8 +1003,8 @@
     },
     {
       "path": "packages/contracts/src/rles_contracts/errors.py",
-      "size_bytes": 4955,
-      "sha256": "e5f1d8d400bee5c54363236d6591e6889d4d3bb4f846fa873c4979ba86e7a814"
+      "size_bytes": 5090,
+      "sha256": "bbc0675578e73bbaef60a9c172232489d436df65571c29bc3fd16b481f21bc36"
     },
     {
       "path": "packages/contracts/src/rles_contracts/frozen.py",
@@ -1332,8 +1048,8 @@
     },
     {
       "path": "packages/contracts/src/rles_contracts/serialization.py",
-      "size_bytes": 11366,
-      "sha256": "1f593aea69ef8dc567f99df61683e7c9e1917f6b8a65ce18fbf265d8e3e1c30f"
+      "size_bytes": 11539,
+      "sha256": "5632484362beec2a821d1003988c79f3a097c6ef249adce467562a5b2ec52406"
     },
     {
       "path": "packages/contracts/src/rles_contracts/validation.py",
@@ -1352,8 +1068,8 @@
     },
     {
       "path": "packages/data/src/rles_data/__main__.py",
-      "size_bytes": 7438,
-      "sha256": "fa965a3551fe60781607b522c95b53ac8149e8f5fe5afa051917a2280955efe0"
+      "size_bytes": 7605,
+      "sha256": "5c14d242abb5ad277691641e92f9b2c08882c51eacc22ded9e03b0e2ec787056"
     },
     {
       "path": "packages/data/src/rles_data/binance_archive.py",
@@ -1367,8 +1083,8 @@
     },
     {
       "path": "packages/data/src/rles_data/core.py",
-      "size_bytes": 39265,
-      "sha256": "9911b3f90d91d459bca700f1a6d017ad6daba676a6d744ff5070c369eb4149d9"
+      "size_bytes": 39547,
+      "sha256": "54a34bc56d579e1664603de02ee7b66b6c0db11a0cb0578f3fbf00c0dbf88170"
     },
     {
       "path": "packages/data/src/rles_data/coverage.py",
@@ -1377,8 +1093,8 @@
     },
     {
       "path": "packages/data/src/rles_data/features.py",
-      "size_bytes": 22582,
-      "sha256": "7d0d6b5ddf347a7e6b5a035b0424b26b47c1ea836cdf23f3214a8f11b5944e25"
+      "size_bytes": 23128,
+      "sha256": "883a96e7c1d6b9081cdeff73834aade4532a17fc05f02f64d8dc7dc8dda73709"
     },
     {
       "path": "packages/data/src/rles_data/folds.py",
@@ -1392,8 +1108,8 @@
     },
     {
       "path": "packages/data/src/rles_data/json_utils.py",
-      "size_bytes": 992,
-      "sha256": "3f4883a30f7f4d41cc88a0a0ff188f2c1a68d77b71a0c95daf7e02303863cea7"
+      "size_bytes": 1122,
+      "sha256": "c6c76dbbf29bd82a054843f79799af412b894c9062a9b3cc34617c04b0e9c2b2"
     },
     {
       "path": "packages/data/src/rles_data/quality.py",
@@ -1442,8 +1158,8 @@
     },
     {
       "path": "packages/es_evotorch/src/rles_es_evotorch/json_utils.py",
-      "size_bytes": 768,
-      "sha256": "e58ce4868799af5294b0452756f218f852ab0cac709ecf2f0214207a6f1df866"
+      "size_bytes": 902,
+      "sha256": "af26c8cae6c3df76ebbe299abb43d2d9e769b8d2d3614302df11edd9b504ed96"
     },
     {
       "path": "packages/es_evotorch/src/rles_es_evotorch/provider.py",
@@ -1502,13 +1218,13 @@
     },
     {
       "path": "packages/gym_bridge/src/rles_gym_bridge/episode.py",
-      "size_bytes": 19643,
-      "sha256": "822b014e7843778bfb0dcc001a2e51f3dcbf556b36fadfae45c4b5af3c3b5958"
+      "size_bytes": 21238,
+      "sha256": "2946e08ece0230cb712571f28608774a10ca58092dced55550118f3fc13be253"
     },
     {
       "path": "packages/gym_bridge/src/rles_gym_bridge/historical.py",
-      "size_bytes": 66725,
-      "sha256": "aa9d853fe033d4daf91a62760dd8fe515fd4a221f77f7472a6fd4138db2bce3a"
+      "size_bytes": 66196,
+      "sha256": "25d7999814d1d238b005e0d2fa5ef088d390ed73c28c43a66ee2a5cfe9cf2f30"
     },
     {
       "path": "packages/gym_bridge/src/rles_gym_bridge/l2_bridge.py",
@@ -1592,8 +1308,8 @@
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/application.py",
-      "size_bytes": 117404,
-      "sha256": "ba900ac4ea15c965c34e6165c75b4fa46a8f44e0397f4946468d1374385e63eb"
+      "size_bytes": 117598,
+      "sha256": "f321baf1e09483b1230f6e66d2cfe8a6a648ed023fd5c23bdb7335a13b989131"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/diagnostics.py",
@@ -1612,8 +1328,8 @@
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/json_utils.py",
-      "size_bytes": 811,
-      "sha256": "597c53f8ae1e353aa1da83db67bd41350916f2be7e7c66143c3f9c953d53b6c8"
+      "size_bytes": 945,
+      "sha256": "52c9cc2b31eed224864f9e95f4c4cd0a2c3afdb9a9c30487cff914b13f13d5a2"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/lineage.py",
@@ -1627,8 +1343,8 @@
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/research_access.py",
-      "size_bytes": 29320,
-      "sha256": "144cf93c5a16d6807e28ae4d81e8f5434ed50caf8f8997898b337b9dc5aebb27"
+      "size_bytes": 29457,
+      "sha256": "aae0bd632916b79f454efae723f4962d559a11681fc4379981d28e7f8ded3acf"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/rl_stage.py",
@@ -1662,13 +1378,13 @@
     },
     {
       "path": "packages/research/src/rles_research/access.py",
-      "size_bytes": 48518,
-      "sha256": "d34de7bba82f9988129e9dc6c316e035929e9195abb7672dcce823376b4ca424"
+      "size_bytes": 49092,
+      "sha256": "f879e302089d8fceee6aeedddb48a7e0338d755025928fe8ac8d5cede382ef58"
     },
     {
       "path": "packages/research/src/rles_research/artifacts.py",
-      "size_bytes": 12448,
-      "sha256": "824626717b628f0ceea76ea14c193ed9ced087243e6eee29351b4254ff8cb1ac"
+      "size_bytes": 13335,
+      "sha256": "cea5831a4409ba9a0349aa055b06cc8c99793f14855320f10fe3beb240c748f6"
     },
     {
       "path": "packages/research/src/rles_research/baselines.py",
@@ -1677,13 +1393,13 @@
     },
     {
       "path": "packages/research/src/rles_research/binance_cashflows.py",
-      "size_bytes": 13596,
-      "sha256": "6744ec54b524bdc0f27bb343cc1610bec039d1cadf115c90e4730d5139108f80"
+      "size_bytes": 13628,
+      "sha256": "9e31f6d1fe219a37006820245b7e22f52507c1a0302980d3de6dcce612f22a3a"
     },
     {
       "path": "packages/research/src/rles_research/json_utils.py",
-      "size_bytes": 778,
-      "sha256": "1c82c1a527c7ff87d5ebe1c2bb2a63b575fd601395082453a65786b90038be5f"
+      "size_bytes": 912,
+      "sha256": "7f9be86d5ea103d0420f678fb0c38744716fc639b539e2121f55535158608738"
     },
     {
       "path": "packages/research/src/rles_research/ledger.py",
@@ -1692,13 +1408,13 @@
     },
     {
       "path": "packages/research/src/rles_research/metrics.py",
-      "size_bytes": 14902,
-      "sha256": "e51e1605a6157560bbc57b663eb4f95093435c5a9096d1302b98fd408044e909"
+      "size_bytes": 21935,
+      "sha256": "8d6be66f4671a08d3e38166a7f2f224915a0c5e2b318b8216bfcecc501e5eda9"
     },
     {
       "path": "packages/research/src/rles_research/native_metrics.py",
-      "size_bytes": 60259,
-      "sha256": "75ab7e4ca177187a3715f87ba662e94b6d33c22f47589e9aabaa9967a0bbd339"
+      "size_bytes": 61293,
+      "sha256": "430583634ee4f82482fa9f3f1b0dd6bdddfe9d3eaba09c7a4b72f1dc1021070e"
     },
     {
       "path": "packages/research/src/rles_research/numeric.py",
@@ -1777,8 +1493,8 @@
     },
     {
       "path": "packages/rl_sb3/src/rles_rl_sb3/json_utils.py",
-      "size_bytes": 803,
-      "sha256": "16d403248946d06bbae806ee9632e24ee3364ccc038923212a8b5411672397a0"
+      "size_bytes": 937,
+      "sha256": "cd86220801799db2c3aaafd1c1de25661f2dd978aec91995125ff6f4da3ee0d0"
     },
     {
       "path": "packages/rl_sb3/src/rles_rl_sb3/noise.py",
@@ -1852,8 +1568,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/bundle.py",
-      "size_bytes": 8039,
-      "sha256": "d47ce0d69f489d17e66fb61ad7528379407a815be6a695af1504d0114ba5c87a"
+      "size_bytes": 9305,
+      "sha256": "f839bea1e56055f10f88033214b322d9d0f304792b08904be6fef2ae08b17d80"
     },
     {
       "path": "packages/world_model/src/rles_world_model/cli.py",
@@ -1887,8 +1603,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/json_utils.py",
-      "size_bytes": 1090,
-      "sha256": "5fa7e2e0e218346c284703876235bf03a55c5a4d2083c4e25596b29f42468839"
+      "size_bytes": 1224,
+      "sha256": "38405ce32a97e59fbf8bb8c3cc9a35edbf47cee08721ee92d4fbd9866a3ed574"
     },
     {
       "path": "packages/world_model/src/rles_world_model/learner.py",
@@ -2082,13 +1798,13 @@
     },
     {
       "path": "qa/analyze_m13_stage_contribution.py",
-      "size_bytes": 14352,
-      "sha256": "2e8f9bfdda3de003a8b51e78eb9da571b80616e8d23c33be7c318b1725f5212c"
+      "size_bytes": 14368,
+      "sha256": "c6cd1d85db5e496f06e646c31e0059e99817853456b261844daa80512cfebdac"
     },
     {
       "path": "qa/analyze_m13_stage_contribution_v2.py",
-      "size_bytes": 26251,
-      "sha256": "5c0ea2ee9e8556fe8082ed3462ee9dadd6b74b9662406ab8ab7ad753ad0a2cfd"
+      "size_bytes": 26267,
+      "sha256": "1aa3db1e9696881e92ccdc69488ebcd6412110a5125be0c0aa139080524bc723"
     },
     {
       "path": "qa/analyze_m33_action_value.py",
@@ -2192,8 +1908,13 @@
     },
     {
       "path": "qa/profile_f7_synthetic_native_growth.py",
-      "size_bytes": 16965,
-      "sha256": "34442583dcab87dae6858faca3cea066b4b4f8322f11a0b0782d768387fa4ec3"
+      "size_bytes": 17377,
+      "sha256": "46daa4a0cd659ffad88293e26f9cad1c5ee6c1c5765b8df88261c8ee1a5c6302"
+    },
+    {
+      "path": "qa/profile_f7_tail_rss.py",
+      "size_bytes": 6173,
+      "sha256": "2e945ecb6bca9336f9a7ad57daf2357ac904dfab9e0930a9c61e11beccfdd0ac"
     },
     {
       "path": "qa/profile_native_history_growth_20261016.py",
@@ -2247,13 +1968,13 @@
     },
     {
       "path": "qa/smoke/wheel_imports.py",
-      "size_bytes": 5114,
-      "sha256": "ba752d4f122ee4703712eb91b8c866a88fd2593c3215557d4c32cda87bdacbd3"
+      "size_bytes": 5130,
+      "sha256": "323fbd0cfe5052b6b1af0272ed9d04d2341ff27a4b38420840fad448e8cc7033"
     },
     {
       "path": "qa/source_manifest.py",
-      "size_bytes": 7801,
-      "sha256": "7f2512fff4810365e81191837c44074b09bb93da0d0c8ca8de978f6e449ac4d4"
+      "size_bytes": 8688,
+      "sha256": "e30749f1f85d788ea4b7259c9546e80e99952532b7c6be6b4d31764efb280574"
     },
     {
       "path": "qa/train_signal_baselines.py",
@@ -2262,8 +1983,8 @@
     },
     {
       "path": "qa/wheel_manifest.py",
-      "size_bytes": 9366,
-      "sha256": "35165faadb77dc51a2c6e894c2b7282115e92886f81ece19af4004c82bd7c7a0"
+      "size_bytes": 9382,
+      "sha256": "fbf0deb5f9db0f1edd35a4283d8109f39b7f3701e557679c07e9c2ef862693bc"
     },
     {
       "path": "qa/world_model/b1_cpu_smoke.py",
@@ -2352,8 +2073,8 @@
     },
     {
       "path": "qa/world_model/reconcile_routeb_research_ledger.py",
-      "size_bytes": 60002,
-      "sha256": "db24998f8e515efc643bd53fe8fbed4efc9df7368303a9bb57cebe31c83b0102"
+      "size_bytes": 60143,
+      "sha256": "443122b3812126a56ee49ed35de93238b104ddceb020c68a2a24c0d39bbdb801"
     },
     {
       "path": "qa/world_model/routeb_b2_cpu_smoke.py",
@@ -2472,8 +2193,8 @@
     },
     {
       "path": "tests/fixtures/binance_ethusdt_20240101_quotes_1s/import.json",
-      "size_bytes": 1632,
-      "sha256": "9e33e05bcfe32828432c11f976bf16abc79a9a51e90034ace9278b63051d5e85"
+      "size_bytes": 1671,
+      "sha256": "df2d9f978e4fde96c166ad371b0c181487a62b74d0d4400fbe97a4558706b5c2"
     },
     {
       "path": "tests/fixtures/binance_ethusdt_20240101_quotes_1s/market.parquet",
@@ -2487,8 +2208,8 @@
     },
     {
       "path": "tests/fixtures/binance_ethusdt_20240101_quotes_1s/source-audit.json",
-      "size_bytes": 305,
-      "sha256": "49665f9ac6aadea0847eb780162d61affebaef24e4e33ba531ec6fed3724e183"
+      "size_bytes": 312,
+      "sha256": "1033e50685f6532e6ded59b6e9b88e9aa7b3572997e0bf2aa12059a5793993a6"
     },
     {
       "path": "tests/fixtures/binance_usdm_exchange_info_20261022.json",
@@ -2832,8 +2553,8 @@
     },
     {
       "path": "tests/test_binance_cashflows.py",
-      "size_bytes": 12039,
-      "sha256": "aa4e59777fdb5f66481f24eb3c624da5befb36510b8fcbf229266365f8861c04"
+      "size_bytes": 12823,
+      "sha256": "ae3e75dcffd5d15826679c7be5789e1403249836964fd9e92992a7de06dfe0e5"
     },
     {
       "path": "tests/test_compact_report_snapshot.py",
@@ -2847,8 +2568,8 @@
     },
     {
       "path": "tests/test_compute_runtime_contracts.py",
-      "size_bytes": 5521,
-      "sha256": "6c24aee08ece8a883f45fbd4a045a34634abef8d32103435bd8a0152d00ed294"
+      "size_bytes": 5810,
+      "sha256": "2a3079695f93b8c25b4baa2436257615bc9208e5548bab9cb7d60ce57a5ecb3c"
     },
     {
       "path": "tests/test_compute_worker_pool.py",
@@ -2877,8 +2598,8 @@
     },
     {
       "path": "tests/test_data_hash_identity.py",
-      "size_bytes": 2135,
-      "sha256": "7d2731b29781658810593da4eccfd27b5befd36c35bc8338e2c268d541b05b81"
+      "size_bytes": 2277,
+      "sha256": "9953a632ed71db2b13dbc08eb65d5d3da9fe952c7c9170e43a4bf1d3637eb737"
     },
     {
       "path": "tests/test_data_json_error_boundaries.py",
@@ -2927,13 +2648,13 @@
     },
     {
       "path": "tests/test_historical_factory.py",
-      "size_bytes": 96069,
-      "sha256": "c4f948a299b724d3a841f13c8938e91303172fcc8d847ebe28b7af8ee965ac9b"
+      "size_bytes": 96639,
+      "sha256": "fbaeb442f9d3e996e808b612f40a0944deb2c17347a25aa9ffad3ec9fa21c1e2"
     },
     {
       "path": "tests/test_l2_cli.py",
-      "size_bytes": 2003,
-      "sha256": "1fd21dc2b47f5ae9f591676e4708be0f8901846061209b1c52e6b3a2c7af39d5"
+      "size_bytes": 2449,
+      "sha256": "7e9b886bb765fa7c3bf3d7dae38ce942fe8bee88153c17401971da5dc2240e73"
     },
     {
       "path": "tests/test_l2_gym_bridge.py",
@@ -2962,8 +2683,8 @@
     },
     {
       "path": "tests/test_layer_invariants.py",
-      "size_bytes": 20538,
-      "sha256": "9a92e5b0e949a6114a239e4a097c8c9c4840dcba740526f4a24a81f1d2f1cc4a"
+      "size_bytes": 21097,
+      "sha256": "d6639256c8c093e8728630f5ed2bbd9cccb4a6672e3914272546f26dd87f545b"
     },
     {
       "path": "tests/test_legacy_probe_plan_json_integrity.py",
@@ -2982,13 +2703,13 @@
     },
     {
       "path": "tests/test_m13_stage_contribution_analysis.py",
-      "size_bytes": 4409,
-      "sha256": "8747ac19f7a95868649249e584d1afbc39e36e1535e6047ed33fb2789427fbee"
+      "size_bytes": 4698,
+      "sha256": "0a725abd29efa9399594e2bbd367d05e2493f11525a386a92b34cb672209efa7"
     },
     {
       "path": "tests/test_m13_stage_contribution_v2.py",
-      "size_bytes": 15767,
-      "sha256": "a0a37e1eb97ba5c7093ca85e58b3561121bb5c43165940a2a45938e54dadbc77"
+      "size_bytes": 16044,
+      "sha256": "06367ee5a667d1bc38e4cabadc7997615fa1c2b1e9d12c18b375d884ade80fe0"
     },
     {
       "path": "tests/test_m2_frozen_plan_json_integrity.py",
@@ -3007,8 +2728,8 @@
     },
     {
       "path": "tests/test_native_report_accumulator_parity.py",
-      "size_bytes": 15335,
-      "sha256": "049e8764e875402580e5ada7d0ba2d266266fb4156c76195ca27d99705272888"
+      "size_bytes": 20797,
+      "sha256": "e622616ae8b0a8f2f2b087bacb4097c967eb502ff14186d7a7590bf881c2598a"
     },
     {
       "path": "tests/test_native_training_episode.py",
@@ -3052,13 +2773,13 @@
     },
     {
       "path": "tests/test_research_access.py",
-      "size_bytes": 50191,
-      "sha256": "b7f3623e57f87571e1b2169a48cf4d975de32558f8872d7dae30abeafc12dac4"
+      "size_bytes": 51222,
+      "sha256": "f7b62d22268620fc2538cdbbbc58ea34cc1bad9feb4395f6c6a259028f1acb39"
     },
     {
       "path": "tests/test_research_artifacts_json_integrity.py",
-      "size_bytes": 3453,
-      "sha256": "f834ca1725ac8552350362a0c44d7cc9f9fb0ca8dc90adb8568542e7ed4116d5"
+      "size_bytes": 4729,
+      "sha256": "7d2e390d902937e3a7f6a6113bdc45a9ce1b87579d480a296f5fb6c98b7eadfe"
     },
     {
       "path": "tests/test_research_inventory_json_integrity.py",
@@ -3072,8 +2793,8 @@
     },
     {
       "path": "tests/test_research_metrics.py",
-      "size_bytes": 56275,
-      "sha256": "5b17a081e8f0f2b5357bf85262dfc7ee6e5712e0e5b22910b1f937f5cfee6818"
+      "size_bytes": 58202,
+      "sha256": "cf7bf3ccd556679720410fbabf495ca41a9811e4b169315ed9dde3d519c39454"
     },
     {
       "path": "tests/test_research_numeric_guards.py",
@@ -3127,8 +2848,8 @@
     },
     {
       "path": "tests/test_source_manifest.py",
-      "size_bytes": 5424,
-      "sha256": "db217af0f7dd39408d286200238fd871d63c3e90e53a5dc417fb0f8ddc354ed9"
+      "size_bytes": 8725,
+      "sha256": "58132dc1875a0f6e1c1f34da9202bcd26a952e70fc5a1a721d7528fd94f3faee"
     },
     {
       "path": "tests/test_spawn_sb3_vec_env.py",
@@ -3142,8 +2863,8 @@
     },
     {
       "path": "tests/test_strict_json_constants.py",
-      "size_bytes": 1184,
-      "sha256": "b1cc705477180cacaa63c0e35f574fc79dd6c41b8badae5193948c0fbd794209"
+      "size_bytes": 1556,
+      "sha256": "c3302160540fde2ca6b19293b476227798307bc9e70ee337c27dd4d47c61e790"
     },
     {
       "path": "tests/test_train_signal_baseline_json_integrity.py",
@@ -3152,8 +2873,8 @@
     },
     {
       "path": "tests/test_wheel_manifest.py",
-      "size_bytes": 12106,
-      "sha256": "83a0ab118e657e0afae0c4366e3c34916e2149978ae9c648d4b8615142ad542a"
+      "size_bytes": 12711,
+      "sha256": "373fd4e5a62a72a27bd159a03b0cc949a8c43bd4f0dbc9fe344aa8042b507625"
     },
     {
       "path": "tests/test_windows_job_contract.py",
@@ -3212,8 +2933,8 @@
     },
     {
       "path": "tests/world_model/test_reconcile_routeb_research_ledger.py",
-      "size_bytes": 48209,
-      "sha256": "d4c95d650a1971dd16059c8dde84e4a7e410046e41148b63116bd45c2348df08"
+      "size_bytes": 48535,
+      "sha256": "3a8606ea4eaa0417729e29b7ab49494eafc5f368832a652d1d90adffedbc3d77"
     },
     {
       "path": "tests/world_model/test_recursive_forecast.py",
@@ -3227,8 +2948,8 @@
     },
     {
       "path": "tests/world_model/test_routeb_additive.py",
-      "size_bytes": 15444,
-      "sha256": "9498b26a58724ebde12cb976570ba1bbee656b4264d8bb24d1f23ce230fd6e5b"
+      "size_bytes": 17427,
+      "sha256": "f43584077506c3cfd9cbd1915595fc9f89b56ff4aafccc620fd0a9182eff00a0"
     },
     {
       "path": "tests/world_model/test_routeb_e0.py",

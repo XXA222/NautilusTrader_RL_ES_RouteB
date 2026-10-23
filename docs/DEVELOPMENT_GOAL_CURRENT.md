@@ -568,3 +568,7 @@ M13 两版阶段分析器、fold-ledger reconciler 与 distribution manifest rea
 ### A10 当前续做记录 — current source 12-wheel parity
 
 本轮包级 reader 修复后重新生成 605-file manifest（identity `f1a5ed8b47894570e18ccbc516d090ece79530a6d8088128bb191d0a0eb9c256`），构建 12 wheels + 12 sdists；wheel manifest `all_match=true`。12 个包、6 个 entry point 在一次性隔离 venv 中从安装 wheel 导入，所有路径均落在该 venv。JSON/registry selector 源码和安装 wheel 各 **258 passed**；QA reader 选择器 **93 passed / 1 symlink skip / 1 expected warning**。Hosted clean Linux/Windows CI 仍需在可推送 revision 上运行。证据：`docs/audit_evidence/20261023/a10_current_source_12_wheel_provenance_20261023.json`。
+
+### 2026-10-23 current continuation cursor — A10 source manifest v3
+
+Actual RouteB source manifest is v3: Git text line-ending normalization, exact-byte -text preservation, runtime/upstream untracked-path redaction, and fail-closed old-schema verification. RouteB dedicated .venv-win-app tests: 9 passed; Ruff/MyPy passed; 605-file manifest identity cbd98ba52db1e2ffcd3e564060aefdcab2e75f0b5ca30090c7e5d2477f0b3a82 self-verifies. Evidence: docs/audit_evidence/20261023/a10_source_manifest_platform_stable_v3_20261023.json. Hosted Linux/Windows/JAX CI for this revision remains pending. Continue implementation-ready A01-A14 engineering work.

@@ -136,3 +136,61 @@ def test_source_manifest_verify_rejects_nonstandard_json_constant(tmp_path: Path
     )
     assert result.returncode == 2
     assert "cannot read JSON manifest" in result.stderr
+
+def test_source_identity_preserves_git_exact_byte_fixtures(tmp_path: Path) -> None:
+    fixture_dir = tmp_path / "tests" / "fixtures"
+    fixture_dir.mkdir(parents=True)
+    (tmp_path / ".gitattributes").write_text(
+        "tests/fixtures/** -text\n", encoding="utf-8",
+    )
+    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+    fixture = fixture_dir / "receipt.json"
+    manifest_path = tmp_path / "qa" / "reports" / "source_manifest_current.json"
+    fixture.write_bytes(b'{"amount":"1.00"}\n')
+
+    first = _generate(tmp_path, manifest_path)
+    fixture.write_bytes(b'{"amount":"1.00"}\r\n')
+    second = _generate(tmp_path, manifest_path)
+
+    assert first["schema"] == "rles.source-manifest.v3"
+    assert first["source_identity_sha256"] != second["source_identity_sha256"]
+    exact_entry = next(item for item in second["files"] if item["path"] == "tests/fixtures/receipt.json")
+    assert exact_entry["size_bytes"] == len(b'{"amount":"1.00"}\r\n')
+
+
+def test_source_identity_omits_upstream_untracked_names_and_runtime(tmp_path: Path) -> None:
+    upstream = tmp_path / "nautilus_trader"
+    upstream.mkdir()
+    subprocess.run(["git", "init", str(upstream)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(upstream), "config", "user.email", "routeb@example.invalid"],
+                   check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(upstream), "config", "user.name", "RouteB test"],
+                   check=True, capture_output=True)
+    (upstream / "tracked.py").write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(upstream), "add", "tracked.py"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(upstream), "commit", "-m", "fixture"],
+                   check=True, capture_output=True)
+
+    first = _generate(tmp_path, tmp_path / "qa" / "reports" / "manifest.json")
+    (upstream / "machine-private-path.txt").write_text("local artifact\n", encoding="utf-8")
+    second = _generate(tmp_path, tmp_path / "qa" / "reports" / "manifest.json")
+
+    assert "runtime" not in first
+    assert "status_entries" not in first["upstream_nautilus"]
+    assert first["source_identity_sha256"] == second["source_identity_sha256"]
+    assert "machine-private-path.txt" not in json.dumps(second)
+
+def test_source_manifest_verify_rejects_previous_schema(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "qa" / "reports" / "manifest.json"
+    manifest = _generate(tmp_path, manifest_path)
+    manifest["schema"] = "rles.source-manifest.v2"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, str(_GENERATOR), "--root", str(tmp_path),
+         "--output", str(manifest_path), "--verify"],
+        capture_output=True, text=True, check=False,
+    )
+
+    assert result.returncode == 1
+    assert "source manifest is stale" in result.stderr

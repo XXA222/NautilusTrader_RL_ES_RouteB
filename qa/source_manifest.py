@@ -5,11 +5,9 @@ import argparse
 import hashlib
 import json
 import os
-import platform
 import subprocess
 import sys
 from datetime import datetime, timezone
-from importlib.metadata import distributions
 from pathlib import Path
 from typing import Any
 
@@ -60,15 +58,48 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _source_bytes(path: Path) -> bytes:
-    data = path.read_bytes()
-    if b"\0" in data:
-        return data
+def _text_attributes(root: Path, paths: list[Path]) -> dict[str, str]:
+    """Read Git's text attribute for all manifest paths in one invocation."""
+    if not paths:
+        return {}
+    names = [path.relative_to(root).as_posix() for path in paths]
     try:
-        data.decode("utf-8")
-    except UnicodeDecodeError:
+        result = subprocess.run(
+            ["git", "-C", str(root), "check-attr", "-z", "--stdin", "text"],
+            input=("\0".join(names) + "\0").encode("utf-8"),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return {}
+    fields = result.stdout.split(b"\0")
+    if fields and fields[-1] == b"":
+        fields.pop()
+    if len(fields) % 3:
+        return {}
+    return {
+        os.fsdecode(fields[index]): os.fsdecode(fields[index + 2])
+        for index in range(0, len(fields), 3)
+        if fields[index + 1] == b"text"
+    }
+
+
+def _source_bytes(path: Path, text_attribute: str | None = None) -> bytes:
+    data = path.read_bytes()
+    if text_attribute == "unset":
         return data
-    return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    if text_attribute in {"set", "auto", "input"}:
+        return data.replace(b"\r\n", b"\n")
+    if text_attribute is None or text_attribute == "unspecified":
+        if b"\0" not in data:
+            try:
+                data.decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+            else:
+                return data.replace(b"\r\n", b"\n")
+    return data
 
 
 def _source_files(root: Path) -> list[Path]:
@@ -123,30 +154,29 @@ def _upstream_identity(root: Path) -> dict[str, Any] | None:
         "commit": commit,
         "tracked_worktree_clean": not any(not row.startswith("??") for row in status),
         "tracked_diff_sha256": _sha256(tracked_diff),
-        "status_entries": status,
+
     }
 
 
 def build_manifest(root: Path, *, generated_at_utc: str | None = None) -> dict[str, Any]:
     root = root.resolve()
+    source_paths = _source_files(root)
+    text_attributes = _text_attributes(root, source_paths)
     files = [
         {
             "path": path.relative_to(root).as_posix(),
             "size_bytes": len(content),
             "sha256": _sha256(content),
         }
-        for path in _source_files(root)
-        for content in (_source_bytes(path),)
+        for path in source_paths
+        for content in (_source_bytes(path, text_attributes.get(path.relative_to(root).as_posix())),)
     ]
     upstream = _upstream_identity(root)
     identity = {"files": files, "upstream_nautilus": upstream}
     identity_sha = _sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode())
-    installed = sorted(
-        ({"name": dist.metadata.get("Name", ""), "version": dist.version} for dist in distributions()),
-        key=lambda item: (item["name"].casefold(), item["version"]),
-    )
+
     return {
-        "schema": "rles.source-manifest.v1",
+        "schema": "rles.source-manifest.v3",
         "generated_at_utc": generated_at_utc or datetime.now(timezone.utc).isoformat(),
         "source_identity_sha256": identity_sha,
         "scope": {
@@ -154,13 +184,7 @@ def build_manifest(root: Path, *, generated_at_utc: str | None = None) -> dict[s
                          "qa/source_manifest.py", "qa/wheel_manifest.py"],
             "excluded_generated": [".tmp", ".venv*", "data", "dist*", "docs/audit reports", "qa/reports"],
         },
-        "runtime": {
-            "python": sys.version.split()[0],
-            "platform": platform.platform(),
-            "machine": platform.machine(),
-            "os_name": os.name,
-            "installed_distributions": installed,
-        },
+
         "upstream_nautilus": upstream,
         "files": files,
     }
@@ -185,7 +209,8 @@ def main(argv: list[str] | None = None) -> int:
             print(str(exc), file=sys.stderr)
             return 2
         matches = (
-            previous.get("source_identity_sha256") == fresh["source_identity_sha256"]
+            previous.get("schema") == fresh["schema"]
+            and previous.get("source_identity_sha256") == fresh["source_identity_sha256"]
             and previous.get("files") == fresh["files"]
             and previous.get("upstream_nautilus") == fresh["upstream_nautilus"]
         )

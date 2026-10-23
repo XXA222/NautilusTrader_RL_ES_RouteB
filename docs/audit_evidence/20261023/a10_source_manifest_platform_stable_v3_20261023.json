@@ -1,0 +1,35 @@
+{
+  "schema": "rles.audit-evidence.v1",
+  "task": "M0.2/A10 source manifest cross-platform identity and provenance privacy",
+  "status": "LOCAL_PASS_HOSTED_PENDING",
+  "checkout": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
+  "source_manifest_schema": "rles.source-manifest.v3",
+  "source_files": 605,
+  "source_identity_sha256": "cbd98ba52db1e2ffcd3e564060aefdcab2e75f0b5ca30090c7e5d2477f0b3a82",
+  "changes": [
+    "Normalize CRLF to LF using Git text attributes for manifest inputs.",
+    "Preserve byte identity for files explicitly marked -text.",
+    "Remove machine runtime inventory and upstream untracked path names from manifest output and identity.",
+    "Require matching schema during --verify; preserve RouteB deep JSON and symlink protections."
+  ],
+  "verification": [
+    {
+      "command": "RouteB .venv-win-app: pytest tests/test_source_manifest.py",
+      "result": "9 passed in 8.86s"
+    },
+    {
+      "command": "python -m ruff check qa\\source_manifest.py tests\\test_source_manifest.py",
+      "result": "passed"
+    },
+    {
+      "command": "python -m mypy qa\\source_manifest.py",
+      "result": "no issues in 1 source file"
+    },
+    {
+      "command": "python qa\\source_manifest.py --output qa\\reports\\source_manifest_current.json --verify",
+      "result": "verified 605 files; identity cbd98ba52db1e2ffcd3e564060aefdcab2e75f0b5ca30090c7e5d2477f0b3a82"
+    }
+  ],
+  "data_access": "No market, account, Train, Validation, Test, or Holdout data accessed; regression fixtures and local source metadata only.",
+  "remaining": "Hosted clean Linux/Windows/JAX CI for the current source revision is pending."
+}

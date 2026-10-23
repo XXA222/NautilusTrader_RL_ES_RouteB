@@ -2212,3 +2212,13 @@ M13 stage analyzers and the report reconciler had direct `json.loads()` calls th
 After the JSON boundary changes, the fresh 605-file source identity is `f1a5ed8b47894570e18ccbc516d090ece79530a6d8088128bb191d0a0eb9c256`. `uv build --all-packages` produced **12 wheels and 12 sdists**; the wheel manifest reports all 12 matching source. A temporary venv installed all wheels; provenance smoke imported **12 distributions / 6 entry points**, all from that venv. The 258-test JSON/registry selector passes against source and again against the built wheels. QA source/wheel manifest, M13 and reconciler selectors pass **93 tests** with one environment-dependent symlink skip and one expected ZIP warning. Evidence: `docs/audit_evidence/20261023/a10_current_source_12_wheel_provenance_20261023.json`.
 
 **Boundary / next cursor:** dependencies for the temporary wheel smoke came from the RouteB app venv, so this does not replace a clean locked install. Hosted clean Linux/Windows CI and external research gates remain open; continue the local audit.
+
+## 2026-10-23 — M0.2/A10 cross-platform source identity v3
+
+**Gap:** Source manifests hashed the local checkout bytes directly in the actual RouteB checkout, included runtime package/platform inventory and exposed untracked upstream paths. Windows/Linux identities could differ, while exact-byte -text fixtures were incorrectly normalized.
+
+**Fix:** The actual RouteB manifest now uses a v3 schema, normalizes checkout CRLF only for Git text paths, preserves exact bytes for -text, omits runtime inventory and upstream untracked filenames, and rejects stale schemas during --verify. Existing deep-JSON and symlink checks were preserved.
+
+**Verification:** Under the dedicated RouteB .venv-win-app, tests/test_source_manifest.py — **9 passed**; Ruff passed; MyPy passed (1 file); source manifest regenerated and immediately verified **605 files**, identity cbd98ba52db1e2ffcd3e564060aefdcab2e75f0b5ca30090c7e5d2477f0b3a82. Evidence: docs/audit_evidence/20261023/a10_source_manifest_platform_stable_v3_20261023.json.
+
+**Boundary / next cursor:** No market, account, Train, Validation, Test, or Holdout data accessed. Current local source revision still needs clean Hosted Linux/Windows/JAX CI. Continue the remaining implementation-ready A01–A14 code audit; do not close external provenance, independent Validation, authentic depth, or history-coverage gates.
