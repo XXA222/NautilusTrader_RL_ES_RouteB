@@ -577,3 +577,9 @@ Added a second long/short native differential: after opening one unit, a two-uni
 **Verification:** small-notional selector **2 passed**; full adapter suite **44 passed**; adapter + WorldModel selectors **108 passed, 5 JAX-only skipped**; MyPy **226 files**, Ruff pass. The 605-file source identity verifies at `c13c45aa01d472340b8207691b89eb1ce9b56f2cb9472bd0e3eece02b610fb82`. Evidence: `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.
 
 **Boundary:** synthetic BTC/USD with USD precision 2 and bar-market execution. Callers must supply the correct equity currency precision when it differs from the default. Stablecoin and other currency precision should receive independent native parity coverage; depth, partial fill, funding, margin/leverage, liquidation and intrabar sequencing remain open.
+
+### A10 additional persisted and transport JSON depth boundaries — 2026-10-23
+
+Follow-up `json.loads()` review found direct readers outside the original failing PR tests. The shared nesting guard now covers Research ArtifactStore integrity/completion/L1 files, contract error/canonical bytes, and compute transport serialization/decode. This gives malformed deep payloads the owning package's stable error boundary instead of allowing platform-dependent recursion behavior.
+
+**Verification:** focused selector **53 passed**; full CI PR selector **903 passed, 4 skipped, 644 deselected**; `tests/world_model/` **234 passed, 14 JAX-only skipped**; MyPy **227 files**, Ruff pass. Source manifest: 606 files, identity `75a811a6bd0aa366acdc0077149b2124d3e3bc5ad7b05f25b8ab46079492bb64`. Evidence: `docs/audit_evidence/20261023/a10_cross_version_json_nesting_guard_20261023.json`. Fresh hosted CI for the final combined source remains pending.

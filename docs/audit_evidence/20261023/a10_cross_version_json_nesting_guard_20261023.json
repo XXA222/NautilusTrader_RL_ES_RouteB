@@ -4,27 +4,28 @@
   "status": "LOCAL_PASS_HOSTED_CONFIRMATION_PENDING",
   "checkout": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
   "finding": "Five Hosted Linux PR-layer tests exposed version-dependent behavior: stdlib JSON parsing raised RecursionError for deeply nested JSON on one runtime, while other readers reached generic schema errors or accepted the same shape. Existing RecursionError normalization alone did not provide a stable cross-platform boundary.",
-  "fix": "Add a shared rles_contracts.json_utils.ensure_json_nesting_depth scanner with a 512-container limit. It ignores brackets/braces inside quoted and escaped strings. Apply it before parsing in all seven package strict JSON helpers, Binance transfer single/page importers, the rles-data manifest CLI, and the orchestrator legacy inventory reader.",
+  "fix": "Add a shared rles_contracts.json_utils.ensure_json_nesting_depth scanner with a 512-container limit. It ignores quoted and escaped delimiters. Apply it before parsing in all seven package strict JSON helpers, Binance transfer single/page importers, rles-data manifest CLI, orchestrator legacy inventory reader, Research ArtifactStore integrity/completion/L1 manifests, contract error and canonical-byte readers, and compute worker transport serialization/decode boundaries.",
   "assertions": [
     "All seven package strict readers reject over-limit input before platform-dependent JSON parsing.",
     "Binance single and paged imports preserve MetricsError boundary on over-depth documents.",
     "The data CLI returns the stable nesting-depth DataError instead of a generic schema error.",
     "The legacy inventory reader returns the stable nesting-depth DataError.",
-    "Quoted brackets/braces and escaped quotes do not count toward structural nesting.",
-    "Depth 512 is accepted by the preflight scanner; depth 513 is rejected."
+    "Research ArtifactStore integrity, completion, and L1 manifests reject excessive depth within ArtifactError boundary.",
+    "Contract error/canonical readers and compute transport map excess depth to their public error boundary.",
+    "Quoted delimiters and escaped quotes do not count toward structural nesting; depth 512 is accepted and 513 rejected."
   ],
   "verification": [
     {
-      "command": "RouteB app venv: pytest tests/test_binance_cashflows.py tests/test_l2_cli.py tests/test_research_access.py tests/test_strict_json_constants.py",
-      "result": "197 passed"
+      "command": "RouteB app venv: focused strict JSON + artifact + compute transport selector",
+      "result": "53 passed"
     },
     {
       "command": "RouteB app venv: pytest -q tests/ -m 'contracts or unit or micro_golden or algorithm_smoke'",
-      "result": "903 passed, 4 skipped, 644 deselected, 46 warnings"
+      "result": "903 passed, 4 skipped, 644 deselected, 46 warnings (rerun after follow-on readers)"
     },
     {
       "command": "RouteB app venv: pytest -q tests/world_model/",
-      "result": "234 passed, 14 JAX-only skipped (JAX unavailable in app venv)"
+      "result": "234 passed, 14 JAX-only skipped (JAX unavailable in app venv; rerun after follow-on readers)"
     },
     {
       "command": "RouteB app venv: python -m mypy packages qa",
@@ -36,13 +37,13 @@
     },
     {
       "command": "RouteB app venv: python qa/source_manifest.py --output qa/reports/source_manifest_current.json --verify",
-      "result": "verified 606 files; identity 95d8113385895d4e5dc5100f63958e645e2493e55a98d22b897f03bf9729bcb5"
+      "result": "verified 606 files; identity 75a811a6bd0aa366acdc0077149b2124d3e3bc5ad7b05f25b8ab46079492bb64"
     },
     {
-      "command": "RouteB GitHub Actions previous run 39909996795 on commit fdf87c3",
-      "result": "Linux PR layer had 5 deep-JSON failures, 873 passed, 11 skipped; failures reproduced and fixed locally. Fresh Hosted confirmation is pending after pushing this fix."
+      "command": "RouteB GitHub Actions run 39916646469 on commit b083cf3",
+      "result": "Hosted confirmation pending; this run predates the follow-on ArtifactStore/contracts/transport reader hardening."
     }
   ],
   "data_access": "Synthetic malformed JSON inputs only; no market, account, Train, Validation, Test, or Holdout payloads read.",
-  "remaining": "Hosted Linux/Windows/JAX CPU confirmation for the new source identity remains pending. Continue auditing other serialization and reader boundaries."
+  "remaining": "Hosted Linux/Windows/JAX CPU confirmation for the final source identity remains pending. Continue auditing other serialization and reader boundaries."
 }

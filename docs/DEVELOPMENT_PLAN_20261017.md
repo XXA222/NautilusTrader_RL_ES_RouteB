@@ -2309,3 +2309,11 @@ Hosted Linux PR run `39909996795` failed five malformed deep-JSON cases. The rea
 Focused reader selector: **197 passed**; exact PR selector locally: **903 passed, 4 skipped, 644 deselected**; Ruff passes; MyPy passes **227 files**. The 606-file source manifest verifies as `95d8113385895d4e5dc5100f63958e645e2493e55a98d22b897f03bf9729bcb5`. Evidence: `docs/audit_evidence/20261023/a10_cross_version_json_nesting_guard_20261023.json`.
 
 **Next cursor:** push to RouteB-only backup and require a fresh Hosted Linux/Windows/JAX CPU run. Continue remaining JSON/serialization source audit. Do not infer that parser safety alone closes provenance or research-access gates.
+
+## 2026-10-23 A10 cross-runtime JSON depth follow-on
+
+The shared 512-container preflight is extended to Research ArtifactStore integrity, completion, and L1 manifests; contract error and canonical JSON decoding; and compute worker transport encoding/decoding. This closes additional direct JSON ingress/persisted-state boundaries found during the follow-up audit.
+
+**Verification:** focused boundary selector **53 passed**; full PR selector **903 passed, 4 skipped, 644 deselected**; WorldModel suite **234 passed, 14 JAX-only skipped**; MyPy **227 files** and Ruff pass. The 606-file source manifest identity is `75a811a6bd0aa366acdc0077149b2124d3e3bc5ad7b05f25b8ab46079492bb64`.
+
+**Next:** push the final source to the RouteB-only snapshot and verify the fresh hosted Linux, Windows, and JAX CPU results. Continue the remaining source audit; external data provenance and independent research gates remain separate.

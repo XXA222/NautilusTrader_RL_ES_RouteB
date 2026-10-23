@@ -8,6 +8,8 @@ import os
 import re
 from collections.abc import Mapping
 
+from rles_contracts.json_utils import ensure_json_nesting_depth
+
 _ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$')
 _EXT = {'.json','.safetensors','.npz','.arrow','.parquet','.txt','.bin','.zip'}
 _HASH_FIELDS = {'data_hash','code_hash','config_hash','seed_hash','deps_hash',
@@ -183,9 +185,12 @@ class ArtifactStore:
             raise ArtifactError('attempt is not committed')
         try:
             index_data=(directory/'integrity.json').read_bytes()
+            ensure_json_nesting_depth(index_data)
             record=json.loads(index_data, object_pairs_hook=_unique_json_object,
                               parse_constant=_reject_json_constant)
-            marker=json.loads((directory/'COMPLETED').read_bytes(),
+            marker_data=(directory/'COMPLETED').read_bytes()
+            ensure_json_nesting_depth(marker_data)
+            marker=json.loads(marker_data,
                                object_pairs_hook=_unique_json_object,
                                parse_constant=_reject_json_constant)
         except (OSError,ValueError,RecursionError) as exc:
@@ -230,7 +235,9 @@ class ArtifactStore:
         if record.get('manifest_sha256')!=files['manifest.json']:
             raise ArtifactError('L1 manifest digest mismatch')
         try:
-            manifest=json.loads((directory/'manifest.json').read_bytes(),
+            manifest_data=(directory/'manifest.json').read_bytes()
+            ensure_json_nesting_depth(manifest_data)
+            manifest=json.loads(manifest_data,
                                 object_pairs_hook=_unique_json_object,
                                 parse_constant=_reject_json_constant)
         except (OSError,ValueError,RecursionError) as exc:

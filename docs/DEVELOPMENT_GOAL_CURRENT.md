@@ -645,3 +645,9 @@ Hosted Linux PR run `39909996795` exposed five deep-JSON failures in Binance sin
 **Verification:** affected reader files **197 passed**; the full PR selector **903 passed, 4 skipped, 644 deselected**; MyPy passes **227 files**; Ruff passes; the 606-file source identity verifies as `95d8113385895d4e5dc5100f63958e645e2493e55a98d22b897f03bf9729bcb5`. Machine evidence: `docs/audit_evidence/20261023/a10_cross_version_json_nesting_guard_20261023.json`.
 
 **Next:** push the fix to the RouteB-only snapshot and verify fresh Hosted Linux, Windows and JAX CPU jobs. Continue auditing the remaining serialization/reader boundaries; external research gates remain independent.
+
+### 2026-10-23 current continuation cursor — A10 reader depth coverage follow-on
+
+The 512-level JSON nesting scanner now also guards Research ArtifactStore integrity/completion/L1 manifests, contract error/canonical-byte readers, and compute transport serialization/decode. Verification was repeated on the resulting source: full PR selector **903 passed, 4 skipped, 644 deselected**; WorldModel suite **234 passed, 14 JAX-only skipped**; focused boundary selector **53 passed**. MyPy (227 files) and Ruff pass. The current 606-file source identity is `75a811a6bd0aa366acdc0077149b2124d3e3bc5ad7b05f25b8ab46079492bb64`. Evidence: `docs/audit_evidence/20261023/a10_cross_version_json_nesting_guard_20261023.json`.
+
+Next: publish this follow-on source to the RouteB-only snapshot branch, inspect the fresh Hosted Linux/Windows/JAX CPU jobs, and continue the source audit. Hosted confirmation and independent provenance/research gates remain pending.

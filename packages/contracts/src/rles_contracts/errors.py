@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
+from .json_utils import ensure_json_nesting_depth
 
 
 class ErrorCategory(StrEnum):
@@ -118,6 +119,10 @@ def parse_error_json(blob: bytes) -> ErrorEnvelope:
 
     if type(blob) is not bytes:
         raise TypeError("error JSON must be bytes")
+    try:
+        ensure_json_nesting_depth(blob)
+    except ValueError as exc:
+        raise ValueError("error JSON exceeds the supported nesting depth") from exc
     try:
         data = json.loads(blob.decode("ascii"), object_pairs_hook=_no_duplicate_pairs,
                           parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))

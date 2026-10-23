@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-23T07:03:01.678465+00:00",
-  "source_identity_sha256": "95d8113385895d4e5dc5100f63958e645e2493e55a98d22b897f03bf9729bcb5",
+  "generated_at_utc": "2026-10-23T07:28:48.979541+00:00",
+  "source_identity_sha256": "75a811a6bd0aa366acdc0077149b2124d3e3bc5ad7b05f25b8ab46079492bb64",
   "scope": {
     "included": [
       ".gitattributes",
@@ -953,8 +953,8 @@
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/transport.py",
-      "size_bytes": 4035,
-      "sha256": "bdc030830f13d9b4952c56c97f42733dd3ea0554e3437833e8e3160f458b91c9"
+      "size_bytes": 4384,
+      "sha256": "bd24e2630eae91dd437e7d0a209128fe152de1beaa15ee70052d836a6235af6a"
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/validation.py",
@@ -1003,8 +1003,8 @@
     },
     {
       "path": "packages/contracts/src/rles_contracts/errors.py",
-      "size_bytes": 5090,
-      "sha256": "bbc0675578e73bbaef60a9c172232489d436df65571c29bc3fd16b481f21bc36"
+      "size_bytes": 5303,
+      "sha256": "1cda16098ef18f37c386b1ecd41a9a46838282e27f7ecd6129d269fb030ddd02"
     },
     {
       "path": "packages/contracts/src/rles_contracts/frozen.py",
@@ -1053,8 +1053,8 @@
     },
     {
       "path": "packages/contracts/src/rles_contracts/serialization.py",
-      "size_bytes": 11539,
-      "sha256": "5632484362beec2a821d1003988c79f3a097c6ef249adce467562a5b2ec52406"
+      "size_bytes": 11756,
+      "sha256": "da3171286e3cf93d654927ddfc4ad68c6b447121956fb467086e29f4ea0b2be0"
     },
     {
       "path": "packages/contracts/src/rles_contracts/validation.py",
@@ -1388,8 +1388,8 @@
     },
     {
       "path": "packages/research/src/rles_research/artifacts.py",
-      "size_bytes": 13335,
-      "sha256": "cea5831a4409ba9a0349aa055b06cc8c99793f14855320f10fe3beb240c748f6"
+      "size_bytes": 13630,
+      "sha256": "30fdc17e5f1406977f5e404be4e7eb4f8d66a4e0f1d3a78d504c1e671c9cae00"
     },
     {
       "path": "packages/research/src/rles_research/baselines.py",

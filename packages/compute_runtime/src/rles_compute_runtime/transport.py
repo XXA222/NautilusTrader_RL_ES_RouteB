@@ -5,6 +5,8 @@ import json
 import math
 from collections.abc import Mapping
 
+from rles_contracts.json_utils import ensure_json_nesting_depth
+
 from .errors import ComputeProtocolError
 
 REQUIRED = ('run_id', 'attempt_id', 'env_id', 'episode_id', 'step_id', 'candidate_id', 'model_id', 'schema_version', 'dtype', 'shape')
@@ -62,10 +64,16 @@ def small_json(value: object) -> object:
             pending.extend((nested, False) for nested in item)
     try:
         raw = json.dumps(value, allow_nan=False, separators=(',', ':')).encode('utf-8')
-    except (TypeError, ValueError, RecursionError) as exc:
+    except RecursionError as exc:
+        raise ComputeProtocolError("worker payload exceeds supported nesting depth") from exc
+    except (TypeError, ValueError) as exc:
         raise ComputeProtocolError('invalid JSON payload') from exc
     if len(raw) > MAX_BYTES:
         raise ComputeProtocolError('large payload rejected; use readonly data refs')
+    try:
+        ensure_json_nesting_depth(raw)
+    except ValueError as exc:
+        raise ComputeProtocolError("worker payload exceeds supported nesting depth") from exc
     try:
         return json.loads(raw)
     except RecursionError as exc:

@@ -19,6 +19,7 @@ from typing import Any, get_args, get_origin, get_type_hints
 from . import dto
 from .errors import ErrorCategory
 from .frozen import FrozenFields
+from .json_utils import ensure_json_nesting_depth
 from .schema import CONTRACT_VERSION, require_current_version
 
 MAX_METADATA_BYTES = 8 * 1024 * 1024
@@ -198,6 +199,10 @@ def from_canonical_bytes(blob: bytes) -> Any:
         raise TypeError("canonical input must be bytes")
     if len(blob) > MAX_METADATA_BYTES:
         raise ValueError("canonical metadata exceeds 8 MiB limit")
+    try:
+        ensure_json_nesting_depth(blob)
+    except ValueError as exc:
+        raise ValueError("canonical JSON exceeds the supported nesting depth") from exc
     try:
         payload = json.loads(blob.decode("ascii"), parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)),
                              object_pairs_hook=_no_duplicate_pairs)
