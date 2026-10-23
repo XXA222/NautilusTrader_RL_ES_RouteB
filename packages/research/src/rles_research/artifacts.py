@@ -33,6 +33,25 @@ def _reject_json_constant(value: str) -> None:
 
 
 def _canonical(data: object) -> bytes:
+    pending = [data]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if isinstance(current, dict):
+            identity = id(current)
+            if identity in visited:
+                continue
+            visited.add(identity)
+            for key, value in current.items():
+                if not isinstance(key, str):
+                    raise ValueError('JSON object keys must be strings')
+                pending.append(value)
+        elif isinstance(current, (list, tuple)):
+            identity = id(current)
+            if identity in visited:
+                continue
+            visited.add(identity)
+            pending.extend(current)
     return json.dumps(data,sort_keys=True,separators=(',',':'),allow_nan=False,ensure_ascii=False).encode('utf-8')
 
 
@@ -108,7 +127,10 @@ class ArtifactWriter:
         required = {str(_relative(x)) for x in required_files}
         if not required or not required.issubset(self._files):
             raise ArtifactError('required output missing; refusing completion')
-        manifest_bytes = _canonical(dict(l1_manifest))
+        try:
+            manifest_bytes = _canonical(dict(l1_manifest))
+        except (TypeError, ValueError) as exc:
+            raise ArtifactError('L1 manifest must contain finite JSON with string object keys') from exc
         self.add('manifest.json',manifest_bytes)
         record = {'schema_version':1,'run_id':self.run_id,'attempt_id':self.attempt_id,
                   'source_id':trusted_source_id,'files':self._files,'required':sorted(required),

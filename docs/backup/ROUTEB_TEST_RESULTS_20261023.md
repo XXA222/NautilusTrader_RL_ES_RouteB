@@ -26,6 +26,8 @@ is stored under `docs/audit_evidence/20261023/`.
 - WorldModel additive tests passed **19 with 2 JAX-only skips** in the app
   environment and **21 tests** in RouteB's isolated JAX CPU environment; Ruff
   and MyPy passed for the bundle change.
+- ResearchArtifactStore JSON/layer selector passed **7 tests**; Ruff and MyPy
+  passed after recursive non-string key rejection was added.
 - Ruff on changed source and test files: **passed**.
 - MyPy on the changed Native metrics module: **passed**. The changed data,
   Native metrics and historical modules also passed together with package
@@ -65,3 +67,5 @@ Final-snapshot release and its orchestrator integration results are recorded in
 `f7_final_snapshot_release_20261023.json`.
 WorldModel bundle scaler-manifest validation is recorded in
 `a10_bundle_scaler_string_keys_20261023.json`.
+ResearchArtifactStore L1 manifest key validation is recorded in
+`a10_research_artifact_string_keys_20261023.json`.

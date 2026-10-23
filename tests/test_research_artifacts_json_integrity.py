@@ -75,3 +75,28 @@ def test_artifact_store_rejects_nonfinite_manifest_after_all_hashes_are_recomput
     _update_index_and_marker(directory)
     with pytest.raises(ArtifactError, match="unreadable L1 experiment manifest"):
         store.verify("run-strict-json", "attempt-1")
+
+
+@pytest.mark.parametrize("extra", [
+    {1: "root-key-coercion"},
+    {"nested": {1: "nested-key-coercion"}},
+])
+def test_artifact_store_rejects_non_string_manifest_keys_before_completion(tmp_path: Path, extra):
+    manifest = {
+        name: f"{index:x}" * 64
+        for index, name in enumerate(
+            ("data_hash", "code_hash", "config_hash", "seed_hash", "deps_hash",
+             "adapter_hash", "compute_hash", "execution_hash", "risk_hash"),
+            start=1,
+        )
+    }
+    manifest.update(extra)
+    store = ArtifactStore(tmp_path / "artifacts", trusted_sources={"qa-local"})
+    writer = store.begin("run-non-string-manifest-key", "attempt-1")
+    writer.add("policy.txt", b"policy")
+
+    with pytest.raises(ArtifactError, match="string object keys"):
+        writer.complete(
+            l1_manifest=manifest, required_files=["policy.txt"],
+            trusted_source_id="qa-local",
+        )

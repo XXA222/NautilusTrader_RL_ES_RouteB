@@ -2148,3 +2148,13 @@ The online orchestrator now copies terminal `all_orders` into its required order
 **Verification:** red tests reproduced root scaler-key coercion and nested learner-config key coercion. Current WorldModel additive selector: **19 passed, 2 JAX-only skipped** in the app venv; RouteB isolated JAX CPU environment passed **21 tests** covering both boundaries. Ruff and MyPy pass. Only synthetic malformed dictionaries were used. Evidence: `docs/audit_evidence/20261023/a10_bundle_scaler_string_keys_20261023.json`.
 
 **Boundary / next cursor:** bundle writer key canonicalization is fixed; this does not certify model outputs or market skill. Continue A01–A14 code-ready audit. External account provenance, historical coverage, independent Validation, authorized market scope/depth, trial coverage, and M4.2 stay open.
+
+## 2026-10-23 — A10 ResearchArtifactStore manifest key integrity
+
+**Finding:** generic ResearchArtifactStore completion serialized a supplied L1 manifest without recursively validating object keys. A nested integer key was silently converted; a root integer key mixed with string fingerprint keys failed with raw `TypeError` during JSON sorting.
+
+**Fix:** the shared canonical artifact encoder rejects non-string dictionary keys at every depth, including inside lists/tuples. Completion maps non-JSON manifest failures to `ArtifactError` before committing the immutable artifact.
+
+**Verification:** both red regressions reproduced before the fix. Artifact JSON + layer selector: **7 passed, 29 deselected**; Ruff and MyPy pass. Only temporary synthetic manifests were used. Evidence: `docs/audit_evidence/20261023/a10_research_artifact_string_keys_20261023.json`.
+
+**Boundary / next cursor:** generic manifest key coercion is closed; continue the source audit across remaining serialization and reader boundaries. Account provenance, historical completeness, Validation, scope/depth, trial history and M4.2 remain external gates.

@@ -1,0 +1,20 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / reject non-string keys in ResearchArtifactStore manifests",
+  "finding": "ResearchArtifactStore canonicalized the caller's L1 manifest without checking nested mapping keys. A nested integer key was silently converted to a JSON string; an integer key at the root leaked Python's mixed-key sorting TypeError.",
+  "change": "The shared artifact canonicalizer recursively requires string dictionary keys in dictionaries and list/tuple values. L1 manifest serialization failures are normalized to ArtifactError before a completion record is committed.",
+  "verification": {
+    "red_regressions": [
+      "Root integer key leaked TypeError from JSON sort_keys.",
+      "Nested integer key was silently coerced and accepted."
+    ],
+    "artifact_json_and_layer_selector": "tests/test_research_artifacts_json_integrity.py tests/test_layer_invariants.py -k 'artifact or nonfinite': 7 passed, 29 deselected",
+    "ruff": "passed for artifacts.py and test_research_artifacts_json_integrity.py",
+    "mypy": "passed for artifacts.py"
+  },
+  "source_sha256": {
+    "packages/research/src/rles_research/artifacts.py": "FA0BA28E4B69B217CFBF03C40DA3E8EE68E24B6E95A4FCEDEE25BA5D1AE84439",
+    "tests/test_research_artifacts_json_integrity.py": "E257016F7FA2812E46608FF9E303B535F421D77841131CB5B6E94C86FA95B432"
+  },
+  "boundary": "Only temporary synthetic artifact manifests were used; no project registry, persisted model bundle, market data, or formal evaluation record was accessed."
+}

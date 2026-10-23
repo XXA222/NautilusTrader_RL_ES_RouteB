@@ -536,3 +536,7 @@ Extended the exact Decimal fix to representable low-exponent sums and products, 
 ### A10 当前续做记录 — WorldModel bundle scaler manifest
 
 继续检查发现 `save_bundle()` 会将 scaler manifest 和 learner dataclass 配置中的非字符串 map 键隐式改写。现已递归拒绝此类键，并对 scaler 序列化结果执行重复键严格解析。RouteB 隔离 JAX CPU WorldModel additive **21 passed**；Ruff/MyPy 通过。仅用合成非法输入。证据：`docs/audit_evidence/20261023/a10_bundle_scaler_string_keys_20261023.json`。接续从 A01–A14 当前源代码审计中选取下一个无需外部授权的缺口；F7 长窗 RSS、真实现金流、历史覆盖、独立 Validation、新市场授权/深度、历史有效试验数与 M4.2 仍开放。
+
+### A10 当前续做记录 — ResearchArtifactStore manifest key
+
+继续对照 JSON 序列化入口发现，ResearchArtifactStore 的 L1 manifest canonicalizer 会把嵌套整数键转成字符串，根整数键则泄漏原始排序异常。现已递归拒绝非字符串键，并将 manifest 编码失败统一为 `ArtifactError`。临时合成 artifact selector **7 passed**，Ruff/MyPy 通过。证据：`docs/audit_evidence/20261023/a10_research_artifact_string_keys_20261023.json`。继续审计剩余序列化/读取边界与 A01–A14 本地可实施项；F7 全长时序与真实历史、现金流真实性、历史访问覆盖、独立 Validation、新市场 scope/深度、历史试验覆盖及 M4.2 仍未关闭。
