@@ -1020,6 +1020,17 @@ def test_trial_attempt_recipe_rejects_non_string_json_object_keys(tmp_path, reci
         )
 
 
+def test_project_trial_attempt_rejects_circular_recipe(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    recipe = {"steps": []}
+    recipe["steps"].append(recipe)
+    with pytest.raises(ValueError, match="recipe must be finite JSON data"):
+        registry.register_trial_attempt(
+            attempt_key="attempt", protocol_id="protocol", candidate_id="candidate",
+            recipe=recipe, feature_sha="a" * 64, seed=1,
+        )
+
+
 def test_project_registry_fails_closed_on_duplicate_persisted_formal_identity(tmp_path):
     import sqlite3
 
@@ -1054,3 +1065,19 @@ def test_legacy_inventory_parser_rejects_nonstandard_json_constant():
                b'"entries":[],"unresolved":[{"identity":{"value":NaN}}]}')
     with pytest.raises(DataError, match="invalid or ambiguous"):
         research_access._strict_inventory_json(payload)
+
+
+def test_legacy_inventory_parser_normalizes_excessive_nesting():
+    from rles_data.core import DataError
+
+    payload = (b"[" * 20_000) + b"0" + (b"]" * 20_000)
+    with pytest.raises(DataError, match="supported nesting depth"):
+        research_access._strict_inventory_json(payload)
+
+
+def test_research_registry_json_parser_normalizes_excessive_nesting():
+    from rles_research.json_utils import loads_unique_json
+
+    payload = "[" * 20_000 + "0" + "]" * 20_000
+    with pytest.raises(ValueError, match="nesting depth"):
+        loads_unique_json(payload)

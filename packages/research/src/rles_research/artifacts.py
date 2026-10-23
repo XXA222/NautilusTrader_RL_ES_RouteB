@@ -188,7 +188,7 @@ class ArtifactStore:
             marker=json.loads((directory/'COMPLETED').read_bytes(),
                                object_pairs_hook=_unique_json_object,
                                parse_constant=_reject_json_constant)
-        except (OSError,ValueError) as exc:
+        except (OSError,ValueError,RecursionError) as exc:
             raise ArtifactError('invalid marker/index') from exc
         if marker!={'integrity_sha256':_digest(index_data),'state':'COMPLETED'}:
             raise ArtifactError('integrity marker does not match index')
@@ -233,7 +233,7 @@ class ArtifactStore:
             manifest=json.loads((directory/'manifest.json').read_bytes(),
                                 object_pairs_hook=_unique_json_object,
                                 parse_constant=_reject_json_constant)
-        except (OSError,ValueError) as exc:
+        except (OSError,ValueError,RecursionError) as exc:
             raise ArtifactError('unreadable L1 experiment manifest') from exc
         if not isinstance(manifest,dict) or not _HASH_FIELDS.issubset(manifest) or any(
             not isinstance(manifest[k],str) or len(manifest[k])!=64 or

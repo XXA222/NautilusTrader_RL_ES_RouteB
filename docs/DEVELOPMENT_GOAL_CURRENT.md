@@ -540,3 +540,22 @@ Extended the exact Decimal fix to representable low-exponent sums and products, 
 ### A10 当前续做记录 — ResearchArtifactStore manifest key
 
 继续对照 JSON 序列化入口发现，ResearchArtifactStore 的 L1 manifest canonicalizer 会把嵌套整数键转成字符串，根整数键则泄漏原始排序异常。现已递归拒绝非字符串键，并将 manifest 编码失败统一为 `ArtifactError`。临时合成 artifact selector **7 passed**，Ruff/MyPy 通过。证据：`docs/audit_evidence/20261023/a10_research_artifact_string_keys_20261023.json`。继续审计剩余序列化/读取边界与 A01–A14 本地可实施项；F7 全长时序与真实历史、现金流真实性、历史访问覆盖、独立 Validation、新市场 scope/深度、历史试验覆盖及 M4.2 仍未关闭。
+
+### A04 当前续做记录 — registry 循环 JSON 拒绝
+
+`ProjectResearchRegistry` 共用 JSON 校验器对循环 list/dict 会无限递归至 `RecursionError`；RouteB 七个 strict JSON reader 对 20,000 层输入也会泄漏解码器递归异常。序列化遍历现改为迭代并检测循环，七个 reader 均将超深错误归一为 `ValueError`。显式从源码导入后，registry 与七个 reader 的选择器 **146 passed**；Ruff 与 MyPy 通过。仅使用临时 registry 和合成输入。证据：`docs/audit_evidence/20261023/a04_registry_circular_json_rejection_20261023.json`。继续扫描 A01–A14 其余可在本地落地的 reader/serializer 缺口；外部认证与独立 Validation 等门槛保持未关闭。
+
+### A10 当前续做记录 — worker payload 循环引用
+
+Compute worker `small_json()` 的递归预检对循环 dict/list 会先于 JSON 编码触发 `RecursionError`。现改为迭代遍历，循环对象明确失败为 `ComputeProtocolError`，编码器递归错误也统一转成协议错误。与 strict JSON/registry 回归合计 **164 passed**；Ruff/MyPy 通过。仅合成内存 payload。证据：`docs/audit_evidence/20261023/a10_worker_payload_cycle_rejection_20261023.json`。继续 A01–A14 其余源码项；任何外部数据认证和研究门槛仍开放。
+
+### A10 当前续做记录 — contracts JSON 递归深度
+
+canonical DTO reader 与 CLI error-envelope reader 直接调用 `json.loads`，20,000 层输入泄漏 `RecursionError`。现统一转为边界明确的 `ValueError`。contracts reader + config selector **39 passed**；Ruff/MyPy 通过。证据：`docs/audit_evidence/20261023/a10_contract_json_depth_boundary_20261023.json`。继续检查其它直接解析入口和 A01–A14 可在本地完成的事项。
+
+### A10 当前续做记录 — direct ingress/readers JSON 递归深度
+
+Binance transfer 单页/分页导入、legacy research inventory 与 ResearchArtifactStore 的 index/manifest readers 也会泄漏 `RecursionError`。现分别统一映射为各自的 MetricsError、DataError 与 ArtifactError。三个测试文件 **169 passed**；Ruff 通过，三个源文件 MyPy 通过（忽略 venv 对无 `py.typed` 模块的报告）。仅使用深层合成 payload 和临时文件。证据：`docs/audit_evidence/20261023/a10_direct_json_reader_depth_boundaries_20261023.json`。继续处理剩余本地 A01–A14 项。
+### A10 当前续做记录 — JSON reader CLI 边界复核
+
+追加 rles-data `--manifest-json` 深层输入检查后，CLI reader 也改为把 `RecursionError` 转成 `DataError`；合并后的 JSON reader/transport/contracts 选择器 **258 passed**，Ruff 与针对性 MyPy 通过。证据：`docs/audit_evidence/20261023/a10_direct_json_reader_depth_boundaries_20261023.json`。继续审计其余直接 JSON decode 点与本地 A01–A14 项。

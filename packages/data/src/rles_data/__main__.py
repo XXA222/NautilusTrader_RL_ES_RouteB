@@ -65,11 +65,14 @@ def _unique_json_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
 
 def _validate(args: argparse.Namespace) -> tuple[dict, int]:
     if args.manifest_json:
-        doc = json.loads(
-            Path(args.manifest_json).read_text(encoding="utf-8"),
-            object_pairs_hook=_unique_json_pairs,
-            parse_constant=lambda value: (_ for _ in ()).throw(DataError(f"invalid JSON constant: {value}")),
-        )
+        try:
+            doc = json.loads(
+                Path(args.manifest_json).read_text(encoding="utf-8"),
+                object_pairs_hook=_unique_json_pairs,
+                parse_constant=lambda value: (_ for _ in ()).throw(DataError(f"invalid JSON constant: {value}")),
+            )
+        except RecursionError as exc:
+            raise DataError("validation manifest exceeds the supported nesting depth") from exc
         if (not isinstance(doc, dict) or set(doc) - {"inputs", "start_ns", "end_ns", "expected_instruments", "coverage_policy"}
                 or not isinstance(doc.get("inputs"), list) or not doc["inputs"]):
             raise DataError("invalid validation manifest")

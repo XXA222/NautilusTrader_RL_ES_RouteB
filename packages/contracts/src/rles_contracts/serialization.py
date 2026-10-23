@@ -198,8 +198,11 @@ def from_canonical_bytes(blob: bytes) -> Any:
         raise TypeError("canonical input must be bytes")
     if len(blob) > MAX_METADATA_BYTES:
         raise ValueError("canonical metadata exceeds 8 MiB limit")
-    payload = json.loads(blob.decode("ascii"), parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)),
-                         object_pairs_hook=_no_duplicate_pairs)
+    try:
+        payload = json.loads(blob.decode("ascii"), parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)),
+                             object_pairs_hook=_no_duplicate_pairs)
+    except RecursionError as exc:
+        raise ValueError("canonical JSON exceeds the supported nesting depth") from exc
     obj = _decode(payload)
     if canonical_bytes(obj) != blob:
         raise ValueError("not canonical JSON (ordering, normalization, or numeric representation)")

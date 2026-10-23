@@ -6,6 +6,7 @@ from rles_compute_runtime.benchmark import (
     benchmark, device_decision, validate_benchmark_report, worker_scaling_benchmark,
 )
 from rles_compute_runtime.errors import ComputeError, ComputeProtocolError
+from rles_compute_runtime.transport import small_json
 from rles_compute_runtime.workers import _json_object
 
 pytestmark = pytest.mark.unit
@@ -22,6 +23,14 @@ _FINGERPRINTS = {
         "algorithm_config_sha256",
     )
 }
+
+
+def test_worker_json_payload_rejects_circular_containers() -> None:
+    payload: list[object] = []
+    payload.append(payload)
+
+    with pytest.raises(ComputeProtocolError, match="cyclic worker payload"):
+        small_json(payload)
 
 
 def _sample(_mode: str, _trial: int) -> dict[str, int | float]:

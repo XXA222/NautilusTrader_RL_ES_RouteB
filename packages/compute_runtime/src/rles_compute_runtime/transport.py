@@ -36,23 +36,33 @@ def validate_key(key: Mapping[str, object]) -> dict[str, object]:
 
 def small_json(value: object) -> object:
     """Refuse non-JSON data and oversized payloads before crossing a process boundary."""
-    def reject(x):
-        if isinstance(x, float) and not math.isfinite(x):
-            raise ComputeProtocolError('NaN/Inf in worker payload')
-        if isinstance(x, dict):
-            if not all(isinstance(k, str) for k in x):
+    active: set[int] = set()
+    pending: list[tuple[object, bool]] = [(value, False)]
+    while pending:
+        item, exiting = pending.pop()
+        if not isinstance(item, (dict, list)):
+            if isinstance(item, float) and not math.isfinite(item):
+                raise ComputeProtocolError('NaN/Inf in worker payload')
+            if item is not None and not isinstance(item, (str, int, float, bool)):
+                raise ComputeProtocolError('worker payload must be JSON-only; pass dataset refs instead')
+            continue
+        identity = id(item)
+        if exiting:
+            active.remove(identity)
+            continue
+        if identity in active:
+            raise ComputeProtocolError('cyclic worker payload is not JSON')
+        active.add(identity)
+        pending.append((item, True))
+        if isinstance(item, dict):
+            if not all(isinstance(key, str) for key in item):
                 raise ComputeProtocolError('keys must be strings')
-            for v in x.values():
-                reject(v)
-        elif isinstance(x, list):
-            for v in x:
-                reject(v)
-        elif x is not None and not isinstance(x, (str, int, float, bool)):
-            raise ComputeProtocolError('worker payload must be JSON-only; pass dataset refs instead')
-    reject(value)
+            pending.extend((nested, False) for nested in item.values())
+        else:
+            pending.extend((nested, False) for nested in item)
     try:
         raw = json.dumps(value, allow_nan=False, separators=(',', ':')).encode('utf-8')
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         raise ComputeProtocolError('invalid JSON payload') from exc
     if len(raw) > MAX_BYTES:
         raise ComputeProtocolError('large payload rejected; use readonly data refs')

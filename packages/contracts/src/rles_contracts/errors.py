@@ -118,8 +118,11 @@ def parse_error_json(blob: bytes) -> ErrorEnvelope:
 
     if type(blob) is not bytes:
         raise TypeError("error JSON must be bytes")
-    data = json.loads(blob.decode("ascii"), object_pairs_hook=_no_duplicate_pairs,
-                      parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))
+    try:
+        data = json.loads(blob.decode("ascii"), object_pairs_hook=_no_duplicate_pairs,
+                          parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))
+    except RecursionError as exc:
+        raise ValueError("error JSON exceeds the supported nesting depth") from exc
     expected = {"category", "code", "message", "retryable", "run_id", "cause_code",
                 "schema_version", "exit_code"}
     if type(data) is not dict or set(data) != expected:

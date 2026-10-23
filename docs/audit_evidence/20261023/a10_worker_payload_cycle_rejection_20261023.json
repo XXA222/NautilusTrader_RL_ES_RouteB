@@ -1,0 +1,16 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / reject circular compute worker JSON payloads",
+  "finding": "The compact worker transport recursively validated nested dictionaries and lists before JSON encoding, so a cyclic Python payload raised RecursionError instead of a protocol error.",
+  "change": "Payload validation now uses an iterative depth-first walk, rejects active-container cycles explicitly, and normalizes JSON encoder recursion errors to ComputeProtocolError.",
+  "verification": {
+    "selector": "tests/test_compute_runtime_contracts.py tests/test_strict_json_constants.py tests/test_research_access.py: 164 passed with RouteB package source directories first on PYTHONPATH",
+    "ruff": "passed for transport.py and test_compute_runtime_contracts.py",
+    "mypy": "passed for transport.py"
+  },
+  "source_sha256": {
+    "packages/compute_runtime/src/rles_compute_runtime/transport.py": "2530F9B526EAF090923F2652CB5CDE16C7D5DBBC68BA97F3CD4B1B4615AD08C4",
+    "tests/test_compute_runtime_contracts.py": "41761CE2C87BE15CB81066CFDE604F4DCA9477CCE1A77F7D20652BF9A8638EC6"
+  },
+  "boundary": "Only synthetic in-memory payloads were used; no worker allocation, registry, market data, or account data was accessed."
+}

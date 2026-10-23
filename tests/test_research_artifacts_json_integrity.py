@@ -66,6 +66,14 @@ def test_artifact_store_rejects_nonfinite_completion_marker(tmp_path: Path) -> N
         store.verify("run-strict-json", "attempt-1")
 
 
+def test_artifact_store_normalizes_excessive_integrity_json_nesting(tmp_path: Path) -> None:
+    store, directory = _completed_attempt(tmp_path)
+    (directory / "integrity.json").write_bytes(b"[" * 20_000 + b"0" + b"]" * 20_000)
+
+    with pytest.raises(ArtifactError, match="invalid marker/index"):
+        store.verify("run-strict-json", "attempt-1")
+
+
 def test_artifact_store_rejects_nonfinite_manifest_after_all_hashes_are_recomputed(tmp_path: Path) -> None:
     store, directory = _completed_attempt(tmp_path)
     manifest_path = directory / "manifest.json"

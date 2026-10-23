@@ -2158,3 +2158,42 @@ The online orchestrator now copies terminal `all_orders` into its required order
 **Verification:** both red regressions reproduced before the fix. Artifact JSON + layer selector: **7 passed, 29 deselected**; Ruff and MyPy pass. Only temporary synthetic manifests were used. Evidence: `docs/audit_evidence/20261023/a10_research_artifact_string_keys_20261023.json`.
 
 **Boundary / next cursor:** generic manifest key coercion is closed; continue the source audit across remaining serialization and reader boundaries. Account provenance, historical completeness, Validation, scope/depth, trial history and M4.2 remain external gates.
+
+## 2026-10-23 — A04 registry circular JSON rejection
+
+**Finding:** the shared registry JSON validator recursively traversed caller-provided dict/list/tuple values without cycle detection. A circular recipe caused `RecursionError`; all seven package strict JSON readers likewise leaked `RecursionError` for sufficiently deep persisted or external data.
+
+**Fix:** use iterative depth-first validation with active-container tracking; reject cycles and normalize strict-decoder nesting-depth errors to `ValueError` in all seven package readers.
+
+**Verification:** reproductions covered a self-referential list and a 20,000-level JSON array. With RouteB package source directories explicitly first on `PYTHONPATH`, registry plus all-seven-reader selectors pass **146 tests**; Ruff and MyPy pass. Evidence is recorded in `docs/audit_evidence/20261023/a04_registry_circular_json_rejection_20261023.json`.
+
+**Boundary / next cursor:** synthetic cyclic inputs only; continue A01–A14 code-ready audit. External provenance, historical coverage, independent Validation, scope/depth, trial coverage and M4.2 remain open.
+
+## 2026-10-23 — A10 compute worker cyclic payload rejection
+
+**Finding:** `small_json()` recursively inspected worker JSON payloads before encoding, so cyclic dict/list values recursed until `RecursionError` rather than failing with a process-protocol error.
+
+**Fix:** replace recursion with iterative container traversal and active identity tracking; translate JSON encoder recursion failure to `ComputeProtocolError`.
+
+**Verification:** compute transport, all strict JSON helpers, and registry access selectors pass **164 tests** with RouteB source paths first on `PYTHONPATH`; Ruff and MyPy pass. Evidence: `docs/audit_evidence/20261023/a10_worker_payload_cycle_rejection_20261023.json`.
+
+**Boundary / next cursor:** synthetic in-memory input only; continue local A01–A14 source audit and preserve all external research gates.
+
+## 2026-10-23 — A10 contracts JSON recursion boundary
+
+Canonical DTO and CLI error-envelope readers leaked the JSON decoder's `RecursionError` on deeply nested input. Both now normalize it to `ValueError` with a boundary-specific message. Contracts serialization/error/config selectors pass **39 tests**; Ruff and MyPy pass. Evidence: `docs/audit_evidence/20261023/a10_contract_json_depth_boundary_20261023.json`.
+
+**Boundary / next cursor:** synthetic 20,000-level JSON only. Continue reviewing remaining direct JSON decode sites and local A01–A14 work; external gates stay open.
+
+## 2026-10-23 — A10 direct ingress/reader JSON recursion boundaries
+
+**Finding:** Binance transfer importer, legacy inventory reader, and ResearchArtifactStore verification directly decoded JSON and leaked `RecursionError` on deep inputs.
+
+**Fix:** normalize decoder recursion failures to each API's stable `MetricsError`, `DataError`, or `ArtifactError` contract.
+
+**Verification:** Binance cashflow, research access, and artifact integrity selector: **169 passed** with source paths first on `PYTHONPATH`; Ruff and targeted MyPy pass. Temporary/synthetic data only. Evidence: `docs/audit_evidence/20261023/a10_direct_json_reader_depth_boundaries_20261023.json`.
+
+**Boundary / next cursor:** continue auditing direct JSON parsers and other local A01–A14 items; external authorization/evidence gates remain unchanged.
+## 2026-10-23 — A10 rles-data CLI manifest nesting
+
+The `rles-data validate --manifest-json` CLI directly decoded its manifest and leaked `RecursionError` on deeply nested input. It now converts this to the CLI's stable `DataError`. The combined JSON reader/transport/contracts selector passes **258 tests** with RouteB source imports; Ruff and targeted MyPy pass. Evidence: `docs/audit_evidence/20261023/a10_direct_json_reader_depth_boundaries_20261023.json`.

@@ -167,6 +167,23 @@ def test_binance_transfer_import_rejects_duplicate_json_object_keys() -> None:
         )
 
 
+@pytest.mark.parametrize("paged", [False, True])
+def test_binance_transfer_import_normalizes_excessive_json_nesting(paged: bool) -> None:
+    payload = (b"[" * 20_000) + b"0" + (b"]" * 20_000)
+    with pytest.raises(MetricsError, match="invalid Binance income-history"):
+        if paged:
+            import_binance_usdm_transfer_income_pages(
+                (BinanceIncomePage(10, 20, 2, payload),), query_start_ms=10,
+                query_end_ms=20, account_scope_id="account", currency="USDT",
+                sample_barriers_ns=(10_000_000, 20_000_000),
+            )
+        else:
+            import_binance_usdm_transfer_income(
+                payload, account_scope_id="account", currency="USDT",
+                sample_barriers_ns=(10_000_000, 20_000_000),
+            )
+
+
 def test_binance_paged_import_binds_exact_pages_and_contiguous_query_scope() -> None:
     page1 = b'[{"incomeType":"TRANSFER","income":"10","asset":"USDT","time":15,"tranId":1}]'
     page2 = b'[{"incomeType":"TRANSFER","income":"-2","asset":"USDT","time":25,"tranId":2}]'

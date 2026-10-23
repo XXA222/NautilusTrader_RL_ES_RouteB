@@ -23,5 +23,8 @@ def loads_unique_json(value: str | bytes | bytearray, *,
     """Parse JSON recursively, optionally overriding non-finite constant handling."""
     options: dict[str, Any] = {"object_pairs_hook": _unique_object}
     options["parse_constant"] = _reject_json_constant if parse_constant is None else parse_constant
-    return json.loads(value, **options)
+    try:
+        return json.loads(value, **options)
+    except RecursionError as exc:
+        raise ValueError("JSON data exceeds the supported nesting depth") from exc
 

@@ -40,6 +40,8 @@ def _strict_inventory_json(content: bytes) -> dict[str, Any]:
         ) from exc
     except UnicodeDecodeError as exc:
         raise DataError("legacy research inventory JSON is not valid UTF-8") from exc
+    except RecursionError as exc:
+        raise DataError("legacy research inventory JSON exceeds the supported nesting depth") from exc
     if (not isinstance(inventory, dict)
             or inventory.get("schema") != "rles.legacy-research-access.v1"
             or not isinstance(inventory.get("entries"), list)

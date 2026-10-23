@@ -1,0 +1,25 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A04 / reject circular JSON data in project research registry",
+  "finding": "The shared registry JSON validator recursively traversed dict/list/tuple values without tracking active containers. Separately, strict persisted JSON decoding leaked RecursionError for sufficiently deep documents instead of returning its stable malformed-data error.",
+  "change": "Serialization validation now uses iterative depth-first traversal and rejects cycles. Strict JSON decoding normalizes decoder RecursionError to ValueError for unsupported nesting depth.",
+  "verification": {
+    "red_reproduction": "A self-referential list triggered recursive key validation; a 20,000-level JSON array triggered Python 3.14 json.decoder RecursionError.",
+    "registry_and_all_package_json_helpers": "tests/test_research_access.py tests/test_strict_json_constants.py with RouteB packages/*/src explicitly first on PYTHONPATH: 146 passed",
+    "ruff": "passed for all seven package json_utils.py modules, access.py, and both test files",
+    "mypy": "passed for all seven package json_utils.py modules and access.py"
+  },
+  "source_sha256": {
+    "packages/research/src/rles_research/access.py": "30DDC55532B8E9D7B406D61D127C2A6D5F557699005F4CD627AE3E0474621780",
+    "packages/compute_runtime/src/rles_compute_runtime/json_utils.py": "B8A6FA1B931E6F302B388FBBBB110C9C38E81AFF5734402AEF9CE0085A1A2B7F",
+    "packages/data/src/rles_data/json_utils.py": "E0378AFEDC16860851CF658D9FA1A1418018912ED5F5332B1A4BD86B9DAC926D",
+    "packages/es_evotorch/src/rles_es_evotorch/json_utils.py": "AF26C8CAE6C3DF76EBBE299ABB43D2D9E769B8D2D3614302DF11EDD9B504ED96",
+    "packages/orchestrator/src/rles_orchestrator/json_utils.py": "52C9CC2B31EED224864F9E95F4C4CD0A2C3AFDB9A9C30487CFF914B13F13D5A2",
+    "packages/research/src/rles_research/json_utils.py": "7F9BE86D5EA103D0420F678FB0C38744716FC639B539E2121F55535158608738",
+    "packages/rl_sb3/src/rles_rl_sb3/json_utils.py": "CD86220801799DB2C3AAAFD1C1DE25661F2DD978AEC91995125FF6F4DA3EE0D0",
+    "packages/world_model/src/rles_world_model/json_utils.py": "38405CE32A97E59FBF8BB8C3CC9A35EDBF47CEE08721EE92D4FBD9866A3ED574",
+    "tests/test_research_access.py": "F7B62D22268620FC2538CDBBBC58EA34CC1BAD9FEB4395F6C6A259028F1ACB39",
+    "tests/test_strict_json_constants.py": "C3302160540FDE2CA6B19293B476227798307BC9E70EE337C27DD4D47C61E790"
+  },
+  "boundary": "The regression used a temporary registry and synthetic cyclic Python objects only; no project registry, market data, account export, or formal evaluation record was accessed."
+}

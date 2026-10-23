@@ -51,18 +51,31 @@ def _transition_sql(transitions: dict[str, set[str]]) -> str:
 
 def _json_dumps(value: object) -> str:
     """Serialize finite JSON without Python's non-string object-key coercion."""
-    def validate_keys(item: object) -> None:
+    active_containers: set[int] = set()
+    pending: list[tuple[object, bool]] = [(value, False)]
+    while pending:
+        item, exiting = pending.pop()
+        if not isinstance(item, (dict, list, tuple)):
+            continue
+        identity = id(item)
+        if exiting:
+            active_containers.remove(identity)
+            continue
+        if identity in active_containers:
+            raise ValueError("JSON data must not contain circular references")
+        active_containers.add(identity)
+        pending.append((item, True))
         if isinstance(item, dict):
             for key, nested in item.items():
                 if not isinstance(key, str):
                     raise ValueError("JSON object keys must be strings")
-                validate_keys(nested)
-        elif isinstance(item, (list, tuple)):
-            for nested in item:
-                validate_keys(nested)
-
-    validate_keys(value)
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+                pending.append((nested, False))
+        else:
+            pending.extend((nested, False) for nested in item)
+    try:
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    except RecursionError as exc:
+        raise ValueError("JSON data exceeds the supported nesting depth") from exc
 
 
 def _hash(value: object) -> str:

@@ -20,5 +20,8 @@ def _reject_json_constant(value: str) -> None:
 
 def loads_unique_json(value: str | bytes | bytearray) -> Any:
     """Parse JSON and reject duplicate keys at every object nesting level."""
-    return json.loads(value, object_pairs_hook=_unique_object,
-                      parse_constant=_reject_json_constant)
+    try:
+        return json.loads(value, object_pairs_hook=_unique_object,
+                          parse_constant=_reject_json_constant)
+    except RecursionError as exc:
+        raise ValueError("JSON data exceeds the supported nesting depth") from exc

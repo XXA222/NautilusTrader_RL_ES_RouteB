@@ -1,0 +1,22 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / normalize excessive nesting at direct JSON input boundaries",
+  "finding": "Binance transfer importers, legacy research inventory parsing, and ResearchArtifactStore verification called json.loads directly. Deep but small inputs leaked RecursionError instead of their MetricsError, DataError, or ArtifactError boundary.",
+  "change": "Both Binance importer paths now map decoder recursion errors to MetricsError; legacy inventory maps them to DataError; artifact integrity and manifest verification map them to ArtifactError.",
+  "verification": {
+    "selector": "combined CLI, Binance cashflow, research access, artifact integrity, strict JSON, transport, and contracts selectors: 258 passed with RouteB package source directories first on PYTHONPATH",
+    "ruff": "passed for all three changed source modules and tests",
+    "mypy": "passed for changed source modules with --follow-imports=silent --ignore-missing-imports"
+  },
+  "source_sha256": {
+    "packages/data/src/rles_data/__main__.py": "42FCF47B2C1B84FCE36BCE986CBE0FE7F1A70B1337B0FE8761D954D93B30A1C3",
+    "packages/research/src/rles_research/binance_cashflows.py": "9E31F6D1FE219A37006820245B7E22F52507C1A0302980D3DE6DCCE612F22A3A",
+    "packages/orchestrator/src/rles_orchestrator/research_access.py": "AAE0BD632916B79F454EFAE723F4962D559A11681FC4379981D28E7F8DED3ACF",
+    "packages/research/src/rles_research/artifacts.py": "CEA5831A4409BA9A0349AA055B06CC8C99793F14855320F10FE3BEB240C748F6",
+    "tests/test_l2_cli.py": "9603810ACA5797F61D30CCDC95F59063C487A0C68A3B60833839B996FB21ABB4",
+    "tests/test_binance_cashflows.py": "AE3E75DCFFD5D15826679C7BE5789E1403249836964FD9E92992A7DE06DFE0E5",
+    "tests/test_research_access.py": "F7B62D22268620FC2538CDBBBC58EA34CC1BAD9FEB4395F6C6A259028F1ACB39",
+    "tests/test_research_artifacts_json_integrity.py": "7D2E390D902937E3A7F6A6113BDC45A9CE1B87579D480A296F5FB6C98B7EADFE"
+  },
+  "boundary": "Only synthetic 20,000-level payloads and temporary artifacts/registry files were used. No Binance account response, project registry, market data, or evaluation record was accessed."
+}

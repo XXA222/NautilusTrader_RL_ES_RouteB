@@ -80,7 +80,7 @@ def import_binance_usdm_transfer_income(
     try:
         document = json.loads(raw_bytes, object_pairs_hook=_unique_json_object,
                                 parse_constant=_reject_json_constant)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
         raise MetricsError("invalid Binance income-history JSON payload") from exc
     if not isinstance(document, list):
         raise MetricsError("Binance income-history payload must be a JSON array")
@@ -210,7 +210,7 @@ def import_binance_usdm_transfer_income_pages(
         try:
             page_rows = json.loads(page.payload, object_pairs_hook=_unique_json_object,
                                     parse_constant=_reject_json_constant)
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
             raise MetricsError("invalid Binance income-history page JSON") from exc
         if not isinstance(page_rows, list):
             raise MetricsError("Binance income-history page must be a JSON array")

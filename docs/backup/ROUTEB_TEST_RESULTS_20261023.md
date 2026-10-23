@@ -1,5 +1,15 @@
 # RouteB test and profile results — 2026-10-23
 
+### A04 registry circular JSON rejection
+
+`tests/test_research_access.py` plus `tests/test_strict_json_constants.py`: **146 passed** with RouteB `packages/*/src` explicitly first on `PYTHONPATH`. Ruff passed for the seven strict JSON helpers, registry access source, and both test files; MyPy passed for all eight changed source modules. Tests use a temporary registry and synthetic cyclic/deep JSON values only.
+
+Compute worker transport follow-up: the combined compute contract, strict JSON, and registry selector passes **164 tests** with RouteB source imports. Ruff and MyPy pass for the changed transport module. The payload regression is synthetic and in-memory.
+
+Contracts JSON follow-up: `tests/test_layer_invariants.py tests/test_contract_config.py`: **39 passed** with RouteB source imports. Ruff and MyPy pass for the two reader modules.
+
+Direct JSON ingress/readers follow-up: Binance transfer, legacy inventory, and artifact integrity selectors: **169 passed**. Ruff and targeted MyPy pass for all three changed modules. Inputs and files were temporary and synthetic.
+
 This note records checks run against the RouteB working copy backed up on
 `backup/routeb-working-copy-20261023`. Detailed machine-readable profile data
 is stored under `docs/audit_evidence/20261023/`.
@@ -69,3 +79,4 @@ WorldModel bundle scaler-manifest validation is recorded in
 `a10_bundle_scaler_string_keys_20261023.json`.
 ResearchArtifactStore L1 manifest key validation is recorded in
 `a10_research_artifact_string_keys_20261023.json`.
+The consolidated JSON boundary selectors, including the CLI deep-manifest regression, pass **258 tests**. Ruff and targeted MyPy pass on the changed sources.

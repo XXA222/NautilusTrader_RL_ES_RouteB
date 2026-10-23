@@ -9,6 +9,7 @@ import pytest
 
 from rles_contracts.dto import DataQualityGrade, MarketEvent
 from rles_contracts.frozen import FrozenFields
+from rles_contracts.errors import parse_error_json
 from rles_contracts.serialization import (
     canonical_bytes,
     from_arrow_ipc,
@@ -31,6 +32,13 @@ from rles_research.wfo import plan_folds
 from rles_research.artifacts import ArtifactStore, ArtifactError
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize("parser", [from_canonical_bytes, parse_error_json])
+def test_contract_json_readers_normalize_excessive_nesting(parser) -> None:
+    payload = ("[" * 20_000 + "0" + "]" * 20_000).encode("ascii")
+    with pytest.raises(ValueError, match="supported nesting depth"):
+        parser(payload)
 
 
 def test_l1_canonical_event_roundtrip_and_future_guard() -> None:

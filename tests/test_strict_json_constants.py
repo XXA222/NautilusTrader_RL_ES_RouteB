@@ -23,3 +23,13 @@ def test_package_strict_json_helpers_reject_nonstandard_constants(loads, constan
 
 def test_data_reader_allows_an_explicit_constant_policy_override() -> None:
     assert data_loads('{"value":NaN}', parse_constant=lambda token: token) == {"value": "NaN"}
+
+
+@pytest.mark.parametrize("loads", [
+    compute_loads, data_loads, es_loads, orchestrator_loads,
+    research_loads, rl_loads, world_model_loads,
+])
+def test_package_strict_json_helpers_normalize_excessive_nesting(loads) -> None:
+    payload = "[" * 20_000 + "0" + "]" * 20_000
+    with pytest.raises(ValueError, match="supported nesting depth"):
+        loads(payload)

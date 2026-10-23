@@ -26,5 +26,8 @@ def loads_unique_json(value: str | bytes | bytearray, *,
     opts in so it can produce a more specific field-validation error.
     """
     parse_constant = float if allow_nonstandard_constants else _reject_json_constant
-    return json.loads(value, object_pairs_hook=_unique_object,
-                      parse_constant=parse_constant)
+    try:
+        return json.loads(value, object_pairs_hook=_unique_object,
+                          parse_constant=parse_constant)
+    except RecursionError as exc:
+        raise ValueError("JSON data exceeds the supported nesting depth") from exc
