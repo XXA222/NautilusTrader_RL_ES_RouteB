@@ -107,7 +107,6 @@ jobs:
       - name: Type check world-model source with its locked dependencies
         env:
           PYTHONPATH: packages/world_model/src:packages/data/src:packages/contracts/src:packages/orchestrator/src:packages/research/src
-          MYPYPATH: .tmp/dreamerv3-route-b
         run: uv run --project packages/world_model/environment --locked --group dev python -m mypy packages/world_model/src/rles_world_model --ignore-missing-imports --cache-dir "$RUNNER_TEMP/mypy-world-model"
       - name: Run B2 and B3 CPU mechanism smokes
         env:
