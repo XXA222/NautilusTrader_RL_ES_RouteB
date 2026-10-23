@@ -227,9 +227,6 @@ def run(plan_path: Path, output: Path) -> dict:
                 "reset_cache_warm_seconds": reset_samples[1]["seconds"],
                 "reset_cold_minus_warm_seconds": max(
                     0.0, reset_samples[0]["seconds"] - reset_samples[1]["seconds"]),
-                "cached_visible_batch_count": len(factory._market_batch_index or ()),
-                "cached_row_frame_count": len(factory._market_batch_groups_by_row),
-                "cached_barrier_frame_count": len(factory._barrier_frames_by_row or ()),
                 "reset_seconds_mean": sum(item["seconds"] for item in reset_samples) / len(reset_samples),
                 "reset_rss_peak_bytes": reset_sampler.peak,
                 "reset_rss_peak_delta_bytes": max(0, reset_sampler.peak - factory_sampler.peak),

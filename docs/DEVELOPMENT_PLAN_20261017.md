@@ -2231,3 +2231,21 @@ After the JSON boundary changes, the fresh 605-file source identity is `f1a5ed8b
 **Verification:** Actual RouteB source packages first on PYTHONPATH, dedicated .venv-win-app, tests/test_compute_runtime_contracts.py — **19 passed**; Ruff passed; MyPy passed (1 file). The 605-file current source manifest was regenerated and verified at identity dedf0097168391c29a321bcd54863b14de650c57f21d84f195115a91788fdfaa. Evidence: docs/audit_evidence/20261023/a10_compute_transport_decode_recursion_20261023.json.
 
 **Boundary / next cursor:** Synthetic JSON only; no market/account/Train/Validation/Test/Holdout data. Hosted CI for the follow-up RouteB-only revision is pending. Continue local A01-A14 source audit.
+## 2026-10-23 — B4 scoped native market-order differential
+
+**Gap:** B4 documented that ImaginedAccount had no Nautilus differential, so even the supported single-position bar market-order path had no direct comparison for fees and realized PnL.
+
+**Change:** Added a long/short synthetic round-trip differential using the real RouteB Nautilus BacktestEngine adapter and ImaginedAccount with matched 0.1% taker fees. The adapter fixture can set a frozen bar price while all existing defaults remain unchanged.
+
+**Verification:** tests/test_nautilus_adapter_smoke.py — **38 passed** including both parity signs; targeted Ruff passed. Entry equity, terminal equity, two native fills, fee-adjusted realized PnL, and final flatness match. Current 605-file source manifest verifies at identity ba7f46696b03e7ce62a7d889a94aec65dddae547fb39aa567e7778cd3f919e28. Evidence: docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json.
+
+**Boundary / next cursor:** Synthetic BTC/USD.SIM only. This closes one market-entry/exit fee/PnL slice, not B4 economics: limit/quote/depth, funding, margin/leverage, liquidation, partial fills, fee tiers, and intrabar sequencing remain unverified. Continue native parity with the next deterministic fill/fee edge case and continue A01-A14 local audit; external research gates remain intact.
+## 2026-10-23 — A10 Hosted MyPy stale reset-profiler references
+
+**Finding:** Hosted run 39905239046 failed in both Linux and Windows workspace MyPy jobs because two old QA reset profilers referenced three private HistoricalEnvironmentFactory cache attributes removed from the current implementation. The independent world-model JAX CPU job passed.
+
+**Fix:** Removed the three obsolete cache metrics from both current profiler scripts. Existing Stage69 reports remain immutable historical evidence; no substitute cache counts are emitted for the current factory.
+
+**Verification:** Exact local workspace MyPy command, using RouteB .venv-win-app, passes for **226 source files**; focused Ruff passes. Current source manifest verifies **605 files**, identity 95c14df7b49ae57d5f953a921f8c083f85c3def5710b473903acfb5604a5eba9. Evidence: docs/audit_evidence/20261023/a10_stale_reset_profiler_mypy_fix_20261023.json.
+
+**Boundary / next cursor:** No research data accessed. The failed Hosted run is recorded as failed, not retroactively passed; push the current fix to the RouteB-only backup and require a fresh Hosted Linux/Windows/JAX run. Continue the next local A01-A14 item while CI runs.

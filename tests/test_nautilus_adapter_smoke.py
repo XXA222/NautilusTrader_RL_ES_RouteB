@@ -30,6 +30,8 @@ from rles_nautilus_adapter.session import EngineBoundaryError, EngineSession, Na
 from rles_contracts.dto import DataQualityGrade, ExecutionPlan, MarketEvent, OrderType, PendingOrderPolicy, TimeInForce
 from rles_contracts.frozen import FrozenFields
 from rles_nautilus_adapter import NativeMarketEventDecoder, NativePlanSubmitter, VisibleBatch
+from rles_world_model.routeb.imagined_account import ImaginedAccount
+from rles_world_model.routeb.market import Candle, MINUTE_NS
 
 pytestmark = pytest.mark.micro_golden
 
@@ -219,20 +221,19 @@ def _native_order_session(submitter: NativePlanSubmitter) -> EngineSession:
     return session
 
 
-def _order_batch(number: int) -> VisibleBatch:
+def _order_batch(number: int, price: str = "100") -> VisibleBatch:
     instrument = _instrument()
     timestamp = number * 60_000_000_000
+    native_price = instrument.make_price(float(price))
     bar = Bar(
         bar_type=BarType.from_str(f"{instrument.id}-1-MINUTE-LAST-EXTERNAL"),
-        open=instrument.make_price(100), high=instrument.make_price(100),
-        low=instrument.make_price(100), close=instrument.make_price(100),
+        open=native_price, high=native_price, low=native_price, close=native_price,
         volume=instrument.make_qty(100), ts_event=timestamp, ts_init=timestamp,
     )
     return VisibleBatch(timestamp, (SimpleNamespace(
         event_id=f"order-bar-{number}", source_hash="a" * 64,
         ts_event_ns=timestamp, ts_init_ns=timestamp, available_at_ns=timestamp,
         native_bar=bar),), True)
-
 
 def _submitter() -> NativePlanSubmitter:
     return NativePlanSubmitter(instrument_id=str(_instrument().id), quantity_unit="BTC",
@@ -345,6 +346,50 @@ def test_native_submitter_executes_market_fees_and_terminal_flatten(entry_qty: s
     finally:
         session.close()
 
+
+@pytest.mark.parametrize("entry_qty", ["1.0000", "-1.0000"])
+def test_b4_imagined_market_round_trip_matches_native_account(entry_qty: str) -> None:
+    session = _native_order_session(_submitter())
+    imagined = ImaginedAccount(initial_equity=100_000, fee_maker=.001, fee_taker=.001)
+
+    def candle(number: int, price: float) -> Candle:
+        close_ns = number * MINUTE_NS
+        return Candle(
+            ts_close_ns=close_ns, available_at_ns=close_ns,
+            instrument=str(_instrument().id), open=price, high=price, low=price,
+            close=price, volume=100,
+        )
+
+    try:
+        initial = session.bootstrap((_order_batch(1),), decision_ts_ns=MINUTE_NS)
+        imagined.on_bar(candle(1, 100))
+        imagined.submit(target_qty=float(entry_qty), decision_ns=MINUTE_NS)
+        native_entry = session.advance(
+            _order_plan("b4-entry", entry_qty), batches=(_order_batch(2),),
+            next_decision_ts_ns=2 * MINUTE_NS,
+        )
+        imagined_entry = imagined.on_bar(candle(2, 100))
+        assert imagined_entry is not None
+        assert len(native_entry.fills) == 1
+        assert native_entry.equity == initial.equity - Decimal("0.10")
+        assert imagined.equity == pytest.approx(float(native_entry.equity))
+
+        imagined.submit(target_qty=0, decision_ns=2 * MINUTE_NS)
+        imagined_exit = imagined.on_bar(candle(3, 110))
+        assert imagined_exit is not None
+        exit_qty = "-1.0000" if float(entry_qty) > 0 else "1.0000"
+        native_terminal = session.drain_and_close(
+            "force_flatten_with_cost", flatten_plan=_order_plan("b4-exit", exit_qty),
+            drain_batches=(_order_batch(3, "110"),), terminal_ts_ns=3 * MINUTE_NS,
+        )
+        assert native_terminal.positions == native_terminal.orders == ()
+        assert len(native_terminal.fills) == 2
+        assert imagined.qty == pytest.approx(0)
+        assert imagined.equity == pytest.approx(float(native_terminal.equity))
+        expected_gross = Decimal("10") if float(entry_qty) > 0 else Decimal("-10")
+        assert native_terminal.equity == initial.equity + expected_gross - Decimal("0.21")
+    finally:
+        session.close()
 
 @pytest.mark.parametrize("sign", [1, -1])
 def test_native_hard_risk_partial_reduction_is_reduce_only(sign: int) -> None:

@@ -340,3 +340,7 @@ The reusable workflow previously accepted arbitrary lane strings while every rea
 
 
 **2026-10-23 M0.1 exponent-boundary follow-up:** exact Decimal helpers now avoid underflowing representable values and clear inherited rounding flags; any unavoidable rounding fails explicitly. The five-file Native/accounting/history selector passes **252 tests against source and 252 against the rebuilt research wheel**, with 18 upstream warnings each. Ruff, target MyPy and diff checks pass; source/wheel module SHA-256 matches. Source manifest: **604 files**, identity `b9d91a34cbc084e995e42ddd6d5aa93135e93b0b73c757051787f93d05030292`. Evidence: docs/audit_evidence/20261023/m01_native_decimal_range_boundaries_20261023.json. Authenticated account source and transfer completeness remain external M0.1 gates.
+
+### A10 current-revision update — 2026-10-23
+
+Hosted run 39905239046 failed the Linux and Windows workspace MyPy step on stale reset-profiler reads of removed factory-cache attributes; its JAX CPU job passed. Those three metric reads are now removed from both profiler scripts, local MyPy passes 226 source files, and fresh Hosted CI for the RouteB-only follow-up is pending. Evidence: docs/audit_evidence/20261023/a10_stale_reset_profiler_mypy_fix_20261023.json.

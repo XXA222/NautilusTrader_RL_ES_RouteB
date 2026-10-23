@@ -575,3 +575,9 @@ Actual RouteB source manifest is v3: Git text line-ending normalization, exact-b
 ### 2026-10-23 current continuation cursor — A10 compute transport decoder
 
 Fixed the remaining small_json round-trip decoder RecursionError leak as ComputeProtocolError. Actual RouteB source selector: 19 passed; Ruff/MyPy passed. Current 605-file source identity: dedf0097168391c29a321bcd54863b14de650c57f21d84f195115a91788fdfaa. Evidence: docs/audit_evidence/20261023/a10_compute_transport_decode_recursion_20261023.json. New Hosted clean CI is pending; continue other implementation-ready A01-A14 engineering issues.
+### 2026-10-23 current continuation cursor — B4 native market fee/PnL slice
+
+A deterministic long/short BTC/USD.SIM round trip now compares B4 ImaginedAccount with the actual Nautilus engine at matched 0.1% taker fees. Adapter suite: 38 passed; both signs match entry and terminal equity and finish flat. Current 605-file source identity ba7f46696b03e7ce62a7d889a94aec65dddae547fb39aa567e7778cd3f919e28. Evidence: docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json. This is a scoped synthetic parity result only. Next: add a deterministic native parity edge case while preserving the explicit B4 non-economic certification boundary.
+### 2026-10-23 current continuation cursor — A10 Hosted MyPy repair
+
+Hosted run 39905239046 failed only at workspace MyPy on Linux and Windows because two stale reset profiler scripts read removed factory-cache attributes; JAX CPU passed. Removed those obsolete output fields without changing historical Stage69 evidence. Actual RouteB workspace MyPy now passes 226 source files and Ruff passes. Current source identity: 95c14df7b49ae57d5f953a921f8c083f85c3def5710b473903acfb5604a5eba9 (605 files). Evidence: docs/audit_evidence/20261023/a10_stale_reset_profiler_mypy_fix_20261023.json. Fresh Hosted CI pending; continue local audit work.

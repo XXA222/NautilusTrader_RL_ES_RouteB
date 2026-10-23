@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-23T05:19:14.790187+00:00",
-  "source_identity_sha256": "dedf0097168391c29a321bcd54863b14de650c57f21d84f195115a91788fdfaa",
+  "generated_at_utc": "2026-10-23T05:29:31.358942+00:00",
+  "source_identity_sha256": "95c14df7b49ae57d5f953a921f8c083f85c3def5710b473903acfb5604a5eba9",
   "scope": {
     "included": [
       ".gitattributes",
@@ -1898,8 +1898,8 @@
     },
     {
       "path": "qa/profile_episode_reset_20261017.py",
-      "size_bytes": 21855,
-      "sha256": "ef58ed5fcc3a6e4506168f8b7a72135edfa0d802f455a8aff353ac560f43b6d6"
+      "size_bytes": 21596,
+      "sha256": "9fc391ccbba9c2c9bc7b54af6678b3097aa0550cf58b764c0e9d0f9faba4bd82"
     },
     {
       "path": "qa/profile_f7_snapshot_container_memory.py",
@@ -1923,8 +1923,8 @@
     },
     {
       "path": "qa/profile_stage69_episode_reset_20261017.py",
-      "size_bytes": 13763,
-      "sha256": "c42efeb9f14292dbb0ae5d32b6ec2b143349942a09c52016b85945b023fe0c7e"
+      "size_bytes": 13528,
+      "sha256": "aadaffea39f268514812c96d26cff589b5567a7b7d8bcb82c7b8a92f6ed00c78"
     },
     {
       "path": "qa/reconcile_native_equity_long_20261017.py",
@@ -2738,8 +2738,8 @@
     },
     {
       "path": "tests/test_nautilus_adapter_smoke.py",
-      "size_bytes": 46243,
-      "sha256": "33945f473048ad4772fb9b6b6348b1d644180d73ad3999a4211c2a41e00e2399"
+      "size_bytes": 48561,
+      "sha256": "3753e3d7bdc8f602e9721f0896f4696f70bc14ef9e913a48fb7b6e686f4dfd14"
     },
     {
       "path": "tests/test_orchestrator_workflow.py",

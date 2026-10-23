@@ -1,0 +1,25 @@
+{
+  "schema": "rles.audit-evidence.v1",
+  "task": "M0.2/A10 hosted MyPy failure remediation: stale reset-profiler cache fields",
+  "status": "LOCAL_FIXED_HOSTED_RERUN_PENDING",
+  "failed_run": 39905239046,
+  "failed_commit": "2511e36adc2bb4bc20d6ba42e5be2f7889b4421c",
+  "failure": "Linux and Windows workspace MyPy each rejected three removed HistoricalEnvironmentFactory cache attributes in two old QA profiler scripts; world-model JAX CPU job passed.",
+  "fix": "Removed obsolete cached_visible_batch_count, cached_row_frame_count, and cached_barrier_frame_count reads from the two current profiler scripts. Historical Stage69 evidence was left unchanged.",
+  "verification": [
+    {
+      "command": "RouteB .venv-win-app: python -m mypy packages qa",
+      "result": "success; no issues in 226 source files"
+    },
+    {
+      "command": "RouteB .venv-win-app: ruff check qa/profile_stage69_episode_reset_20261017.py qa/profile_episode_reset_20261017.py",
+      "result": "passed"
+    },
+    {
+      "command": "python qa/source_manifest.py --output qa/reports/source_manifest_current.json --verify",
+      "result": "verified 605 files; identity 95c14df7b49ae57d5f953a921f8c083f85c3def5710b473903acfb5604a5eba9"
+    }
+  ],
+  "data_access": "No market, account, Train, Validation, Test, or Holdout data accessed.",
+  "remaining": "A new clean Hosted Linux/Windows/JAX run is required for the fix."
+}
