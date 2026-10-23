@@ -651,3 +651,9 @@ Hosted Linux PR run `39909996795` exposed five deep-JSON failures in Binance sin
 The 512-level JSON nesting scanner now also guards Research ArtifactStore integrity/completion/L1 manifests, contract error/canonical-byte readers, and compute transport serialization/decode. Verification was repeated on the resulting source: full PR selector **903 passed, 4 skipped, 644 deselected**; WorldModel suite **234 passed, 14 JAX-only skipped**; focused boundary selector **53 passed**. MyPy (227 files) and Ruff pass. The current 606-file source identity is `75a811a6bd0aa366acdc0077149b2124d3e3bc5ad7b05f25b8ab46079492bb64`. Evidence: `docs/audit_evidence/20261023/a10_cross_version_json_nesting_guard_20261023.json`.
 
 Next: publish this follow-on source to the RouteB-only snapshot branch, inspect the fresh Hosted Linux/Windows/JAX CPU jobs, and continue the source audit. Hosted confirmation and independent provenance/research gates remain pending.
+
+### 2026-10-23 A10 hosted Linux follow-on correction
+
+Fresh run `39920709883` confirmed Linux PR tests **896 passed, 11 skipped**; Windows CPU and isolated JAX CPU jobs passed. Linux WorldModel then exposed one additional deep-JSON difference in `qa/world_model/reconcile_routeb_research_ledger.py`: Python continued to object validation rather than raising `RecursionError`. The reconciler now uses the shared depth preflight before decoding canonical reports. After the fix: focused selector **32 passed**, full PR selector **903 passed, 4 skipped, 644 deselected**, WorldModel suite **234 passed, 14 JAX-only skipped**, MyPy **227 files**, Ruff pass. Updated 606-file source identity: `2a62c2b1df6ff198bcd2283fddd5d488fb04882a359771ec2c3cef86a95e3313`. Evidence file contains both the hosted finding and local repair verification.
+
+Next: publish the repair to the RouteB snapshot branch and verify a fresh full Hosted run.

@@ -4,7 +4,7 @@
   "status": "LOCAL_PASS_HOSTED_CONFIRMATION_PENDING",
   "checkout": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
   "finding": "Five Hosted Linux PR-layer tests exposed version-dependent behavior: stdlib JSON parsing raised RecursionError for deeply nested JSON on one runtime, while other readers reached generic schema errors or accepted the same shape. Existing RecursionError normalization alone did not provide a stable cross-platform boundary.",
-  "fix": "Add a shared rles_contracts.json_utils.ensure_json_nesting_depth scanner with a 512-container limit. It ignores quoted and escaped delimiters. Apply it before parsing in all seven package strict JSON helpers, Binance transfer single/page importers, rles-data manifest CLI, orchestrator legacy inventory reader, Research ArtifactStore integrity/completion/L1 manifests, contract error and canonical-byte readers, and compute worker transport serialization/decode boundaries.",
+  "fix": "Add a shared rles_contracts.json_utils.ensure_json_nesting_depth scanner with a 512-container limit. It ignores quoted and escaped delimiters. Apply it before parsing in all seven package strict JSON helpers, Binance transfer single/page importers, rles-data manifest CLI, orchestrator legacy inventory reader, Research ArtifactStore integrity/completion/L1 manifests, contract error and canonical-byte readers, and compute worker transport serialization/decode boundaries. The hosted follow-on exposed one additional QA reader: qa/world_model/reconcile_routeb_research_ledger.py now preflights canonical report JSON with the same shared guard.",
   "assertions": [
     "All seven package strict readers reject over-limit input before platform-dependent JSON parsing.",
     "Binance single and paged imports preserve MetricsError boundary on over-depth documents.",
@@ -12,38 +12,43 @@
     "The legacy inventory reader returns the stable nesting-depth DataError.",
     "Research ArtifactStore integrity, completion, and L1 manifests reject excessive depth within ArtifactError boundary.",
     "Contract error/canonical readers and compute transport map excess depth to their public error boundary.",
-    "Quoted delimiters and escaped quotes do not count toward structural nesting; depth 512 is accepted and 513 rejected."
+    "Quoted delimiters and escaped quotes do not count toward structural nesting; depth 512 is accepted and 513 rejected.",
+    "The RouteB research-ledger reconciler rejects excessive nesting inside its canonical-report JSON error boundary."
   ],
   "verification": [
     {
-      "command": "RouteB app venv: focused strict JSON + artifact + compute transport selector",
-      "result": "53 passed"
+      "command": "Focused reader/artifact/contracts/compute selector",
+      "result": "53 passed on Windows app venv before reconciler follow-on"
     },
     {
-      "command": "RouteB app venv: pytest -q tests/ -m 'contracts or unit or micro_golden or algorithm_smoke'",
-      "result": "903 passed, 4 skipped, 644 deselected, 46 warnings (rerun after follow-on readers)"
+      "command": "Reconciler deep-report regression + strict JSON constants",
+      "result": "32 passed after reconciler follow-on"
     },
     {
       "command": "RouteB app venv: pytest -q tests/world_model/",
-      "result": "234 passed, 14 JAX-only skipped (JAX unavailable in app venv; rerun after follow-on readers)"
+      "result": "234 passed, 14 JAX-only skipped after reconciler follow-on"
+    },
+    {
+      "command": "RouteB app venv: pytest -q tests/ -m 'contracts or unit or micro_golden or algorithm_smoke'",
+      "result": "903 passed, 4 skipped, 644 deselected, 46 warnings after reconciler follow-on"
     },
     {
       "command": "RouteB app venv: python -m mypy packages qa",
       "result": "Success: no issues found in 227 source files"
     },
     {
-      "command": "RouteB app venv: python -m ruff check changed source and tests",
+      "command": "RouteB app venv: python -m ruff check packages ci qa tests",
       "result": "All checks passed"
     },
     {
-      "command": "RouteB app venv: python qa/source_manifest.py --output qa/reports/source_manifest_current.json --verify",
-      "result": "verified 606 files; identity 75a811a6bd0aa366acdc0077149b2124d3e3bc5ad7b05f25b8ab46079492bb64"
+      "command": "RouteB app venv: qa/source_manifest.py --verify",
+      "result": "verified 606 files; identity 2a62c2b1df6ff198bcd2283fddd5d488fb04882a359771ec2c3cef86a95e3313"
     },
     {
-      "command": "RouteB GitHub Actions run 39916646469 on commit b083cf3",
-      "result": "Hosted confirmation pending; this run predates the follow-on ArtifactStore/contracts/transport reader hardening."
+      "command": "RouteB GitHub Actions run 39920709883 on commit e3c010d",
+      "result": "Windows CPU and isolated JAX CPU jobs passed; Linux PR-layer selector passed with 896 passed/11 skipped/644 deselected, but world-model suite exposed one QA reconciler deep-JSON failure. Fixed by applying the shared preflight to canonical report reads; fresh hosted confirmation on the repair commit is pending."
     }
   ],
   "data_access": "Synthetic malformed JSON inputs only; no market, account, Train, Validation, Test, or Holdout payloads read.",
-  "remaining": "Hosted Linux/Windows/JAX CPU confirmation for the final source identity remains pending. Continue auditing other serialization and reader boundaries."
+  "remaining": "Fresh Hosted Linux/Windows/JAX CPU confirmation for the reconciler follow-on source remains pending. Continue auditing other JSON boundaries and project issues."
 }

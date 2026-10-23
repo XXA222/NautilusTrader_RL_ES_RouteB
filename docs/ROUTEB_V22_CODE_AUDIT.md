@@ -583,3 +583,9 @@ Added a second long/short native differential: after opening one unit, a two-uni
 Follow-up `json.loads()` review found direct readers outside the original failing PR tests. The shared nesting guard now covers Research ArtifactStore integrity/completion/L1 files, contract error/canonical bytes, and compute transport serialization/decode. This gives malformed deep payloads the owning package's stable error boundary instead of allowing platform-dependent recursion behavior.
 
 **Verification:** focused selector **53 passed**; full CI PR selector **903 passed, 4 skipped, 644 deselected**; `tests/world_model/` **234 passed, 14 JAX-only skipped**; MyPy **227 files**, Ruff pass. Source manifest: 606 files, identity `75a811a6bd0aa366acdc0077149b2124d3e3bc5ad7b05f25b8ab46079492bb64`. Evidence: `docs/audit_evidence/20261023/a10_cross_version_json_nesting_guard_20261023.json`. Fresh hosted CI for the final combined source remains pending.
+
+### A10 hosted Linux: reconcile report JSON depth follow-on — 2026-10-23
+
+Run `39920709883` found a second runtime-dependent reader after the original A10 fix: the research-ledger QA reconciler's report parser allowed 20,000-level JSON to reach `_require_dict` on Linux. The shared guard now runs before JSON decoding; the existing canonical-report error boundary wraps the depth rejection consistently. Windows CPU and isolated JAX CPU passed on the preceding snapshot commit.
+
+**Repair verification:** focused selector **32 passed**; full PR selection **903 passed, 4 skipped, 644 deselected**; WorldModel **234 passed, 14 JAX-only skipped**; MyPy **227 files** and Ruff pass. Manifest: 606 files, `2a62c2b1df6ff198bcd2283fddd5d488fb04882a359771ec2c3cef86a95e3313`. New Hosted confirmation after repair is pending.

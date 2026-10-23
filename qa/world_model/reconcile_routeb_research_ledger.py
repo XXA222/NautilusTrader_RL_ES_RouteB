@@ -18,6 +18,7 @@ import sqlite3
 from typing import Any
 from urllib.parse import quote
 
+from rles_contracts.json_utils import ensure_json_nesting_depth
 from rles_data.core import digest, require_hash
 from rles_research.access import ProjectResearchRegistry
 
@@ -45,6 +46,10 @@ def _reject_json_constant(value: str) -> None:
 
 def _strict_json_loads(content: str | bytes | bytearray) -> Any:
     """Parse JSON while rejecting duplicate keys and non-standard constants."""
+    try:
+        ensure_json_nesting_depth(content)
+    except ValueError as exc:
+        raise json.JSONDecodeError("maximum JSON nesting depth exceeded", "", 0) from exc
     try:
         return json.loads(content, object_pairs_hook=_json_object_without_duplicate_keys,
                           parse_constant=_reject_json_constant)
