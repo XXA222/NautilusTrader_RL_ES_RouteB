@@ -436,6 +436,45 @@ def test_b4_imagined_small_notional_fee_precision_matches_native(sign: int) -> N
         session.close()
 
 @pytest.mark.parametrize("sign", [1, -1])
+@pytest.mark.parametrize("fee_rate", [Decimal("0.001"), Decimal("-0.001")])
+@pytest.mark.parametrize(("quantity", "expected_fee"), [
+    ("0.0500", Decimal("0.00")),
+    ("0.1500", Decimal("0.02")),
+    ("0.2500", Decimal("0.02")),
+    ("0.3500", Decimal("0.04")),
+])
+def test_b4_imagined_half_minor_unit_fee_rounding_matches_native(
+    sign: int, fee_rate: Decimal, quantity: str, expected_fee: Decimal,
+) -> None:
+    signed_quantity = str(Decimal(quantity) * sign)
+    expected_signed_fee = expected_fee if fee_rate > 0 else -expected_fee
+    session = _native_order_session(_submitter(), fee_taker=fee_rate)
+    imagined = ImaginedAccount(
+        initial_equity=100_000, fee_maker=.001, fee_taker=float(fee_rate), equity_precision=2,
+    )
+
+    def candle(number: int, price: float) -> Candle:
+        close_ns = number * MINUTE_NS
+        return Candle(close_ns, close_ns, str(_instrument().id), price, price, price, price, 100)
+
+    try:
+        session.bootstrap((_order_batch(1, "95"),), decision_ts_ns=MINUTE_NS)
+        imagined.on_bar(candle(1, 95))
+        imagined.submit(target_qty=float(signed_quantity), decision_ns=MINUTE_NS)
+        native = session.advance(
+            _order_plan(f"b4-half-cent-{sign}-{quantity}", signed_quantity),
+            batches=(_order_batch(2, "100"),), next_decision_ts_ns=2 * MINUTE_NS,
+        )
+        imagined_fill = imagined.on_bar(candle(2, 100))
+
+        assert imagined_fill is not None
+        assert Decimal(native.fills[-1]["commission"].split()[0]) == expected_signed_fee
+        assert Decimal(str(imagined_fill.fee)) == expected_signed_fee
+        assert imagined.equity == pytest.approx(float(native.equity), rel=0, abs=1e-8)
+    finally:
+        session.close()
+
+@pytest.mark.parametrize("sign", [1, -1])
 def test_b4_imagined_market_reversal_matches_native_account(sign: int) -> None:
     fee = Decimal("0.001")
     session = _native_order_session(_submitter(), fee_taker=fee)

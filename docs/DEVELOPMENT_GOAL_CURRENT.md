@@ -611,3 +611,13 @@ Added a second long/short native differential: after opening one unit, a two-uni
 **Verification:** small-notional selector **2 passed**; full adapter suite **44 passed**; adapter + WorldModel selectors **108 passed, 5 JAX-only skipped**; MyPy **226 files**, Ruff pass. The 605-file source identity verifies at `c13c45aa01d472340b8207691b89eb1ce9b56f2cb9472bd0e3eece02b610fb82`. Evidence: `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.
 
 **Boundary:** synthetic BTC/USD with USD precision 2 and bar-market execution. Callers must supply the correct equity currency precision when it differs from the default. Stablecoin and other currency precision should receive independent native parity coverage; depth, partial fill, funding, margin/leverage, liquidation and intrabar sequencing remain open.
+
+### B4 continuation — exact currency tie rounding — 2026-10-23
+
+**Finding:** `ImaginedAccount` computed fees in binary float and then used Python `round`. On USD half-cent values this disagreed with Nautilus `Money`: for example, a `$0.015` fee became `$0.01` in the imagined account but `$0.02` natively; a `$0.005` fee also incorrectly became `$0.01` instead of `$0.00`.
+
+**Fix:** compute fee notional and signed fee from decimal string representations, then quantize per fill to the configured currency precision using `ROUND_HALF_EVEN`. Regression cases cover `$0.005`, `$0.015`, `$0.025`, `$0.035`, long/short, and positive charges/negative rebates.
+
+**Verification:** new native differential selector **16 passed**; adapter + WorldModel selectors **124 passed, 5 JAX-only skipped**; Ruff passed; MyPy passed for **226 files**; the **605-file** source manifest self-verifies as `ff193c572db6f43345c8dc0103a8ffb1067e63f95e93b69617e37c8beaf74bc2`. Detailed evidence: `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.
+
+**Next:** continue exact native parity at supported execution boundaries. B4 quote/depth, partial fills, funding, margin/leverage, liquidation, fee tiers, intrabar sequencing and independent economic certification remain open; external A01–A14 provenance/authorization/Validation gates remain unchanged.

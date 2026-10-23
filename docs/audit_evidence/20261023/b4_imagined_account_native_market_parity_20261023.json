@@ -8,14 +8,16 @@
     "long and short round-trip at 100 to 110 after prior close 95, with +0.1% taker fee and -0.1% taker rebate cases",
     "long and short position reversal: enter 1 unit at 100, reverse by 2 units at 105, flatten at 90",
     "long and short 0.0001 BTC/USD round-trip with USD quote precision 2 and sub-cent commissions",
+    "long and short positive fees and negative rebates at USD half-cent commission boundaries 0.005, 0.015, 0.025, and 0.035",
     "synthetic resting-limit maker rebate: buy limit 99.5 touched intrabar"
   ],
-  "costs": "Native and imagined market paths use matched signed taker rates. Per-fill fees and reported equity use the selected quote-currency precision; USD precision 2 drops a $0.00001 fee to $0.00, while internal cash still accumulates realized PnL. Separate ImaginedAccount maker-touch regression verifies signed maker rebate arithmetic; no native limit-maker differential is claimed.",
+  "costs": "Native and imagined market paths use matched signed taker rates. Fee notional is multiplied using Decimal(str(value)) and quantized per fill to the selected quote-currency precision with ROUND_HALF_EVEN, matching Nautilus Money on exact half-minor-unit cases. USD precision 2 drops a $0.00001 fee to $0.00, while internal cash still accumulates realized PnL. Separate ImaginedAccount maker-touch regression verifies signed maker rebate arithmetic; no native limit-maker differential is claimed.",
   "assertions": [
     "Native and imagined entry equity match for long/short and positive/rebate taker rates.",
     "Native and imagined terminal equity match after realized PnL and both signed taker charges/rebates.",
     "A two-unit reversing market order produces matching net position and fee-adjusted equity in both paths.",
     "USD sub-cent fees round identically per fill while exact realized cash is retained internally.",
+    "Exact half-minor-unit fee values match Nautilus ties-to-even rounding for both position signs and charges/rebates.",
     "Both paths flatten with no open order/position after round trips.",
     "A resting synthetic limit touch is classified maker and credits the configured maker rebate."
   ],
@@ -71,6 +73,26 @@
     {
       "command": "RouteB .venv-win-app: python -m ruff check changed source and tests",
       "result": "All checks passed"
+    },
+    {
+      "command": "RouteB .venv-win-app source PYTHONPATH: pytest tests/test_nautilus_adapter_smoke.py::test_b4_imagined_half_minor_unit_fee_rounding_matches_native",
+      "result": "16 passed in 2.83s"
+    },
+    {
+      "command": "RouteB .venv-win-app source PYTHONPATH: pytest tests/test_nautilus_adapter_smoke.py tests/world_model/test_routeb_additive.py tests/world_model/test_routeb_quality_v2.py",
+      "result": "124 passed, 5 JAX-only skipped (JAX unavailable in app venv)"
+    },
+    {
+      "command": "RouteB .venv-win-app: python -m mypy packages qa",
+      "result": "Success: no issues found in 226 source files"
+    },
+    {
+      "command": "RouteB .venv-win-app: python -m ruff check packages/world_model/src/rles_world_model/routeb/imagined_account.py tests/test_nautilus_adapter_smoke.py",
+      "result": "All checks passed"
+    },
+    {
+      "command": "RouteB .venv-win-app: python qa/source_manifest.py --output qa/reports/source_manifest_current.json --verify",
+      "result": "verified 605 files; identity ff193c572db6f43345c8dc0103a8ffb1067e63f95e93b69617e37c8beaf74bc2"
     }
   ],
   "data_access": "Synthetic deterministic bars only; no market, account, Train, Validation, Test, or Holdout data accessed.",

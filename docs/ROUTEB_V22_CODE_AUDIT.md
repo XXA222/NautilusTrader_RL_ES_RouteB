@@ -525,6 +525,16 @@ Hosted run `39906921812` on commit `19f633038b06b9bd3ed17e33a0fabca0d7f45213` co
 **Verification:** B4 differential **4 passed**; full native adapter suite **40 passed**; adapter + WorldModel source selectors **104 passed, 5 JAX-only skipped** (the app venv has no JAX); MyPy passes **226 source files**, Ruff and `py_compile` pass. The 605-file source manifest verifies at `36352e9e5eae6c115465f15a605b530d560068c3eef7a847f924312735be132f`. Evidence: `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.
 
 **Boundary / next cursor:** synthetic BTC/USD.SIM bar fills only. Limit maker behavior is covered only by the simplified ImaginedAccount model; quote/depth, partial fills, funding, margin/leverage, liquidation, fee tiers and intrabar sequencing remain open. Continue B4 native parity and the locally actionable A01–A14 audit; external authorization/provenance and independent Validation gates remain open.
+
+### B4 Native fee minor-unit tie rounding — 2026-10-23
+
+**Audit finding:** a native BTC/USD.SIM check using a 0.1% rate produced USD commission values `$0.00`, `$0.02`, `$0.02`, `$0.04` for exact fee amounts `$0.005`, `$0.015`, `$0.025`, `$0.035`. The existing float `round()` path returned `$0.01`, `$0.01`, `$0.03`, `$0.04`; the first three diverged from Nautilus currency rounding.
+
+**Resolution:** B4 fee notional and signed rate are converted from their decimal string representations, multiplied under a fixed high-precision Decimal context, and quantized per fill with `ROUND_HALF_EVEN` to `equity_precision`. The regression compares real native engine commissions and equity for long and short, positive fees and rebates, across all four tie boundaries.
+
+**Evidence:** 16 boundary cases pass; combined adapter/WorldModel suite is **124 passed, 5 JAX-only skipped**; MyPy passes 226 files; Ruff passes; current source manifest verifies 605 files with identity `ff193c572db6f43345c8dc0103a8ffb1067e63f95e93b69617e37c8beaf74bc2`. See `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.
+
+**Remaining boundary:** this does not establish Native limit-fill parity or quote/depth, partial-fill, funding, margin/leverage, liquidation, historical fee tier, intrabar sequencing, or economic certification. Continue those B4 cases alongside locally actionable A01–A14 audit findings; externally authorized data/validation gates remain separate.
 ### B4 native market-position reversal — 2026-10-23
 
 Added a second long/short native differential: after opening one unit, a two-unit opposing market order reverses the NETTING position, then a final market order flattens it. At each stage, `ImaginedAccount` and Nautilus match on net quantity and equity after realized PnL and 0.1% taker fees; the terminal native snapshot is flat. The test accounts for the adapter returning cumulative fill history and asserts the latest reversal fill side and quantity. The reversal selector passes **2 tests**; full adapter suite passes **42 tests**; adapter + WorldModel source selectors pass **106 tests with 5 JAX-only skips**. MyPy passes 226 files, Ruff passes, and the current 605-file source identity is `b7323e51f4c30d82c3c4c2f937c2070bae884b8c1490f7c6356a21b3e042ff64`. Evidence remains in `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.

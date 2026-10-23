@@ -6,6 +6,7 @@ certification remains BLOCKED until native differential testing passes.
 """
 from __future__ import annotations
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_HALF_EVEN, localcontext
 import math
 from .market import Candle,MINUTE_NS
 
@@ -81,7 +82,15 @@ class ImaginedAccount:
     def _apply_fill(self,order:Pending,bar:Candle,price:float,*,maker:bool)->Fill:
         old=self.qty
         delta=order.signed_qty
-        fee=round(abs(delta*price)*(self.maker if maker else self.taker),self.equity_precision)
+        rate = self.maker if maker else self.taker
+        quantum = Decimal(1).scaleb(-self.equity_precision)
+        with localcontext() as context:
+            context.prec = 64
+            fee_decimal = (Decimal(str(abs(delta))) * Decimal(str(price)) * Decimal(str(rate))).quantize(
+                quantum,
+                rounding=ROUND_HALF_EVEN,
+            )
+        fee = float(fee_decimal)
         # Realized PNL on reduction or reversal, never count both realized and MTM.
         if old and old*delta<0:
             closed=min(abs(old),abs(delta))

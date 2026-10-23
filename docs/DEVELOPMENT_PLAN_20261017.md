@@ -2279,3 +2279,13 @@ Added a second long/short native differential: after opening one unit, a two-uni
 **Verification:** small-notional selector **2 passed**; full adapter suite **44 passed**; adapter + WorldModel selectors **108 passed, 5 JAX-only skipped**; MyPy **226 files**, Ruff pass. The 605-file source identity verifies at `c13c45aa01d472340b8207691b89eb1ce9b56f2cb9472bd0e3eece02b610fb82`. Evidence: `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.
 
 **Boundary:** synthetic BTC/USD with USD precision 2 and bar-market execution. Callers must supply the correct equity currency precision when it differs from the default. Stablecoin and other currency precision should receive independent native parity coverage; depth, partial fill, funding, margin/leverage, liquidation and intrabar sequencing remain open.
+
+### B4 Native currency tie-rounding parity — 2026-10-23
+
+**Finding:** `ImaginedAccount` calculated fee notional in binary float and applied Python `round`. Native Nautilus Money uses currency-precision ties-to-even behavior; the float path charged `$0.01` for a `$0.005` notional fee and only `$0.01` for `$0.015`, while Native reported `$0.00` and `$0.02` respectively.
+
+**Fix:** calculate fee notional with `Decimal(str(quantity)) * Decimal(str(price)) * Decimal(str(rate))`, then quantize each fill to `equity_precision` with `ROUND_HALF_EVEN`. Keep the explicit quote-currency precision contract and full-precision realized cash behavior.
+
+**Verification:** the half-minor-unit native differential covers four tie values × long/short × charge/rebate and passes **16 tests**. Adapter + WorldModel selectors: **124 passed, 5 JAX-only skipped**. Ruff passes; MyPy reports no issues in **226 files**. The 605-file source manifest verifies at `ff193c572db6f43345c8dc0103a8ffb1067e63f95e93b69617e37c8beaf74bc2`. Evidence: `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.
+
+**Boundary / next cursor:** synthetic BTC/USD.SIM and USD precision 2. This closes a fee-rounding edge only. Native limit, quote/depth, partial-fill, funding, margin/leverage, liquidation, fee-tier, intrabar sequencing and independent economic certification remain open. Continue A01–A14 implementation-ready audit work and other B4 native differential cases; external provenance, authorization and independent Validation gates remain closed.
