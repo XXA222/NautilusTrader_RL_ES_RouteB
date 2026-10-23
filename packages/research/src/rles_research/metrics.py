@@ -4,9 +4,11 @@ from __future__ import annotations
 import math
 import statistics
 import heapq
+from itertools import islice
+from pathlib import Path
 import struct
 import tempfile
-from collections.abc import Iterable, Iterator, Sequence, Mapping
+from collections.abc import Generator, Iterable, Iterator, Sequence, Mapping
 from typing import overload
 from .numeric import finite_real
 
@@ -41,6 +43,9 @@ class _DiskBackedFloatSequence(Sequence[float]):
 
     def __len__(self) -> int:
         return self._count
+
+    def close(self) -> None:
+        self._file.close()
 
     def __iter__(self) -> Iterator[float]:
         self._flush_pending()
@@ -84,6 +89,133 @@ def _number(v, name: str) -> float:
     return result
 
 
+_TAIL_SORT_CHUNK = 8_192
+_TAIL_MERGE_FAN_IN = 32
+
+
+def _iter_float_file(path: Path) -> Generator[float, None, None]:
+    with path.open("rb") as source:
+        while block := source.read(_DiskBackedFloatSequence._CHUNK_BYTES):
+            if len(block) % _DiskBackedFloatSequence._FLOAT_BYTES:
+                raise MetricsError("temporary return run has a truncated float")
+            yield from (item[0] for item in struct.iter_unpack("!d", block))
+
+
+def _write_float_block(target, values: Sequence[float]) -> None:
+    if values:
+        target.write(struct.pack(f"!{len(values)}d", *values))
+
+
+def _write_sorted_run(path: Path, values: list[float], limit: int) -> int:
+    values.sort()
+    selected = values[:limit]
+    with path.open("wb") as target:
+        _write_float_block(target, selected)
+    return len(selected)
+
+
+def _merge_float_runs(runs: Sequence[tuple[Path, int]], output: Path,
+                      limit: int) -> int:
+    ordered = sorted(runs, key=lambda run: run[1])
+    iterators = [_iter_float_file(path) for path, _ in ordered]
+    written = 0
+    block: list[float] = []
+    try:
+        merged = heapq.merge(*iterators)
+        with output.open("wb") as target:
+            for value in islice(merged, limit):
+                block.append(value)
+                written += 1
+                if len(block) == _TAIL_SORT_CHUNK:
+                    _write_float_block(target, block)
+                    block.clear()
+            _write_float_block(target, block)
+    finally:
+        for iterator in iterators:
+            iterator.close()
+    return written
+
+
+def _disk_backed_tail(returns: _DiskBackedFloatSequence, count: int) -> tuple[float, float]:
+    """Select exact VaR/CVaR with fixed-size sorted runs and bounded fan-in."""
+    with tempfile.TemporaryDirectory(prefix="rles-vartail-") as directory:
+        root = Path(directory)
+        levels: list[list[tuple[Path, int]]] = []
+        next_run = 0
+
+        def new_path() -> Path:
+            nonlocal next_run
+            path = root / f"run-{next_run:08d}.bin"
+            next_run += 1
+            return path
+
+        def add_run(path: Path, start: int) -> None:
+            level = 0
+            run = (path, start)
+            while True:
+                if level == len(levels):
+                    levels.append([])
+                levels[level].append(run)
+                if len(levels[level]) < _TAIL_MERGE_FAN_IN:
+                    return
+                group = levels[level]
+                merged_path = new_path()
+                _merge_float_runs(group, merged_path, count)
+                for old_path, _ in group:
+                    old_path.unlink()
+                run = (merged_path, group[0][1])
+                levels[level] = []
+                level += 1
+
+        chunk: list[float] = []
+        chunk_start = 0
+        position = 0
+        for value in returns:
+            if not chunk:
+                chunk_start = position
+            chunk.append(value)
+            position += 1
+            if len(chunk) == _TAIL_SORT_CHUNK:
+                add_run(_write_chunk(new_path(), chunk, count), chunk_start)
+                chunk = []
+        if chunk:
+            add_run(_write_chunk(new_path(), chunk, count), chunk_start)
+
+        runs = sorted((run for level in levels for run in level), key=lambda run: run[1])
+        while len(runs) > 1:
+            merged_runs: list[tuple[Path, int]] = []
+            for start in range(0, len(runs), _TAIL_MERGE_FAN_IN):
+                group = runs[start:start + _TAIL_MERGE_FAN_IN]
+                if len(group) == 1:
+                    merged_runs.append(group[0])
+                    continue
+                output = new_path()
+                _merge_float_runs(group, output, count)
+                for old_path, _ in group:
+                    old_path.unlink()
+                merged_runs.append((output, group[0][1]))
+            runs = merged_runs
+
+        final_path, _ = runs[0]
+        last: float | None = None
+
+        def selected_values() -> Iterator[float]:
+            nonlocal last
+            for value in _iter_float_file(final_path):
+                last = value
+                yield value
+
+        tail_mean = statistics.fmean(selected_values())
+        if last is None or position < count:
+            raise MetricsError("return tail selection produced an incomplete tail")
+        return last, tail_mean
+
+
+def _write_chunk(path: Path, values: list[float], limit: int) -> Path:
+    _write_sorted_run(path, values, limit)
+    return path
+
+
 def series_metrics(returns: Sequence[float], *, periods_per_year: float,
                    risk_free_per_period: float = 0.0, target_per_period: float = 0.0,
                    tail_quantile: float = 0.05) -> dict[str, object]:
@@ -121,7 +253,12 @@ def series_metrics(returns: Sequence[float], *, periods_per_year: float,
     sharpe = ((mean - risk_free_per_period) / sd
               * math.sqrt(periods_per_year) if sd > 0 else None)
     count = max(1, math.ceil(len(r) * tail_quantile))
-    worst = heapq.nsmallest(count, r)
+    if isinstance(r, _DiskBackedFloatSequence):
+        threshold, tail_mean = _disk_backed_tail(r, count)
+    else:
+        worst = heapq.nsmallest(count, r)
+        threshold = worst[-1]
+        tail_mean = statistics.fmean(worst)
     return {
         'net_return': path - 1,
         'max_drawdown': dd,
@@ -131,8 +268,8 @@ def series_metrics(returns: Sequence[float], *, periods_per_year: float,
         'std_period_return': sd,
         'undefined_metrics': [metric for metric, val in (('sharpe', sharpe), ('sortino', sortino))
                               if val is None],
-        'value_at_risk': -worst[-1],
-        'conditional_value_at_risk': -statistics.fmean(worst),
+        'value_at_risk': -threshold,
+        'conditional_value_at_risk': -tail_mean,
         'observations': len(r),
     }
 

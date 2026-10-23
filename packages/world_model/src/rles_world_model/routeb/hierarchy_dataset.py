@@ -36,6 +36,89 @@ class HierarchyTensors:
     minute_available_at: np.ndarray  # [T]
     hour_available_at: np.ndarray    # [H]
     day_available_at: np.ndarray     # [D]
+    hour_close_at: np.ndarray        # [H]
+    day_close_at: np.ndarray         # [D]
+
+    def __post_init__(self) -> None:
+        if (self.minute_x.ndim != 3 or self.minute_x.shape[0] != 1
+                or self.minute_x.shape[2] != 5 or self.hour_x.ndim != 3
+                or self.hour_x.shape[0] != 1 or self.hour_x.shape[2] != 5
+                or self.day_x.ndim != 3 or self.day_x.shape[0] != 1
+                or self.day_x.shape[2] != 5 or self.minute_x.shape[1] < 3
+                or self.hour_x.shape[1] < 2 or self.day_x.shape[1] < 2):
+            raise ValueError('hierarchy features need one nonempty [time,5] sequence per scale')
+        if any(not np.isfinite(x).all() for x in (self.minute_x,self.hour_x,self.day_x)):
+            raise ValueError('hierarchy features must be finite')
+        t, h, d = self.minute_x.shape[1], self.hour_x.shape[1], self.day_x.shape[1]
+        if (self.hour_index.shape != (1,t) or self.day_index.shape != (1,t)
+                or self.minute_mask.shape != (1,t) or self.hour_mask.shape != (1,h)
+                or self.day_mask.shape != (1,d)
+                or self.minute_available_at.shape != (t,)
+                or self.hour_available_at.shape != (h,)
+                or self.day_available_at.shape != (d,)
+                or self.hour_close_at.shape != (h,)
+                or self.day_close_at.shape != (d,)):
+            raise ValueError('hierarchy index, mask and availability shapes differ')
+        if (self.hour_index.dtype.kind not in 'iu' or self.day_index.dtype.kind not in 'iu'
+                or any(x.dtype.kind not in 'iu' for x in (
+                    self.minute_available_at,self.hour_available_at,self.day_available_at,
+                    self.hour_close_at,self.day_close_at))):
+            raise ValueError('hierarchy indices and availability timestamps must be integers')
+        if (any(not np.isfinite(x).all() or np.any((x < 0) | (x > 1))
+                for x in (self.minute_mask,self.hour_mask,self.day_mask))
+                or (self.hour_index < -1).any() or (self.hour_index >= h).any()
+                or (self.day_index < -1).any() or (self.day_index >= d).any()):
+            raise ValueError('hierarchy masks or visible-state indices are invalid')
+        if (np.any(np.diff(self.minute_available_at) < 0)
+                or np.any(np.diff(self.hour_available_at) < 0)
+                or np.any(np.diff(self.day_available_at) < 0)
+                or np.any(np.diff(self.hour_close_at) <= 0)
+                or np.any(np.diff(self.day_close_at) <= 0)):
+            raise ValueError('hierarchy availability must be monotonic')
+        if (np.any(self.hour_close_at <= 0) or np.any(self.day_close_at <= 0)
+                or np.any(self.hour_available_at < self.hour_close_at)
+                or np.any(self.day_available_at < self.day_close_at)):
+            raise ValueError('slow-bar availability cannot precede its UTC close')
+        for indices, availability, name in (
+                (self.hour_index[0],self.hour_available_at,'hour'),
+                (self.day_index[0],self.day_available_at,'day')):
+            visible = indices >= 0
+            if visible.any() and np.any(availability[indices[visible]]
+                                         > self.minute_available_at[visible]):
+                raise ValueError(f'{name} hierarchy state is not yet available')
+
+
+@dataclass(frozen=True, slots=True)
+class HierarchyWindowBatch:
+    """Minute windows with causal absolute indices into the Train slow streams."""
+
+    minute_x: np.ndarray       # [N,L,5]
+    hour_index: np.ndarray     # [N,L]
+    day_index: np.ndarray      # [N,L]
+    minute_mask: np.ndarray    # [N,L]
+    reset: np.ndarray          # [N,L]
+    starts: np.ndarray         # [N]
+
+    def __post_init__(self) -> None:
+        if (self.minute_x.ndim != 3 or self.minute_x.shape[0] < 1
+                or self.minute_x.shape[1] < 3 or self.minute_x.shape[2] != 5):
+            raise ValueError('hierarchy windows require finite [N,L,5] features')
+        n, length, _ = self.minute_x.shape
+        if (not np.isfinite(self.minute_x).all()
+                or self.hour_index.shape != (n,length)
+                or self.day_index.shape != (n,length)
+                or self.minute_mask.shape != (n,length)
+                or self.reset.shape != (n,length)
+                or self.starts.shape != (n,)
+                or self.hour_index.dtype.kind not in 'iu' or self.day_index.dtype.kind not in 'iu'
+                or self.starts.dtype.kind not in 'iu'
+                or self.reset.dtype != np.dtype('bool')
+                or np.any(~self.reset[:,0]) or np.any(self.reset[:,1:])
+                or (self.hour_index < -1).any() or (self.day_index < -1).any()
+                or not np.isfinite(self.minute_mask).all()
+                or np.any((self.minute_mask < 0) | (self.minute_mask > 1))
+                or np.any(self.minute_mask[:,1:].sum(axis=1) <= 0)):
+            raise ValueError('invalid hierarchy window indices, masks or reset boundaries')
 
 
 def _bucket_candles(buckets: tuple[ClosedBucket, ...]) -> tuple[Candle, ...]:
@@ -108,4 +191,45 @@ def build_train_hierarchy(replay: MarketSequence, *, burn_in: int,
         decisions,
         np.asarray(plan.hour_available_at, dtype=np.int64),
         np.asarray(plan.day_available_at, dtype=np.int64),
+        np.asarray([bar.ts_close_ns for bar in hourly], dtype=np.int64),
+        np.asarray([bar.ts_close_ns for bar in daily], dtype=np.int64),
     ), scalers
+
+
+def make_hierarchy_windows(tensors: HierarchyTensors, *, length: int,
+                           burn_in: int, stride: int) -> HierarchyWindowBatch:
+    """Window only minute inputs; slow streams remain shared and causally indexed."""
+    total = tensors.minute_x.shape[1]
+    if (type(length) is not int or type(burn_in) is not int or type(stride) is not int
+            or length < 3 or not 1 <= burn_in < length - 1 or stride < 1):
+        raise ValueError('invalid hierarchy window length, burn-in or stride')
+    if total < length:
+        raise ValueError('Train hierarchy is shorter than one requested minute window')
+    features: list[np.ndarray] = []
+    hours: list[np.ndarray] = []
+    days: list[np.ndarray] = []
+    masks: list[np.ndarray] = []
+    starts: list[int] = []
+    for start in range(0,total-length+1,stride):
+        end = start + length
+        mask = np.array(tensors.minute_mask[0,start:end],dtype=np.float32,copy=True)
+        mask[:burn_in] = 0.0
+        if not np.any(mask[1:]):
+            continue
+        features.append(tensors.minute_x[0,start:end])
+        hours.append(tensors.hour_index[0,start:end])
+        days.append(tensors.day_index[0,start:end])
+        masks.append(mask)
+        starts.append(start)
+    if not starts:
+        raise ValueError('no hierarchy windows contain scored minute targets')
+    reset = np.zeros((len(starts),length),dtype=np.bool_)
+    reset[:,0] = True
+    return HierarchyWindowBatch(
+        np.asarray(features,dtype=np.float32),
+        np.asarray(hours,dtype=np.int32),
+        np.asarray(days,dtype=np.int32),
+        np.asarray(masks,dtype=np.float32),
+        reset,
+        np.asarray(starts,dtype=np.int64),
+    )

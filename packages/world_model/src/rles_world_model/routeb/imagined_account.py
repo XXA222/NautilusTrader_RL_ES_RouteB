@@ -54,6 +54,8 @@ class ImaginedAccount:
         self.maker=float(fee_maker);self.taker=float(fee_taker)
         self.last_close:float|None=None
         self.last_bar_ns:int|None=None
+        self.last_available_ns:int|None=None
+        self.instrument:str|None=None
         self.fills:list[Fill]=[]
 
     def submit(self,*,target_qty:float,decision_ns:int,kind:str="market",
@@ -65,8 +67,8 @@ class ImaginedAccount:
             or decision_ns%MINUTE_NS!=0
             or type(delay_ns) is not int or delay_ns<0):
             raise ValueError("invalid target/risk limit")
-        if self.last_bar_ns is not None and decision_ns<self.last_bar_ns:
-            raise ValueError('cannot submit a historical order after consuming later bars')
+        if self.last_available_ns is not None and decision_ns<self.last_available_ns:
+            raise ValueError('cannot submit a historical order before the last bar was available')
         delta=target_qty-self.qty
         if abs(delta)<1e-12:
             return
@@ -100,9 +102,15 @@ class ImaginedAccount:
         return fill
 
     def on_bar(self,bar:Candle)->Fill|None:
+        if self.instrument is not None and bar.instrument!=self.instrument:
+            raise ValueError('imagined account cannot switch instruments during replay')
         if self.last_bar_ns is not None and bar.ts_close_ns != self.last_bar_ns+MINUTE_NS:
             raise ValueError('imagined bar replay must be strictly increasing and contiguous')
+        if self.last_available_ns is not None and bar.available_at_ns<self.last_available_ns:
+            raise ValueError('imagined bar availability must be monotonic')
+        self.instrument=bar.instrument
         self.last_bar_ns=bar.ts_close_ns
+        self.last_available_ns=bar.available_at_ns
         order=self.pending
         result=None
         if order is not None:

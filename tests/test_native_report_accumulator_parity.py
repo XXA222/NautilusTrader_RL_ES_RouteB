@@ -77,6 +77,37 @@ def test_online_native_summary_matches_batch_report_with_duplicate_barrier_and_c
     assert actual["liquidations_observed"] is True
 
 
+def test_online_native_summary_matches_batch_when_liquidation_history_is_unavailable():
+    snapshots = (
+        _snapshot(1, "1000"),
+        _snapshot(11, "1000", capability=False),
+        _snapshot(21, "1000"),
+    )
+    streamed = NativeReportAccumulator(
+        sample_interval_ns=10,
+        max_return_count=len(snapshots) - 1,
+        contract_multiplier=Decimal(1),
+        linear_equity_rounding=Decimal(0),
+    )
+    for snapshot in snapshots:
+        streamed.add_snapshot(snapshot, {})
+
+    actual = streamed.finish()
+    expected = native_report(
+        snapshots,
+        fill_references={},
+        sample_interval_ns=10,
+        include_account_rows=False,
+        contract_multiplier=Decimal(1),
+        linear_equity_rounding=Decimal(0),
+    )
+
+    assert actual == expected
+    assert actual["liquidations"] is None
+    assert actual["liquidations_observed"] is False
+    assert actual["liquidation_orders"] is None
+
+
 def test_online_native_summary_rejects_cashflow_at_ambiguous_duplicate_barrier():
     snapshots = (
         _snapshot(1, "1000"),

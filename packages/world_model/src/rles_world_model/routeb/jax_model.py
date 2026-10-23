@@ -4,8 +4,8 @@ Run ONLY inside packages/world_model/environment (Python 3.12). Model learns
 current reconstruction, next-bar conditional distribution and Dreamer RSSM KL.
 Market actions are constant zero even when trading actions change.
 
-Training is single-scale B2. The B3 hierarchy plan is a separate, currently
-untrained component and MUST NOT be advertised as a learned 3-scale model.
+The B3 trainer lives in ``jax_hierarchy_train`` and has its own provenance-
+bound checkpoints. Do not infer B3 learning quality from synthetic smoke runs.
 """
 from __future__ import annotations
 from dataclasses import dataclass

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import rles_research.metrics as research_metrics
 from rles_research.metrics import (
     AccountFactsAccumulator,
     MetricsError,
@@ -114,6 +115,27 @@ def test_disk_backed_return_metrics_match_in_memory_series_exactly() -> None:
     expected = series_metrics(replayed_returns, periods_per_year=365)
     result = accumulator.result(periods_per_year=365)
     assert {key: result[key] for key in expected} == expected
+
+
+def test_disk_backed_tail_selection_avoids_fraction_sized_heap(monkeypatch) -> None:
+    values = [-0.4, -0.3, -0.0, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    expected = series_metrics(values, periods_per_year=1, tail_quantile=0.3)
+    returns = research_metrics._DiskBackedFloatSequence()
+    try:
+        for value in values:
+            returns.append(value)
+
+        monkeypatch.setattr(research_metrics, "_TAIL_SORT_CHUNK", 2)
+        monkeypatch.setattr(research_metrics, "_TAIL_MERGE_FAN_IN", 2)
+
+        def reject_fraction_sized_heap(*_args, **_kwargs):
+            pytest.fail("disk-backed tail selection must not call heapq.nsmallest")
+
+        monkeypatch.setattr(research_metrics.heapq, "nsmallest", reject_fraction_sized_heap)
+        actual = series_metrics(returns, periods_per_year=1, tail_quantile=0.3)
+        assert actual == expected
+    finally:
+        returns.close()
 
 
 def test_account_return_limit_rejects_before_advancing_accumulator_state() -> None:

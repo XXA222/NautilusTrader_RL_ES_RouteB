@@ -275,6 +275,41 @@ def test_account_rejects_repeated_bars_and_backdated_order():
         acc.submit(target_qty=1, decision_ns=bb[0].ts_close_ns-MINUTE_NS)
 
 
+def test_imagined_account_uses_bar_availability_as_the_order_decision_floor():
+    delay = 5_000_000_000
+    bars = tuple(Candle(i * MINUTE_NS, i * MINUTE_NS + delay, 'ETH-PERP',
+                        100.0, 101.0, 99.0, 100.5, 10.0)
+                 for i in range(1, 4))
+    account = ImaginedAccount(initial_equity=1_000, fee_maker=0, fee_taker=0.001)
+    account.on_bar(bars[0])
+
+    with pytest.raises(ValueError, match='historical'):
+        account.submit(target_qty=1, decision_ns=bars[0].ts_close_ns)
+
+    account.submit(target_qty=1, decision_ns=2 * MINUTE_NS)
+    assert account.on_bar(bars[1]) is None
+    fill = account.on_bar(bars[2])
+    assert fill is not None and fill.ts_close_ns == 3 * MINUTE_NS
+    assert account.qty == 1
+
+
+def test_imagined_account_locks_instrument_and_rejects_availability_regression():
+    first = Candle(MINUTE_NS, 3 * MINUTE_NS, 'ETH-PERP',
+                   100.0, 101.0, 99.0, 100.5, 10.0)
+    other = Candle(2 * MINUTE_NS, 3 * MINUTE_NS, 'BTC-PERP',
+                   100.0, 101.0, 99.0, 100.5, 10.0)
+    late = Candle(2 * MINUTE_NS, 2 * MINUTE_NS, 'ETH-PERP',
+                  100.0, 101.0, 99.0, 100.5, 10.0)
+    account = ImaginedAccount(initial_equity=1_000, fee_maker=0, fee_taker=0.001)
+    account.on_bar(first)
+
+    with pytest.raises(ValueError, match='switch instruments'):
+        account.on_bar(other)
+    with pytest.raises(ValueError, match='availability must be monotonic'):
+        account.on_bar(late)
+    assert account.last_bar_ns == MINUTE_NS
+
+
 def test_limit_marketable_open_is_charged_taker_fee():
     acc = ImaginedAccount(initial_equity=1000, fee_maker=.0001, fee_taker=.001)
     bb = candles(4)

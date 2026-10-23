@@ -1,0 +1,26 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "F7 disk-backed exact VaR/CVaR tail selection",
+  "finding": "Disk-backed returns avoided retaining the full return sequence in Python memory, but heapq.nsmallest still allocated Python objects proportional to the selected tail count.",
+  "change": "Disk-backed metrics sort fixed-size chunks to temporary runs and merge with bounded fan-in, retaining the exact lowest K values for VaR and CVaR. The in-memory list API retains its existing selection behavior.",
+  "verification": {
+    "focused_tests": "91 passed, 1 deselected",
+    "deselected_test": "test_native_money_accepts_nautilus_decimal_amount_serialization (compiled nautilus_trader.model is unavailable in this workspace interpreter)",
+    "liquidation_capability_parity_regression": "passed",
+    "ruff": "passed",
+    "mypy": "passed for metrics.py and native_metrics.py",
+    "synthetic_differential": {
+      "return_count": 1000000,
+      "tail_fraction": 0.05,
+      "tail_count": 50000,
+      "var_threshold_equal_to_heap_reference": true,
+      "cvar_equal_to_heap_reference": true,
+      "external_merge_tracemalloc_peak_bytes": 1275986,
+      "heap_tracemalloc_peak_bytes": 6500920,
+      "peak_reduction_fraction": 0.8037,
+      "external_merge_seconds_with_tracemalloc": 2.378,
+      "heap_seconds_with_tracemalloc": 0.518
+    }
+  },
+  "scope": "Synthetic returns only. The memory and elapsed-time result is a local Python 3.12 tracemalloc microbenchmark, not a full historical Train profile or production latency guarantee. No market, account, Validation, Test, or Holdout payload was accessed. Native liquidation/history integration tests require the RouteB Nautilus runtime, which is unavailable in this workspace interpreter."
+}
