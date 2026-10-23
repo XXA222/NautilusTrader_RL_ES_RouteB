@@ -2104,3 +2104,13 @@ Next code cursor: audit duplicate event-reference indexes and Native session/cac
 Re-ran the isolated 90-day synthetic Native profile after the event-index and cashflow-retention changes. Online-summary and lean modes each processed **129,597 decision steps** and produced the same full trajectory SHA-256, `4954c0cea6125814c08ee7b3e3aacd0397d24f6b84da7e306f410bb2eea5420f`. The online sink consumed 129,600 snapshots and retained the same Native metrics digest, `0c9bb2fbdbd241a24d05c4c9b6a3e864bf37db3ea5e78dc71eb9785ea9e50a45`. Sampled replay RSS deltas were 191,860,736 bytes online and 191,827,968 bytes lean; elapsed time was 90.43s / 80.55s. The 389,258-event synthetic source build peaked at 620,249,088 bytes and ended at 583,249,920 bytes. Source hashes in the evidence all match. This verifies current-source trajectory/report parity; the close RSS pair does not establish a memory reduction.
 
 Evidence: `docs/audit_evidence/20261023/f7_current_source_native_growth_20261023.json`. This remains a synthetic profile; full-history Native growth and authorized real-history Train evidence remain open.
+
+## 2026-10-23 — F7 release finalized Native accumulator indexes
+
+**Finding:** after a successful report was assembled, the live `NativeReportAccumulator` still retained fill/Funding de-duplication maps, liquidation identity/filled-quantity maps, and the cashflow timestamp-alignment map. The report already held the detached output facts, and the orchestrator still needs the final snapshot, so index tables could be released while preserving both public outputs.
+
+**Fix:** clear those five internal indexes only at the end of successful report finalization. Failed reports retain their state for diagnosis; the returned report and `final_snapshot` API remain intact. Added a regression asserting the complete external-cashflow report survives while the indexes are empty.
+
+**Verification:** Native accumulator parity plus research metric source selector: **131 passed**; Ruff and targeted MyPy pass. In a synthetic 10,000-cashflow run, the timestamp-alignment dict went from 10,000 entries / 294,992 shallow bytes before `finish()` to zero entries / 64 shallow bytes after `finish()`, while all 10,000 output facts remained in the report. Evidence: `docs/audit_evidence/20261023/f7_accumulator_finalize_index_release_20261023.json`.
+
+**Boundary / next cursor:** structural dictionary size is not process RSS; required report facts remain O(n), and the full-history Native RSS/trajectory profile plus real-history Train authorization remain open. Continue the dependency-satisfied A01–A14 source audit.

@@ -1116,4 +1116,12 @@ class NativeReportAccumulator:
                 "unique_external_cashflows": len(self._cashflow_facts),
                 "net_external_cashflow": str(self._external_cashflow),
             }
+        # The report owns detached output lists now. Retaining the accumulator's
+        # deduplication/alignment dictionaries after successful finalization
+        # only keeps their hash tables alive for the lifetime of the caller.
+        self._fill_facts.clear()
+        self._funding_facts.clear()
+        self._liquidation_facts.clear()
+        self._liquidation_filled.clear()
+        self._cashflows_by_time.clear()
         return report

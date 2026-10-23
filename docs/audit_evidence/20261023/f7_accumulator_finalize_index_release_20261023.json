@@ -1,0 +1,23 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "F7 / release Native accumulator indexes after report finalization",
+  "finding": "A successfully finalized NativeReportAccumulator retained deduplication and cashflow-alignment dictionary tables even though the emitted report already owned its detached output collections.",
+  "change": "Clear fill, Funding, liquidation identity/quantity, and timestamp-to-cashflow indexes only after the full report has been assembled successfully. Keep report facts, cashflow output, and final snapshot available to callers.",
+  "verification": {
+    "source_selector": "tests/test_native_report_accumulator_parity.py tests/test_research_metrics.py: 131 passed",
+    "ruff": "passed for native_metrics.py and test_native_report_accumulator_parity.py",
+    "mypy": "passed for native_metrics.py",
+    "synthetic_retention_profile": {
+      "cashflow_count": 10000,
+      "alignment_dict_shallow_bytes_before_finish": 294992,
+      "alignment_dict_shallow_bytes_after_finish": 64,
+      "alignment_entries_after_finish": 0,
+      "report_cashflows_preserved": true
+    },
+    "source_sha256": {
+      "packages/research/src/rles_research/native_metrics.py": "94830B4626CE0497DBAFC59814BB849911E10D3FC616817B96E38FD06FD89A91",
+      "tests/test_native_report_accumulator_parity.py": "4695942A381CEA7D7C2010120A827F107CE86AFCABEB830DC005824910362718"
+    }
+  },
+  "boundary": "Dictionary shallow-size measurement is a synthetic structural check, not process RSS. Unique facts required by the report contract remain O(n), and the full-history Native RSS/trajectory profile plus authenticated real-history Train evidence remain open."
+}

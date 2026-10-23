@@ -262,6 +262,28 @@ def test_native_report_accumulator_detaches_cashflow_facts_without_a_second_copy
     assert report["external_cashflows"] == [_flow("detached-deposit", 11, "DEPOSIT", "100")]
 
 
+def test_native_report_accumulator_releases_alignment_indexes_after_finish():
+    cashflow = _flow("released-deposit", 11, "DEPOSIT", "100")
+    accumulator = NativeReportAccumulator(
+        sample_interval_ns=10, max_return_count=4,
+        contract_multiplier=Decimal(1), external_cashflows=(cashflow,),
+    )
+    for snapshot in (_snapshot(1, "1000"), _snapshot(11, "1100"), _snapshot(21, "1200")):
+        accumulator.add_snapshot(snapshot, {})
+
+    report = accumulator.finish()
+
+    assert report["external_cashflows"] == [
+        _flow("released-deposit", 11, "DEPOSIT", "100"),
+    ]
+    assert accumulator._fill_facts == {}
+    assert accumulator._funding_facts == {}
+    assert accumulator._liquidation_facts == {}
+    assert accumulator._liquidation_filled == {}
+    assert accumulator._cashflows_by_time == {}
+    assert accumulator.final_snapshot is not None
+
+
 def test_batch_native_report_detaches_cashflow_facts_without_a_staging_copy():
     cashflow = _flow("batch-detached-deposit", 11, "DEPOSIT", "100")
     snapshots = (_snapshot(1, "1000"), _snapshot(11, "1100"), _snapshot(21, "1200"))

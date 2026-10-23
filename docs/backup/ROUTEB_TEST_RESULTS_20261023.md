@@ -11,6 +11,9 @@ is stored under `docs/audit_evidence/20261023/`.
   accumulator, research metric and lazy-frame factory tests: **160 passed**.
 - After the Native cashflow detachment/copy changes, Native accumulator parity
   and research metric tests: **130 passed**.
+- After adding post-finalization index release, the Native accumulator parity
+  and research metric selector passed **131 tests**; Ruff and MyPy passed for
+  the changed source and test files.
 - Ruff on changed source and test files: **passed**.
 - MyPy on the changed Native metrics module: **passed**. The changed data,
   Native metrics and historical modules also passed together with package
@@ -38,3 +41,7 @@ they are not one full-suite run. Dependency warnings were reported by pytest.
 
 See `f7_current_source_native_growth_20261023.json` and related F7 evidence
 files for the complete measurements and source hashes.
+
+The post-finalization release regression and 10,000-cashflow structural
+measurement are recorded in
+`f7_accumulator_finalize_index_release_20261023.json`.
