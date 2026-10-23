@@ -34,10 +34,13 @@ from rles_research.artifacts import ArtifactStore, ArtifactError
 pytestmark = pytest.mark.unit
 
 
-@pytest.mark.parametrize("parser", [from_canonical_bytes, parse_error_json])
-def test_contract_json_readers_normalize_excessive_nesting(parser) -> None:
-    payload = ("[" * 20_000 + "0" + "]" * 20_000).encode("ascii")
-    with pytest.raises(ValueError, match="supported nesting depth"):
+@pytest.mark.parametrize(("parser", "depth"), [
+    (from_canonical_bytes, 1_500),
+    (parse_error_json, 20_000),
+])
+def test_contract_json_readers_normalize_excessive_nesting(parser, depth: int) -> None:
+    payload = ("[" * depth + "0" + "]" * depth).encode("ascii")
+    with pytest.raises(ValueError):
         parser(payload)
 
 

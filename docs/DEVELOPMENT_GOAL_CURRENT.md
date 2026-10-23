@@ -551,7 +551,7 @@ Compute worker `small_json()` 的递归预检对循环 dict/list 会先于 JSON 
 
 ### A10 当前续做记录 — contracts JSON 递归深度
 
-canonical DTO reader 与 CLI error-envelope reader 直接调用 `json.loads`，20,000 层输入泄漏 `RecursionError`。现统一转为边界明确的 `ValueError`。contracts reader + config selector **39 passed**；Ruff/MyPy 通过。证据：`docs/audit_evidence/20261023/a10_contract_json_depth_boundary_20261023.json`。继续检查其它直接解析入口和 A01–A14 可在本地完成的事项。
+canonical DTO reader 与 CLI error-envelope reader 直接调用 `json.loads`，深层输入会泄漏 `RecursionError`；canonical DTO 的递归对象解码阶段也覆盖了 JSON decoder 尚未溢出的层级。现 parse、DTO 转换和 canonical re-encode 均返回边界明确的 `ValueError`。contracts reader + config selector **39 passed**；追加递归解码级回归 **2 passed**，Ruff/MyPy 通过。证据：`docs/audit_evidence/20261023/a10_contract_json_depth_boundary_20261023.json`。继续检查其它直接解析入口和 A01–A14 可在本地完成的事项。
 
 ### A10 当前续做记录 — direct ingress/readers JSON 递归深度
 

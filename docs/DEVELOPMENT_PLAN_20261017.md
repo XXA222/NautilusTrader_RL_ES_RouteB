@@ -2181,7 +2181,7 @@ The online orchestrator now copies terminal `all_orders` into its required order
 
 ## 2026-10-23 — A10 contracts JSON recursion boundary
 
-Canonical DTO and CLI error-envelope readers leaked the JSON decoder's `RecursionError` on deeply nested input. Both now normalize it to `ValueError` with a boundary-specific message. Contracts serialization/error/config selectors pass **39 tests**; Ruff and MyPy pass. Evidence: `docs/audit_evidence/20261023/a10_contract_json_depth_boundary_20261023.json`.
+Canonical DTO and CLI error-envelope readers leaked the JSON decoder's `RecursionError` on deeply nested input. Canonical DTO reconstruction also had a second recursive phase after JSON parsing. Decoder, object reconstruction, and canonical re-encoding recursion now normalize to `ValueError`. Contracts serialization/error/config selectors pass **39 tests** and the explicit decoder-stage regression passes **2 tests**; Ruff and MyPy pass. Evidence: `docs/audit_evidence/20261023/a10_contract_json_depth_boundary_20261023.json`.
 
 **Boundary / next cursor:** synthetic 20,000-level JSON only. Continue reviewing remaining direct JSON decode sites and local A01–A14 work; external gates stay open.
 

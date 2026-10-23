@@ -1,17 +1,17 @@
 {
   "schema": "rles.routeb.audit-evidence.v1",
   "audit_item": "A10 / normalize excessive nesting in contract JSON readers",
-  "finding": "Canonical DTO decoding and CLI error-envelope parsing called json.loads directly and leaked RecursionError for sufficiently deep JSON payloads.",
-  "change": "Both contracts readers now convert decoder RecursionError into stable ValueError messages identifying the JSON boundary.",
+  "finding": "Canonical DTO decoding and CLI error-envelope parsing called json.loads directly and leaked RecursionError for sufficiently deep JSON payloads. Canonical DTO conversion could also recurse after parsing succeeded.",
+  "change": "Both contracts readers convert decoder RecursionError into stable ValueError messages. Canonical DTO decoding also normalizes recursion from nested DTO conversion and canonical re-encoding.",
   "verification": {
-    "selector": "tests/test_layer_invariants.py tests/test_contract_config.py: 39 passed with RouteB package source directories first on PYTHONPATH",
+    "selector": "tests/test_layer_invariants.py tests/test_contract_config.py: 39 passed with RouteB package source directories first on PYTHONPATH; focused decoder-stage regression: 2 passed",
     "ruff": "passed for serialization.py, errors.py, and test_layer_invariants.py",
     "mypy": "passed for serialization.py and errors.py"
   },
   "source_sha256": {
-    "packages/contracts/src/rles_contracts/serialization.py": "5ECA4ADF358B11A7C72F91393113A7151A860B2AB283E60510EC34102EB7AB3A",
+    "packages/contracts/src/rles_contracts/serialization.py": "EA4A94E532728CD3D8A15C278B6477C2331438E9F805BD39FB0539669BDDF9AC",
     "packages/contracts/src/rles_contracts/errors.py": "E97FC121DBF501BBF6CFCA45C46D57A8A9CED1AA05E6B4E6BE0E471FA6087F10",
-    "tests/test_layer_invariants.py": "D4F2879FEAB6378B3385E45DA909164F007E58FB0C4690E9D9BDCDDBE281743F"
+    "tests/test_layer_invariants.py": "04883BE0F64BE2A64B4997C1C1798568544D000451640313526D4A039072FEDC"
   },
   "boundary": "Only synthetic 20,000-level payloads were parsed. No persisted DTO, run artifact, market data, account data, or evaluation result was read."
 }

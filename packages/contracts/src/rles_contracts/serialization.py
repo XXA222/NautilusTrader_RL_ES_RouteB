@@ -201,10 +201,11 @@ def from_canonical_bytes(blob: bytes) -> Any:
     try:
         payload = json.loads(blob.decode("ascii"), parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)),
                              object_pairs_hook=_no_duplicate_pairs)
+        obj = _decode(payload)
+        canonical = canonical_bytes(obj)
     except RecursionError as exc:
         raise ValueError("canonical JSON exceeds the supported nesting depth") from exc
-    obj = _decode(payload)
-    if canonical_bytes(obj) != blob:
+    if canonical != blob:
         raise ValueError("not canonical JSON (ordering, normalization, or numeric representation)")
     if type(obj) in _registered_types().values() and hasattr(obj, "schema_version"):
         require_current_version(obj.schema_version)
