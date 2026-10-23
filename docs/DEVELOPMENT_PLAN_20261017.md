@@ -2197,3 +2197,18 @@ Canonical DTO and CLI error-envelope readers leaked the JSON decoder's `Recursio
 ## 2026-10-23 — A10 rles-data CLI manifest nesting
 
 The `rles-data validate --manifest-json` CLI directly decoded its manifest and leaked `RecursionError` on deeply nested input. It now converts this to the CLI's stable `DataError`. The combined JSON reader/transport/contracts selector passes **258 tests** with RouteB source imports; Ruff and targeted MyPy pass. Evidence: `docs/audit_evidence/20261023/a10_direct_json_reader_depth_boundaries_20261023.json`.
+## 2026-10-23 — A10 distribution provenance JSON nesting
+
+`qa/source_manifest.py`, `qa/wheel_manifest.py`, and `qa/smoke/wheel_imports.py` directly parsed source or installed-wheel provenance JSON and leaked `RecursionError` on deeply nested malformed metadata. They now normalize it into their manifest/provenance error boundaries. Source/wheel manifest test selector passes **27 tests** with one expected duplicate-ZIP fixture warning; Ruff and MyPy pass. Evidence: `docs/audit_evidence/20261023/a10_distribution_manifest_depth_rejection_20261023.json`.
+
+**Boundary / next cursor:** synthetic metadata only. Continue remaining distribution/readers and locally actionable A01–A14 items; authenticated research and independent evaluation gates remain open.
+## 2026-10-23 — A10 QA report/reconciler reader recursion boundaries
+
+M13 stage analyzers and the report reconciler had direct `json.loads()` calls that could leak `RecursionError`; the strict reconciler parser now normalizes it to `JSONDecodeError`, and analysis readers wrap it as their existing `ValueError`. The same scan confirmed the source/wheel/provenance readers are covered. Five QA selectors pass **93 tests** with one symlink capability skip and one expected duplicate-ZIP warning; Ruff and MyPy pass. Evidence: `docs/audit_evidence/20261023/a10_qa_reader_depth_normalization_20261023.json`.
+
+**Boundary / next cursor:** synthetic deep report metadata only. Continue local source and distribution audit; externally gated historical/provenance and independent Validation requirements remain open.
+## 2026-10-23 — A10 current source 12-wheel parity
+
+After the JSON boundary changes, the fresh 605-file source identity is `f1a5ed8b47894570e18ccbc516d090ece79530a6d8088128bb191d0a0eb9c256`. `uv build --all-packages` produced **12 wheels and 12 sdists**; the wheel manifest reports all 12 matching source. A temporary venv installed all wheels; provenance smoke imported **12 distributions / 6 entry points**, all from that venv. The 258-test JSON/registry selector passes against source and again against the built wheels. QA source/wheel manifest, M13 and reconciler selectors pass **93 tests** with one environment-dependent symlink skip and one expected ZIP warning. Evidence: `docs/audit_evidence/20261023/a10_current_source_12_wheel_provenance_20261023.json`.
+
+**Boundary / next cursor:** dependencies for the temporary wheel smoke came from the RouteB app venv, so this does not replace a clean locked install. Hosted clean Linux/Windows CI and external research gates remain open; continue the local audit.

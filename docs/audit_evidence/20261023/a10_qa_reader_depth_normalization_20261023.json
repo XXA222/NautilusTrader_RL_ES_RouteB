@@ -1,0 +1,25 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / normalize deeply nested JSON across QA artifact readers",
+  "finding": "M13 stage analysis readers and the fold-ledger reconciler directly parsed report JSON and could leak RecursionError. The wheel/source/provenance reader family had the same issue.",
+  "change": "M13 and reconciler readers now translate excessive nesting into their established ValueError/JSONDecodeError report boundary. Source manifest, wheel manifest, and installed-origin provenance readers also normalize the decoder recursion exception.",
+  "verification": {
+    "selector": "tests/test_source_manifest.py tests/test_wheel_manifest.py tests/test_m13_stage_contribution_analysis.py tests/test_m13_stage_contribution_v2.py tests/world_model/test_reconcile_routeb_research_ledger.py: 93 passed, 1 environment-dependent symlink skip, 1 expected duplicate-ZIP warning",
+    "ruff": "passed for six QA readers and five test modules",
+    "mypy": "passed for six QA readers with --follow-imports=silent --ignore-missing-imports"
+  },
+  "source_sha256": {
+    "qa/source_manifest.py": "8A9C79298EF10A5A4DD668B4278CDF6BDCCC358DCD6E53275312326186ADA107",
+    "qa/wheel_manifest.py": "FBF0DEB5F9DB0F1EDD35A4283D8109F39B7F3701E557679C07E9C2EF862693BC",
+    "qa/smoke/wheel_imports.py": "323FBD0CFE5052B6B1AF0272ED9D04D2341FF27A4B38420840FAD448E8CC7033",
+    "qa/analyze_m13_stage_contribution.py": "C6CD1D85DB5E496F06E646C31E0059E99817853456B261844DAA80512CFEBDAC",
+    "qa/analyze_m13_stage_contribution_v2.py": "1AA3DB1E9696881E92CCDC69488EBCD6412110A5125BE0C0AA139080524BC723",
+    "qa/world_model/reconcile_routeb_research_ledger.py": "443122B3812126A56EE49ED35DE93238B104DDCEB020C68A2A24C0D39BBDB801",
+    "tests/test_source_manifest.py": "4319BF320EC5938BB5F4C72CBFCA68B98B71963A39D4A043AB39C2815B1CCDDF",
+    "tests/test_wheel_manifest.py": "373FD4E5A62A72A27BD159A03B0CC949A8C43BD4F0DBC9FE344AA8042B507625",
+    "tests/test_m13_stage_contribution_analysis.py": "0A725ABD29EFA9399594E2BBD367D05E2493F11525A386A92B34CB672209EFA7",
+    "tests/test_m13_stage_contribution_v2.py": "06367EE5A667D1BC38E4CABADC7997615FA1C2B1E9D12C18B375D884ADE80FE0",
+    "tests/world_model/test_reconcile_routeb_research_ledger.py": "3A8606EA4EAA0417729E29B7AB49494EAFC5F368832A652D1D90ADFFEDBC3D77"
+  },
+  "boundary": "Only synthetic deep JSON artifacts were used; no account, market, formal evaluation, or project ledger data was opened."
+}

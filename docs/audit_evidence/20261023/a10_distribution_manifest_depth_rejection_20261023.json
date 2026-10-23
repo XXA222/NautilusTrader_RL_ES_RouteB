@@ -1,0 +1,19 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / normalize deep JSON failures in source, wheel, and installed-origin manifests",
+  "finding": "The source identity verifier, wheel-source manifest reader, and installed-wheel direct_url.json provenance parser leaked RecursionError for deeply nested JSON instead of reporting their documented invalid-manifest boundary.",
+  "change": "All three readers now include RecursionError in their malformed-input normalization path.",
+  "verification": {
+    "selector": "tests/test_source_manifest.py tests/test_wheel_manifest.py: 27 passed, 1 expected duplicate-ZIP warning",
+    "ruff": "passed for all three QA readers and both test modules",
+    "mypy": "passed for source_manifest.py, wheel_manifest.py, and wheel_imports.py"
+  },
+  "source_sha256": {
+    "qa/source_manifest.py": "8A9C79298EF10A5A4DD668B4278CDF6BDCCC358DCD6E53275312326186ADA107",
+    "qa/wheel_manifest.py": "FBF0DEB5F9DB0F1EDD35A4283D8109F39B7F3701E557679C07E9C2EF862693BC",
+    "qa/smoke/wheel_imports.py": "323FBD0CFE5052B6B1AF0272ED9D04D2341FF27A4B38420840FAD448E8CC7033",
+    "tests/test_source_manifest.py": "4319BF320EC5938BB5F4C72CBFCA68B98B71963A39D4A043AB39C2815B1CCDDF",
+    "tests/test_wheel_manifest.py": "373FD4E5A62A72A27BD159A03B0CC949A8C43BD4F0DBC9FE344AA8042B507625"
+  },
+  "boundary": "Synthetic malformed manifest strings/files only; no real wheel archive contents or installed package state was changed."
+}

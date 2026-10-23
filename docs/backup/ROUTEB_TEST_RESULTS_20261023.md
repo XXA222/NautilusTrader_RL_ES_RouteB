@@ -80,3 +80,6 @@ WorldModel bundle scaler-manifest validation is recorded in
 ResearchArtifactStore L1 manifest key validation is recorded in
 `a10_research_artifact_string_keys_20261023.json`.
 The consolidated JSON boundary selectors, including the CLI deep-manifest regression, pass **258 tests**. Ruff and targeted MyPy pass on the changed sources.
+Distribution provenance follow-up: source manifest and wheel manifest selectors pass **27 tests**, with one expected duplicate-ZIP fixture warning. Ruff and MyPy pass for the three modified QA readers.
+QA report/provenance follow-up: source/wheel manifest, M13 analysis, and fold reconciler selectors pass **93 tests**, 1 environment-dependent symlink skip, and 1 expected duplicate-ZIP warning. Ruff and targeted MyPy pass for six QA modules.
+Current source distribution verification: **12 wheels + 12 sdists built**, all wheels match source identity `f1a5ed8b47894570e18ccbc516d090ece79530a6d8088128bb191d0a0eb9c256`. Installed provenance covers 12 packages/6 entry points in a temporary environment. The 258-test JSON/registry selector passes against source and built wheels. The wheel environment borrowed third-party dependencies from RouteB's app venv; this is not clean locked-install CI.

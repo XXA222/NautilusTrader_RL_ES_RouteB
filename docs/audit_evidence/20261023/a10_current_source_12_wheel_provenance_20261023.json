@@ -1,0 +1,30 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / verify current source identity against all workspace wheels and installed provenance",
+  "source_identity_sha256": "f1a5ed8b47894570e18ccbc516d090ece79530a6d8088128bb191d0a0eb9c256",
+  "build": {
+    "command": "uv build --all-packages --out-dir .tmp/wheelhouse-a10-json-audit",
+    "wheels": 12,
+    "source_distributions": 12,
+    "wheel_manifest_all_match": true,
+    "wheel_manifest_errors": []
+  },
+  "installed_wheel_smoke": {
+    "environment": ".tmp/venv-wheel-a10-json-audit",
+    "installed_workspace_distributions": 12,
+    "entry_points_imported": 6,
+    "all_imported_module_paths_within_isolated_venv": true,
+    "third_party_dependencies": "Resolved from RouteB .venv-win-app through the isolated smoke process path; the temporary venv itself was not dependency-complete."
+  },
+  "regression_selectors": {
+    "source_json_reader_transport_contracts": "258 passed",
+    "same_selectors_against_built_wheels": "258 passed",
+    "qa_manifest_analysis_reconciler": "93 passed, 1 symlink capability skip, 1 expected duplicate-ZIP warning"
+  },
+  "static_checks": {
+    "ruff": "passed for changed package and QA modules/tests",
+    "mypy_packages": "15 changed package modules passed with --follow-imports=silent --ignore-missing-imports",
+    "mypy_qa": "6 QA modules passed with --follow-imports=silent --ignore-missing-imports"
+  },
+  "boundary": "Builds and tests used RouteB source, synthetic inputs, and a temporary wheel environment. This does not replace clean Hosted Linux/Windows CI or satisfy external data/independent-validation gates."
+}

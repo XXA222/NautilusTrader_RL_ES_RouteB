@@ -49,7 +49,7 @@ def _read_manifest(path: Path) -> dict[str, Any]:
                             parse_constant=_reject_json_constant)
     except _DuplicateManifestKey as exc:
         raise ValueError(f"duplicate JSON manifest key in {path}: {exc}") from exc
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
         raise ValueError(f"cannot read JSON manifest: {path}") from exc
     if not isinstance(value, dict):
         raise ValueError(f"expected JSON object: {path}")

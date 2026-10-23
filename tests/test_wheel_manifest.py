@@ -8,7 +8,7 @@ import zipfile
 
 import pytest
 
-from qa.wheel_manifest import _source_python_files
+from qa.wheel_manifest import _read_source_manifest, _source_python_files
 from qa.smoke.wheel_imports import _parse_wheel_origin
 
 
@@ -24,6 +24,20 @@ _GENERATOR = Path(__file__).resolve().parents[1] / "qa" / "wheel_manifest.py"
 def test_wheel_import_provenance_rejects_duplicate_json_keys(payload: str) -> None:
     with pytest.raises(ValueError, match="invalid direct_url.json"):
         _parse_wheel_origin(payload, "demo-pkg")
+
+
+def test_wheel_import_provenance_normalizes_excessive_json_nesting() -> None:
+    payload = "[" * 20_000 + "0" + "]" * 20_000
+    with pytest.raises(ValueError, match="invalid direct_url.json"):
+        _parse_wheel_origin(payload, "demo-pkg")
+
+
+def test_wheel_manifest_reader_normalizes_excessive_json_nesting(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "deep.json"
+    manifest_path.write_text("[" * 20_000 + "0" + "]" * 20_000, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cannot read source manifest"):
+        _read_source_manifest(manifest_path)
 
 
 @pytest.mark.parametrize("payload", [

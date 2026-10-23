@@ -59,7 +59,7 @@ def _load_json(path: Path) -> dict[str, Any]:
         )
     except _DuplicateJSONKey as exc:
         raise ValueError(f"duplicate JSON object key in {path}: {exc}") from exc
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise ValueError(f"cannot read JSON object: {path}") from exc
     if not isinstance(value, dict):
         raise ValueError(f"expected JSON object: {path}")

@@ -45,8 +45,11 @@ def _reject_json_constant(value: str) -> None:
 
 def _strict_json_loads(content: str | bytes | bytearray) -> Any:
     """Parse JSON while rejecting duplicate keys and non-standard constants."""
-    return json.loads(content, object_pairs_hook=_json_object_without_duplicate_keys,
-                      parse_constant=_reject_json_constant)
+    try:
+        return json.loads(content, object_pairs_hook=_json_object_without_duplicate_keys,
+                          parse_constant=_reject_json_constant)
+    except RecursionError as exc:
+        raise json.JSONDecodeError("maximum JSON nesting depth exceeded", "", 0) from exc
 
 
 def _read_only_sqlite_uri(path: Path) -> str:

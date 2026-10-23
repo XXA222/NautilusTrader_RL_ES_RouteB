@@ -5,10 +5,20 @@ from pathlib import Path
 import subprocess
 import sys
 
-from qa.source_manifest import _source_files
+import pytest
+
+from qa.source_manifest import _read_manifest, _source_files
 
 
 _GENERATOR = Path(__file__).resolve().parents[1] / "qa" / "source_manifest.py"
+
+
+def test_source_manifest_reader_normalizes_excessive_json_nesting(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "deep.json"
+    manifest_path.write_text("[" * 20_000 + "0" + "]" * 20_000, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cannot read JSON manifest"):
+        _read_manifest(manifest_path)
 
 
 def _generate(root: Path, output: Path) -> dict:

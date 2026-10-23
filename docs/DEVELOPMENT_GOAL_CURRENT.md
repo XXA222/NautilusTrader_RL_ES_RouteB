@@ -559,3 +559,12 @@ Binance transfer 单页/分页导入、legacy research inventory 与 ResearchArt
 ### A10 当前续做记录 — JSON reader CLI 边界复核
 
 追加 rles-data `--manifest-json` 深层输入检查后，CLI reader 也改为把 `RecursionError` 转成 `DataError`；合并后的 JSON reader/transport/contracts 选择器 **258 passed**，Ruff 与针对性 MyPy 通过。证据：`docs/audit_evidence/20261023/a10_direct_json_reader_depth_boundaries_20261023.json`。继续审计其余直接 JSON decode 点与本地 A01–A14 项。
+### A10 当前续做记录 — distribution provenance JSON 深度
+
+source identity verifier、wheel manifest reader 与 installed-wheel `direct_url.json` provenance parser 对超深 JSON 会泄漏 `RecursionError`。现统一映射到各自无效 manifest 错误。Source/wheel manifest selectors **27 passed / 1 expected duplicate-ZIP warning**；Ruff/MyPy 通过。仅合成文件与 metadata。证据：`docs/audit_evidence/20261023/a10_distribution_manifest_depth_rejection_20261023.json`。继续核对剩余 distribution/reader 边界以及 A01–A14 本地项。
+### A10 当前续做记录 — QA analysis/reconciler JSON 深度
+
+M13 两版阶段分析器、fold-ledger reconciler 与 distribution manifest readers 对深层 JSON 的异常未完全包住。现都将 `RecursionError` 收敛到既有报告/metadata error contract。五个 QA 测试文件 **93 passed / 1 symlink skip / 1 expected ZIP warning**；Ruff 与针对性 MyPy 通过。证据：`docs/audit_evidence/20261023/a10_qa_reader_depth_normalization_20261023.json`。继续从最新审计剩余本地可行动项中推进。
+### A10 当前续做记录 — current source 12-wheel parity
+
+本轮包级 reader 修复后重新生成 605-file manifest（identity `f1a5ed8b47894570e18ccbc516d090ece79530a6d8088128bb191d0a0eb9c256`），构建 12 wheels + 12 sdists；wheel manifest `all_match=true`。12 个包、6 个 entry point 在一次性隔离 venv 中从安装 wheel 导入，所有路径均落在该 venv。JSON/registry selector 源码和安装 wheel 各 **258 passed**；QA reader 选择器 **93 passed / 1 symlink skip / 1 expected warning**。Hosted clean Linux/Windows CI 仍需在可推送 revision 上运行。证据：`docs/audit_evidence/20261023/a10_current_source_12_wheel_provenance_20261023.json`。

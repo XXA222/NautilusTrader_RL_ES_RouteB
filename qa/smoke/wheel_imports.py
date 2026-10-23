@@ -32,7 +32,7 @@ def _parse_wheel_origin(content: str, package_name: str) -> dict[str, Any]:
         origin = json.loads(content, object_pairs_hook=_unique_json_object,
                              parse_constant=lambda value: (_ for _ in ()).throw(
                                  ValueError(f"non-standard JSON constant: {value}")))
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         raise ValueError(f"{package_name}: invalid direct_url.json") from exc
     if not isinstance(origin, dict):
         raise ValueError(f"{package_name}: direct_url.json root must be an object")

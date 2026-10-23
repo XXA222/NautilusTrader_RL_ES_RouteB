@@ -91,6 +91,14 @@ def test_revision2_json_reader_rejects_duplicate_keys(tmp_path: Path, payload: b
         _load_json(path)
 
 
+def test_revision2_json_reader_normalizes_excessive_nesting(tmp_path: Path) -> None:
+    path = tmp_path / "deep.json"
+    path.write_text("[" * 20_000 + "0" + "]" * 20_000, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cannot read JSON object"):
+        _load_json(path)
+
+
 def test_revision2_json_reader_normalizes_invalid_utf8(tmp_path: Path) -> None:
     path = tmp_path / "invalid-utf8.json"
     path.write_bytes(b"{\"schema\":\"\xff\"}")

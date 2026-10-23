@@ -7,6 +7,7 @@ import sqlite3
 import pytest
 
 from qa.world_model.reconcile_routeb_research_ledger import (
+    _load_report,
     _read_artifact_bytes,
     _read_development_accesses,
     ReconciliationPlan,
@@ -19,6 +20,14 @@ from qa.world_model.reconcile_routeb_research_ledger import (
 from rles_data.core import digest
 from rles_orchestrator import research_access
 from rles_research.access import ProjectResearchRegistry
+
+
+def test_reconciler_report_reader_normalizes_excessive_json_nesting(tmp_path):
+    report = tmp_path / "deep-report.json"
+    report.write_text("[" * 20_000 + "0" + "]" * 20_000, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cannot read canonical JSON report"):
+        _load_report(report)
 
 
 def _seal(report: dict) -> None:
