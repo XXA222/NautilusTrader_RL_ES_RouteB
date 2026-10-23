@@ -4,7 +4,7 @@ from __future__ import annotations
 from hashlib import sha256
 import json
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Mapping
 import hmac
 
 import numpy as np
@@ -75,7 +75,6 @@ def _candidate_run(*, name: str, configuration: dict, configuration_path: Path,
         "train_npz_sha256": train_metadata["artifact_sha256"],
         "train_examples": int(train_batch.features.shape[0]),
         "window_length": int(train_batch.features.shape[1]),
-        "model_config": configuration["model"],
         "training_config": configuration["training"],
         "optimizer_updates": final["optimizer_updates"],
         "parameter_count": final["parameter_count"], "training_seconds": elapsed,
@@ -96,7 +95,7 @@ def run_fold_experiment(*, replay: MarketReplay, fold: FoldManifest,
         horizons: tuple[int, ...] = (1, 5, 15),
         anchor_interval_minutes: int = 15, context_lookback: int = 128,
         volatility_window: int = 15, block_length: int = 8,
-        bootstrap_replicates: int = 2000, seed: int = 0) -> dict[str, Any]:
+        bootstrap_replicates: int = 2000, seed: int = 0) -> dict[str, object]:
     """Train matched E1/E2 candidates and score E0/E1/E2 within one fresh read.
 
     This function accepts only the in-memory replay returned by the registered
@@ -197,51 +196,13 @@ def run_fold_experiment(*, replay: MarketReplay, fold: FoldManifest,
                 "kind": worker_result["kind"], "status": worker_result["status"],
                 "sha256": worker_result["sha256"], "anchors": worker_result["anchors"],
                 "paths": worker_result["paths"], "horizon": worker_result["horizon"],
-                "anchor_chunk_size": worker_result.get("anchor_chunk_size"),
-                "chunk_seed_rule": worker_result.get("chunk_seed_rule"),
-                "sampled_paths_per_anchor": worker_result["sampled_paths_per_anchor"],
-                "rejected_paths": worker_result["rejected_paths"],
-                "rejected_paths_by_anchor": worker_result["rejected_paths_by_anchor"],
                 "economic_certification": worker_result.get("economic_certification", False),
             },
         }
 
-    risk_horizons = tuple(candidate_configurations["E2"]["model"].get(
-        "risk_horizons", (1, 5, 15, 30, 60)))
-    if not risk_horizons:
-        raise ValueError("E2 risk forecast configuration requires at least one horizon")
-    risk_output = root / "e2_validation_risk_forecasts.npz"
-    risk_worker_result = worker.forecast_risk_distribution_batch(
-        request=request_path, checkpoint=checkpoints["E2"], output=risk_output,
-        configuration=configurations["E2"], risk_horizons=risk_horizons)
-    risk_artifact_sha256 = sha256(risk_output.read_bytes()).hexdigest()
-    if (risk_worker_result.get("sha256") != risk_artifact_sha256
-            or risk_worker_result.get("anchors") != len(anchors)):
-        raise ValueError("E2 risk forecast worker metadata differs from its artifact")
-    risk_forecast_artifact = {
-        "artifact": risk_output.name, "artifact_sha256": risk_artifact_sha256,
-        "worker_result": {
-            "kind": risk_worker_result["kind"],
-            "status": risk_worker_result["status"],
-            "sha256": risk_worker_result["sha256"],
-            "anchors": risk_worker_result["anchors"],
-            "risk_horizons": list(risk_horizons),
-            "economic_certification": risk_worker_result.get("economic_certification", False),
-        },
-        "score_status": ("SCORED_NATIVE_RISK" if risk_horizons[-1]<=horizons[-1]
-                         else "EXPORTED_PENDING_NATIVE_RISK_SCORING"),
-    }
-    native_risk_distribution=None
-    if risk_horizons[-1]<=horizons[-1]:
-        with np.load(risk_output,allow_pickle=False) as artifact:
-            native_risk_distribution={name:np.asarray(artifact[name]).copy()
-                for name in ("risk_mean","risk_scale","barrier_logits")}
-
     predictive = build_fold_predictive_report(
         replay, fold, candidate_paths, runs,
-        {"E1": anchors, "E2": anchors},
-        candidate_risk_distribution=native_risk_distribution,
-        train_scope_id=train_scope_id,
+        {"E1": anchors, "E2": anchors}, train_scope_id=train_scope_id,
         snapshot_sha256=SNAPSHOT_SHA, forecast_seed=forecast_seed,
         horizons=horizons, anchor_interval_minutes=anchor_interval_minutes,
         context_lookback=context_lookback, volatility_window=volatility_window,
@@ -279,7 +240,6 @@ def run_fold_experiment(*, replay: MarketReplay, fold: FoldManifest,
             "horizon": horizons[-1], "test_payload_decoded": False,
         },
         "forecast_artifacts": forecast_artifacts,
-        "prior_risk_forecast_artifact": risk_forecast_artifact,
         "baselines": baselines, "predictive_comparison": predictive,
         "test_payload_decoded": False, "economic_certification": False,
     }

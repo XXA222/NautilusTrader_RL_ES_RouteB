@@ -1,29 +1,28 @@
 """Archive existing inference artifacts and preregister bounded Train diagnostics."""
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import shutil
 
-from rles_data.json_utils import loads_unique_json
 from rles_orchestrator.application import _file_hash, _verify_file, _write_verified
-
-
-def _read_json_object(path: Path) -> dict:
-    try:
-        value = loads_unique_json(path.read_bytes())
-    except (OSError, UnicodeError, ValueError) as exc:
-        raise ValueError(f"cannot read unambiguous baseline source JSON: {path}") from exc
-    if not isinstance(value, dict):
-        raise ValueError(f"baseline source JSON root must be an object: {path}")
-    return value
+from rles_orchestrator.workspace import require_workspace_paths
 
 
 def prepare(root: Path) -> Path:
+    root = root.resolve()
     prior = root / ".tmp/rl-stage66-memory-bounded-full-train-replays-20261016/preregistration.json"
-    run = _read_json_object(prior)["runs"][0]
+    prior = require_workspace_paths(root, {"prior": prior})["prior"]
+    run = json.loads(prior.read_text(encoding="utf-8"))["runs"][0]
     source_bundle = Path(run["bundle"])
+    source_bundle = require_workspace_paths(root, {"source_bundle": source_bundle})["source_bundle"]
     if _verify_file(source_bundle / "bundle.json") != run["bundle_sha256"]:
         raise ValueError("existing candidate differs from Stage66 frozen artifact")
-    bundle = _read_json_object(source_bundle / "bundle.json")
+    bundle = json.loads((source_bundle / "bundle.json").read_text(encoding="utf-8"))
+    environment = bundle["environment"]
+    market = Path(environment["market_path"])
+    rules = Path(environment["rules_path"])
+    actor = source_bundle / bundle["actor"]["path"]
+    require_workspace_paths(root, {"market": market, "rules": rules, "actor": actor})
     archive = root / ".artifacts/audit-development-20261016"
     archive.mkdir(parents=True, exist_ok=False)
     model = archive / "models/candidate-seed-102"
@@ -34,12 +33,10 @@ def prepare(root: Path) -> Path:
     shutil.copytree(source_bundle / bundle["actor"]["path"], model / bundle["actor"]["path"])
     data = archive / "data"
     data.mkdir()
-    market = Path(bundle["environment"]["market_path"])
-    rules = Path(bundle["environment"]["rules_path"])
     shutil.copy2(market, data / "market.parquet")
     shutil.copy2(market.with_name(market.name + ".COMPLETED.json"), data / "market.parquet.COMPLETED.json")
     shutil.copy2(rules, data / "scenario-rules.json")
-    for evidence in _read_json_object(rules)["sources"]:
+    for evidence in json.loads(rules.read_text(encoding="utf-8"))["sources"]:
         relative = Path(evidence["path"])
         target = (data / relative).resolve()
         if relative.is_absolute() or not target.is_relative_to(data.resolve()):

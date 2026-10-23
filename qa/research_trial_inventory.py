@@ -10,47 +10,8 @@ from __future__ import annotations
 import argparse
 from hashlib import sha256
 import json
-import os
 from pathlib import Path
 import sqlite3
-
-from rles_data.json_utils import loads_unique_json
-
-
-_EXPECTED_SCOPE = (
-    ".tmp/real-ethusdt-scenario",
-    ".tmp/wfo-validation-recovery-20261013",
-)
-
-
-def _contained_path(root: Path, path: Path, label: str, *, must_exist: bool = True) -> Path:
-    root = root.resolve()
-    if not path.is_absolute() and ".." in path.parts:
-        raise ValueError(f"{label} contains parent traversal")
-    candidate = path if path.is_absolute() else root / path
-    try:
-        relative = Path(os.path.abspath(candidate)).relative_to(root)
-    except ValueError as exc:
-        raise ValueError(f"{label} escapes the inventory root") from exc
-    current = root
-    for part in relative.parts:
-        current = current / part
-        if current.is_symlink():
-            raise ValueError(f"{label} traverses a symlink")
-    resolved = current.resolve(strict=must_exist)
-    if not resolved.is_relative_to(root):
-        raise ValueError(f"{label} escapes the inventory root")
-    return resolved
-
-
-def _read_json_object(path: Path) -> dict:
-    try:
-        value = loads_unique_json(path.read_bytes())
-    except (OSError, UnicodeError, ValueError) as exc:
-        raise ValueError(f"cannot read unambiguous JSON object: {path}") from exc
-    if not isinstance(value, dict):
-        raise ValueError(f"JSON inventory input must be an object: {path}")
-    return value
 
 
 def _file_sha(path: Path) -> str:
@@ -63,34 +24,24 @@ def _canonical_sha(value: object) -> str:
 
 
 def inventory(root: Path) -> dict:
-    root = root.resolve()
     manifest_path = root / "docs/audit_evidence/20261016/legacy_research_access_v2.json"
     marker_path = manifest_path.with_suffix(manifest_path.suffix + ".sha256")
-    manifest_path = _contained_path(root, manifest_path.relative_to(root), "frozen access inventory")
-    marker_path = _contained_path(root, marker_path.relative_to(root), "frozen inventory SHA marker")
     if not manifest_path.is_file() or not marker_path.is_file():
         raise ValueError("frozen legacy research-access inventory or SHA marker is missing")
     manifest_sha = _file_sha(manifest_path)
     if marker_path.read_text(encoding="ascii") != manifest_sha:
         raise ValueError("frozen legacy research-access inventory SHA mismatch")
-    manifest = _read_json_object(manifest_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("schema") != "rles.legacy-research-access.v1":
         raise ValueError("unexpected legacy research-access inventory schema")
-    scope = manifest.get("scope")
-    if (not isinstance(scope, list) or tuple(scope) != _EXPECTED_SCOPE
-            or any(type(item) is not str for item in scope)):
-        raise ValueError("legacy inventory scan scope differs from the frozen project roots")
 
     config_rows: list[dict] = []
-    for relative_root in scope:
-        scan_root = _contained_path(
-            root, Path(relative_root), "legacy scan root", must_exist=False,
-        )
+    for relative_root in manifest["scope"]:
+        scan_root = root / relative_root
         if not scan_root.is_dir():
             raise ValueError(f"legacy research root missing: {relative_root}")
         for path in sorted(scan_root.rglob("config*.json")):
-            path = _contained_path(root, path.relative_to(root), "legacy config")
-            config = _read_json_object(path)
+            config = json.loads(path.read_text(encoding="utf-8"))
             wfo = config.get("wfo")
             if not isinstance(wfo, dict) or not isinstance(wfo.get("protocol_id"), str):
                 continue
@@ -127,12 +78,7 @@ def inventory(root: Path) -> dict:
     db_sources = []
     for database in manifest["databases"]:
         relative_db = database["path"]
-        relative_path = Path(relative_db)
-        if (relative_path.is_absolute() or ".." in relative_path.parts
-                or not any(relative_path.is_relative_to(Path(scope_root))
-                           for scope_root in scope)):
-            raise ValueError(f"legacy research database escapes frozen scan roots: {relative_db}")
-        db_path = _contained_path(root, relative_path, "legacy research database")
+        db_path = root / relative_db
         source_sha = database["sha256"]
         if _file_sha(db_path) != source_sha:
             raise ValueError(f"legacy research database SHA mismatch: {relative_db}")

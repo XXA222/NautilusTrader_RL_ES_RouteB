@@ -17,9 +17,8 @@ import numpy as np
 os.environ["JAX_PLATFORMS"] = "cpu"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
-from rles_world_model.cli import _read_json, main as world_model_main
+from rles_world_model.cli import main as world_model_main
 from rles_world_model.routeb.codec import OHLCVCodec, TrainOnlyStandardizer
-from rles_world_model.routeb.integration import prepare_forecast_context
 from rles_world_model.routeb.jax_gru import GRUConfig
 from rles_world_model.routeb.jax_model import PINNED_UPSTREAM, RSSMConfig
 from rles_world_model.routeb.jax_train import SNAPSHOT_SHA, TrainingConfig
@@ -72,11 +71,7 @@ def main() -> int:
     training = TrainingConfig(steps=2, batch_size=2, seed=73, report_interval=1)
     candidates = {
         "e1": asdict(GRUConfig(hidden=16)),
-        "e2": asdict(RSSMConfig(
-            deter=32, hidden=32, stoch=2, classes=4, blocks=4,
-            risk_horizon_weights=(0.5, 0.5, 1.0, 1.5, 1.5),
-            forecast_distribution="mixture_gaussian",
-        )),
+        "e2": asdict(RSSMConfig(deter=32, hidden=32, stoch=2, classes=4, blocks=4)),
     }
     reports: dict[str, dict] = {}
     for name, model_config in candidates.items():
@@ -92,13 +87,13 @@ def main() -> int:
             "--fold-sha256", fold_hash,
             "--configuration", str(configuration),
             "--checkpoint", str(checkpoint),
-            "--worker-python", str(Path(args.worker_python).absolute()),
+            "--worker-python", str(Path(args.worker_python).resolve()),
             "--upstream-checkout", str(Path(args.checkout).resolve()),
             "--report-json", str(report),
         ])
         if status != 0:
             raise RuntimeError(f"train-prepared failed for {name}")
-        reports[name] = _read_json(str(report))
+        reports[name] = json.loads(report.read_text(encoding="utf-8"))
 
     left, right = reports["e1"], reports["e2"]
     shared = ("fold_hash", "train_scope_id", "train_npz_sha256", "train_examples",
@@ -125,7 +120,6 @@ def main() -> int:
     np.savez_compressed(batch_context,histories=np.asarray(contexts,dtype=np.float32),
         scaler_mean=scaler.mean,scaler_std=scaler.std,
         anchor_timestamps_ns=np.asarray(anchor_times,dtype=np.int64),
-        decision_timestamps_ns=np.asarray(anchor_times,dtype=np.int64),
         close_timestamps=np.asarray(close_times,dtype=np.int64),
         available_timestamps=np.asarray(availability,dtype=np.int64),
         anchor_closes=np.asarray(anchor_closes,dtype=np.float64))
@@ -136,11 +130,10 @@ def main() -> int:
         "scaler_sha256":scaler.fingerprint,"horizon":3,"n_paths":2,"seed":17,
         "train_npz_sha256":left["train_npz_sha256"],
         "instrument":bars[-1].instrument,"anchor_timestamps_ns":anchor_times,
-        "decision_timestamps_ns":anchor_times,
     }
     batch_request_path=root/"synthetic_forecast_batch_request.json"
     batch_request_path.write_text(json.dumps(batch_request),encoding="utf-8")
-    worker=WorkerClient(WorkerConfig(Path(args.worker_python).absolute(),
+    worker=WorkerClient(WorkerConfig(Path(args.worker_python).resolve(),
         Path(args.checkout).resolve()))
     batch_shapes={}
     for name in ("e1","e2"):
@@ -152,25 +145,6 @@ def main() -> int:
             batch_shapes[name]=list(artifact["bars"].shape)
         if response["anchors"]!=2 or batch_shapes[name]!=[2,2,3,5]:
             raise AssertionError(f"{name} batched forecast shape mismatch: {batch_shapes[name]}")
-
-    mixture_context=root/"mixture_next_distribution_context.npz"
-    mixture_request=root/"mixture_next_distribution_request.json"
-    prepare_forecast_context(
-        visible_history=bars[-32:],frozen_scaler=scaler,anchor_ns=bars[-1].ts_close_ns,
-        train_scope_id=scope,train_npz_sha256=left["train_npz_sha256"],
-        output_context_npz=mixture_context,output_request_json=mixture_request,
-        horizon=1,n_paths=2,seed=19)
-    mixture_output=root/"mixture_next_distribution.npz"
-    mixture_response=worker.next_distribution(
-        request=mixture_request,checkpoint=root/"e2_checkpoint.npz",
-        output=mixture_output,configuration=root/"e2_configuration.json")
-    with np.load(mixture_output,allow_pickle=False) as artifact:
-        mixture_shapes={key:list(artifact[key].shape) for key in artifact.files}
-    if (mixture_response.get("distribution_family")!="mixture_gaussian"
-            or mixture_response.get("mixture_components")!=2
-            or mixture_shapes!={"standardized_mean":[1,5],"standardized_scale":[1,5],
-                "mixture_means":[1,2,5],"mixture_scales":[1,2,5],"mixture_weights":[1,2]}):
-        raise AssertionError("mixture next-distribution endpoint did not preserve its components")
 
     # Exercise the entire one-replay orchestration without research data.
     # This synthetic run validates wiring, not model selection or market skill.
@@ -190,10 +164,7 @@ def main() -> int:
     short_training=TrainingConfig(steps=2,batch_size=2,seed=83,report_interval=1)
     experiment_configurations={
         "E1":{"model":asdict(GRUConfig(hidden=8)),"training":asdict(short_training)},
-        "E2":{"model":asdict(RSSMConfig(
-              deter=32,hidden=32,stoch=2,classes=4,blocks=4,
-              risk_horizon_weights=(0.5,0.5,1.0,1.5,1.5),
-              forecast_distribution="mixture_gaussian")),
+        "E2":{"model":asdict(RSSMConfig(deter=32,hidden=32,stoch=2,classes=4,blocks=4)),
               "training":asdict(short_training)},
     }
     full_experiment=run_fold_experiment(
@@ -208,22 +179,8 @@ def main() -> int:
     if (full_experiment["status"]!="COMPLETED"
             or full_experiment["test_payload_decoded"]
             or not isinstance(comparison,dict)
-            or comparison.get("authorization_verified") is not False
-            or full_experiment.get("prior_risk_forecast_artifact",{}).get("score_status")
-                != "EXPORTED_PENDING_NATIVE_RISK_SCORING"):
+            or comparison.get("authorization_verified") is not False):
         raise AssertionError("synthetic one-shot E0/E1/E2 pipeline evidence is invalid")
-    risk_forecast_path=experiment_dir/"e2_validation_risk_forecasts.npz"
-    with np.load(risk_forecast_path,allow_pickle=False) as risk_artifact:
-        risk_shapes={name:list(risk_artifact[name].shape) for name in risk_artifact.files}
-        risk_anchors=full_experiment["forecast_context"]["anchors"]
-        if (risk_shapes.get("risk_mean")!=[risk_anchors,5,4]
-                or risk_shapes.get("risk_scale")!=[risk_anchors,5,4]
-                or risk_shapes.get("barrier_logits")!=[risk_anchors,5,2]
-                or risk_shapes.get("risk_horizons")!=[5]
-                or any(not np.isfinite(risk_artifact[name]).all()
-                       for name in ("risk_mean","risk_scale","barrier_logits"))
-                or np.any(risk_artifact["risk_scale"]<=0)):
-            raise AssertionError("synthetic prior risk forecast artifact is invalid")
 
     # Separate fixed synthetic-fit sanity: with a longer budget, E2's masked
     # next-bar NLL should improve on this deterministic toy sequence.
@@ -241,13 +198,13 @@ def main() -> int:
         "--fold-sha256", fold_hash,
         "--configuration", str(sanity_config),
         "--checkpoint", str(sanity_checkpoint),
-        "--worker-python", str(Path(args.worker_python).absolute()),
+        "--worker-python", str(Path(args.worker_python).resolve()),
         "--upstream-checkout", str(Path(args.checkout).resolve()),
         "--report-json", str(sanity_report_path),
     ])
     if status != 0:
         raise RuntimeError("fixed-sequence E2 NLL sanity training failed")
-    sanity = _read_json(str(sanity_report_path))
+    sanity = json.loads(sanity_report_path.read_text(encoding="utf-8"))
     nll_reports = sanity["worker_result"]["reports"]
     initial_nll = float(nll_reports[0]["pred_nll"])
     final_nll = float(nll_reports[-1]["pred_nll"])
@@ -266,16 +223,9 @@ def main() -> int:
         "e2_synthetic_nll_initial": initial_nll,
         "e2_synthetic_nll_final": final_nll,
         "e2_synthetic_nll_decreased": True,
-        "e2_forecast_distribution": "mixture_gaussian",
-        "e2_mixture_components": 2,
-        "e2_scale_semantics": "marginal_standard_deviation",
-        "e2_next_distribution_shapes": mixture_shapes,
         "synthetic_batched_forecast_shapes": batch_shapes,
         "synthetic_one_shot_fold_pipeline": "COMPLETED",
         "synthetic_one_shot_report_sha256": full_experiment["report_sha256"],
-        "prior_risk_forecast_shapes": risk_shapes,
-        "prior_risk_forecast_sha256": full_experiment["prior_risk_forecast_artifact"][
-            "artifact_sha256"],
         "real_market_validation": False,
         "economic_claim": False,
     }

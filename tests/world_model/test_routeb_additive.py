@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from rles_world_model.routeb.market import Candle,MarketSequence,MINUTE_NS
 from rles_world_model.routeb.clock import MultiScaleClock
-from rles_world_model.routeb.codec import OHLCVCodec,TrainOnlyStandardizer,select_decodable_paths
+from rles_world_model.routeb.codec import OHLCVCodec,TrainOnlyStandardizer
 from rles_world_model.routeb.sequences import (make_windows,export_train_sequences,
                                                 load_worker_batch)
 from rles_world_model.routeb.hierarchy import build_plan,causal_state_lookup
@@ -44,41 +44,6 @@ def test_codec_roundtrip_and_geometry():
                           start_close_ns=MINUTE_NS,instrument="ETH")
 
 
-def test_codec_allows_realistic_log_volume_above_price_log_guard():
-    features=np.zeros((1,5),dtype=np.float64)
-    features[0,4]=20.0  # Binance base-asset volume may exceed exp(18).
-    decoded=OHLCVCodec.decode(features,previous_close=100.0,start_close_ns=MINUTE_NS,
-                              instrument="XRPUSDT-PERP.BINANCE")
-    assert decoded[0].volume==pytest.approx(math.expm1(20.0))
-    features[0,4]=41.0
-    with pytest.raises(ValueError,match="unsafe extrapolated feature"):
-        OHLCVCodec.decode(features,previous_close=100.0,start_close_ns=MINUTE_NS,
-                          instrument="XRPUSDT-PERP.BINANCE")
-
-
-def test_invalid_forecast_paths_are_rejected_and_replaced_without_clipping():
-    candidates=[np.array([0.]),np.array([1.]),np.array([2.]),np.array([3.])]
-    def decode(path):
-        if path[0]==1.0:
-            raise ValueError("unsafe path")
-        return (path.copy(),)
-    accepted,rejected,sampled=select_decodable_paths(
-        candidates,decoder=decode,required=2)
-    assert [item[0][0] for item in accepted]==[0.0,2.0]
-    assert (rejected,sampled)==(1,4)
-    with pytest.raises(ValueError,match="insufficient safe forecast paths"):
-        select_decodable_paths(candidates[:2],decoder=decode,required=2)
-
-
-def test_codec_maps_sub_epsilon_predicted_wick_to_zero_wick_support():
-    features=np.zeros((1,5),dtype=np.float64)
-    features[0,2:4]=-20.0
-    decoded=OHLCVCodec.decode(features,previous_close=100.0,start_close_ns=MINUTE_NS,
-                              instrument="BNBUSDT-PERP.BINANCE")
-    assert decoded[0].high==pytest.approx(decoded[0].open)
-    assert decoded[0].low==pytest.approx(decoded[0].close)
-
-
 def test_train_only_scaling_and_boundary():
     records=bars(300)
     series=MarketSequence(records,"dataset-demo","train")
@@ -111,13 +76,6 @@ def test_npz_authorized_scope_roundtrip(tmp_path):
     assert meta['purpose']=='train'
     with pytest.raises(ValueError):
         load_worker_batch(artifact,expected_scope='validation',
-                          snapshot_sha=SHA,upstream_sha=UP)
-    # Ambiguous provenance must never be resolved by last-key-wins JSON parsing.
-    sidecar=artifact.with_suffix('.json')
-    encoded=json.dumps(meta,sort_keys=True)
-    sidecar.write_text('{"schema":"duplicate",'+encoded[1:],encoding='utf-8')
-    with pytest.raises(ValueError,match='duplicate JSON object key: schema'):
-        load_worker_batch(artifact,expected_scope='reserved-train-1',
                           snapshot_sha=SHA,upstream_sha=UP)
 
 
@@ -195,23 +153,15 @@ def test_imagined_limit_market_cancellation_and_equity():
 
 def test_checkpoint_roundtrip_full_optimizer_tree(tmp_path):
     jax=pytest.importorskip("jax")
-    from rles_world_model.routeb.checkpoint import (
-        optimizer_recipe, save_checkpoint, load_checkpoint,
-    )
-    from rles_world_model.routeb.jax_model import RSSMConfig
-    from rles_world_model.routeb.jax_train import TrainingConfig
+    from rles_world_model.routeb.checkpoint import save_checkpoint,load_checkpoint
     p={"linear": {"w":jax.numpy.array([[1.,2.],[3.,4.]],dtype=jax.numpy.float32)},
        "bias":jax.numpy.array([.2,.7],dtype=jax.numpy.float32)}
     o={"count":jax.numpy.array(13,dtype=jax.numpy.int32),
        "moment":jax.tree.map(lambda x:jax.numpy.zeros_like(x),p)}
     identity={"train_scope_id":"real-registered-train","dataset_id":"ds","snapshot_sha":SHA}
-    recipe=optimizer_recipe(
-        RSSMConfig(forecast_objective="path_log_rv_crps",
-                   path_log_rv_crps_horizons=(15,30,60)),
-        TrainingConfig())
-    cfg=json.loads(json.dumps(recipe))
+    cfg={"width":8,"lr":.01}
     path=tmp_path/'state.npz'
-    save_checkpoint(path,params=p,opt_state=o,step=47,seed=31,identity=identity,config=recipe)
+    save_checkpoint(path,params=p,opt_state=o,step=47,seed=31,identity=identity,config=cfg)
     weights,optim,step,seed=load_checkpoint(path,params_template=p,opt_template=o,
                                             expected_identity=identity,expected_config=cfg)
     assert step==47 and seed==31
@@ -221,64 +171,6 @@ def test_checkpoint_roundtrip_full_optimizer_tree(tmp_path):
         load_checkpoint(path,params_template=p,opt_template=o,
                         expected_identity={**identity,'train_scope_id':'not-authorized'},
                         expected_config=cfg)
-
-
-def test_checkpoint_rejects_duplicate_metadata_keys_before_archive_access(tmp_path, monkeypatch):
-    import sys
-    from rles_world_model.routeb.checkpoint import load_checkpoint
-
-    monkeypatch.setitem(sys.modules, "jax", object())
-    path = tmp_path / "state.npz"
-    path.with_suffix(".json").write_text(
-        '{"schema":"routeb.jax-checkpoint.v2","step":1,"step":2}', encoding="utf-8")
-    with pytest.raises(ValueError, match="metadata is unreadable or ambiguous"):
-        load_checkpoint(path, params_template=None, opt_template=None,
-                        expected_identity={}, expected_config={})
-
-
-def test_bundle_rejects_duplicate_manifest_keys(tmp_path):
-    from rles_data.core import DataError
-    from rles_world_model.bundle import load_bundle
-
-    (tmp_path / "manifest.json").write_text(
-        '{"schema_version":"rles.world_model.bundle.v1",'
-        '"schema_version":"attacker-override"}', encoding="utf-8")
-    with pytest.raises(DataError, match="bundle manifest or state archive is unreadable"):
-        load_bundle(tmp_path, object(), expected_feature_spec_hash="a" * 64,
-                    expected_source_code_sha256="b" * 64)
-
-
-def test_checkpoint_forecast_accepts_valid_seed_stream_metadata_but_resume_is_strict(
-        tmp_path):
-    jax=pytest.importorskip("jax")
-    from rles_world_model.routeb.checkpoint import load_checkpoint, save_checkpoint
-    p={"w":jax.numpy.array([1.,2.],dtype=jax.numpy.float32)}
-    o={"count":jax.numpy.array(0,dtype=jax.numpy.int32)}
-    identity={"train_scope_id":"synthetic-train","dataset_id":"synthetic"}
-    expected={"model":{"name":"tiny"},"train":{"lr":0.001}}
-    configured={**expected,"seed_streams":{
-        "initialization_seed":102,"sampler_seed":31,"model_seed":32}}
-    path=tmp_path/'seed-streams.npz'
-    save_checkpoint(path,params=p,opt_state=o,step=1,seed=31,
-                    identity=identity,config=configured)
-
-    with pytest.raises(ValueError,match="identity"):
-        load_checkpoint(path,params_template=p,opt_template=o,
-                        expected_identity=identity,expected_config=expected)
-    weights,_,step,_=load_checkpoint(
-        path,params_template=p,opt_template=o,expected_identity=identity,
-        expected_config=expected,allow_seed_stream_metadata=True)
-    assert step==1
-    assert np.array_equal(weights["w"],p["w"])
-
-    malformed={**expected,"seed_streams":{
-        "initialization_seed":1 << 32,"sampler_seed":31,"model_seed":32}}
-    save_checkpoint(path,params=p,opt_state=o,step=1,seed=31,
-                    identity=identity,config=malformed)
-    with pytest.raises(ValueError,match="identity"):
-        load_checkpoint(path,params_template=p,opt_template=o,
-                        expected_identity=identity,expected_config=expected,
-                        allow_seed_stream_metadata=True)
 
 
 def test_delayed_hourly_bucket_visibility_no_future():

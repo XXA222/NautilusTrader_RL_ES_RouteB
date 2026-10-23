@@ -13,7 +13,6 @@ dev = [
     "mypy==2.3.0",
     "pytest==9.1.1",
     "ruff==0.17.0",
-    "rles-data[arrow]",
 ]
 
 [tool.uv]
@@ -62,7 +61,5 @@ markers = [
 exclude = "(?x)(^|[\\\\/])build[\\\\/]"
 
 [[tool.mypy.overrides]]
-module = ["nautilus_trader.*", "evotorch.*", "psutil", "pyarrow.*", "cloudpickle",
-          "jax", "jax.*", "elements", "ninjax", "dreamerv3.*", "optax",
-          "embodied.*"]
+module = ["nautilus_trader.*", "evotorch.*", "psutil", "pyarrow.*", "cloudpickle"]
 ignore_missing_imports = true

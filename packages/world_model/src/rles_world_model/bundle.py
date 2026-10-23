@@ -14,7 +14,6 @@ from rles_data.core import DataError
 
 from .upstream import UPSTREAM_COMMIT
 from .learner import FORECAST_SUPPORT
-from .json_utils import loads_unique_json
 
 BUNDLE_SCHEMA = "rles.world_model.bundle.v1"
 
@@ -96,10 +95,10 @@ def load_bundle(path: str | Path, learner: Any, *, expected_feature_spec_hash: s
     """Restore parameters and optimizer into an initialized compatible worker."""
     root = Path(path).resolve()
     try:
-        manifest = loads_unique_json((root / "manifest.json").read_text(encoding="utf-8"))
+        manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
         weights_path = root / "state.npz"
         raw = weights_path.read_bytes()
-    except (OSError, UnicodeError, ValueError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise DataError("bundle manifest or state archive is unreadable") from exc
     if (not isinstance(manifest, dict) or manifest.get("schema_version") != BUNDLE_SCHEMA
             or manifest.get("upstream_commit") != UPSTREAM_COMMIT

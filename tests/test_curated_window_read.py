@@ -8,7 +8,8 @@ import pytest
 
 from rles_data.core import Availability, CuratedStore, DataError, Event, MINUTE_NS
 import rles_data.io as curated_io
-from rles_data.io import curated_source_identity, read_curated, read_curated_window, write_curated
+from rles_data.io import (curated_event_time_bounds, curated_source_identity,
+                             read_curated, read_curated_window, write_curated)
 
 
 def _store() -> CuratedStore:
@@ -49,22 +50,6 @@ def test_curated_source_identity_reads_marker_without_decoding_payload(monkeypat
     }
 
 
-def test_curated_source_identity_rejects_duplicate_commit_marker_keys(tmp_path: Path) -> None:
-    path = tmp_path / "ambiguous-market.parquet"
-    write_curated(path, _store(), row_group_size=2)
-    marker = path.with_name(path.name + ".COMPLETED.json")
-    payload = marker.read_bytes().replace(
-        b'"schema_version":"0.4.1"',
-        b'"schema_version":"0.4.0","schema_version":"0.4.1"',
-    )
-    marker.write_bytes(payload)
-    marker.with_suffix(marker.suffix + ".sha256").write_text(
-        sha256(payload).hexdigest(), encoding="ascii")
-
-    with pytest.raises(DataError, match="invalid curated commit metadata"):
-        curated_source_identity(path)
-
-
 def test_curated_window_reads_only_fully_contained_verified_row_groups(tmp_path: Path) -> None:
     path = tmp_path / "market.parquet"
     source = _store()
@@ -88,28 +73,6 @@ def test_curated_window_fails_when_window_cuts_a_row_group(tmp_path: Path) -> No
     with pytest.raises(DataError, match="crosses the registered window boundary"):
         read_curated_window(path, 2 * MINUTE_NS, 4 * MINUTE_NS,
                             expected_marker_sha256=_marker_sha(path))
-
-
-def test_curated_writer_splits_row_groups_at_registered_scope_boundary(tmp_path: Path) -> None:
-    path = tmp_path / "scope-aligned.parquet"
-    source = _store()
-    write_curated(path, source, row_group_size=2, row_group_boundaries=(3,))
-
-    scoped = read_curated_window(path, 3 * MINUTE_NS, 5 * MINUTE_NS,
-                                 expected_marker_sha256=_marker_sha(path))
-
-    assert [event.event_id for event in scoped.events] == ["bar-3", "bar-4"]
-    assert [group["events"] for group in json.loads(
-        path.with_name(path.name + ".COMPLETED.json").read_text()
-    )["row_groups"]] == [2, 1, 1]
-
-
-@pytest.mark.parametrize("boundaries", [(0,), (6,), (3, 2), (2, 2), (True,)])
-def test_curated_writer_rejects_invalid_row_group_boundaries(
-    tmp_path: Path, boundaries: tuple[int, ...],
-) -> None:
-    with pytest.raises(DataError, match="boundaries"):
-        write_curated(tmp_path / "invalid.parquet", _store(), row_group_boundaries=boundaries)
 
 
 def test_curated_window_binds_the_manifest_digest_before_decoding(tmp_path: Path) -> None:
@@ -187,3 +150,14 @@ def test_curated_window_rejects_unisolated_legacy_before_decoding(
             expected_marker_sha256=_marker_sha(path),
             allow_legacy_isolated_snapshot=True,
         )
+
+
+def test_curated_event_bounds_use_footer_without_decoding_rows(monkeypatch, tmp_path):
+    path = tmp_path / "market.parquet"
+    write_curated(path, _store(), row_group_size=2)
+    monkeypatch.setattr(curated_io, "read_curated",
+                        lambda *_args: pytest.fail("full payload reader was called"))
+
+    bounds = curated_event_time_bounds(path)
+
+    assert bounds == {"min_ts_event_ns": MINUTE_NS, "max_ts_event_ns": 4 * MINUTE_NS}

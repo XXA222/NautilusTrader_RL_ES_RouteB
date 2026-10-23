@@ -8,13 +8,11 @@ from pathlib import Path
 import time
 
 from rles_data.core import CuratedStore, DataError
-from rles_data.json_utils import loads_unique_json
 from rles_gym_bridge.historical import HistoricalEnvironmentFactory, load_rules
 from rles_orchestrator.research_access import read_registered_train_window, record_development
 from profile_native_history_growth_20261016 import (
     DAY_NS,
     RssSampler,
-    _routeb_path,
     available_memory,
     coverage_for_window,
     process_rss,
@@ -31,16 +29,6 @@ SOURCE_CODE = (
     "packages/orchestrator/src/rles_orchestrator/research_access.py",
     "packages/research/src/rles_research/access.py",
 )
-
-
-def _parse_json_object(raw: bytes, label: str) -> dict:
-    try:
-        value = loads_unique_json(raw)
-    except (UnicodeError, ValueError) as exc:
-        raise DataError(f"invalid unambiguous JSON in {label}") from exc
-    if not isinstance(value, dict):
-        raise DataError(f"JSON input root must be an object: {label}")
-    return value
 
 
 def sha256_file(path: Path) -> str:
@@ -120,17 +108,12 @@ def _reset_case(factory: HistoricalEnvironmentFactory, *, days: int, seed: int) 
 
 
 def run(prereg_path: Path, config_path: Path, output_dir: Path) -> dict:
-    prereg_path = _routeb_path(prereg_path, "episode-reset preregistration", must_exist=True)
-    config_path = _routeb_path(config_path, "episode-reset config", must_exist=True)
-    output_dir = _routeb_path(output_dir, "episode-reset output", must_exist=False)
     if output_dir.exists():
         raise DataError("profile output already exists; refusing to overwrite evidence")
-    if not output_dir.parent.is_dir():
-        raise DataError("profile output parent must exist")
     prereg_raw = prereg_path.read_bytes()
-    prereg = _parse_json_object(prereg_raw, "episode-reset preregistration")
+    prereg = json.loads(prereg_raw)
     config_raw = config_path.read_bytes()
-    config = _parse_json_object(config_raw, "episode-reset config")
+    config = json.loads(config_raw)
     prereg_receipt = prereg_path.with_name(prereg_path.name + ".sha256")
     if hashlib.sha256(prereg_raw).hexdigest() != prereg_receipt.read_text(encoding="ascii").strip():
         raise DataError("preregistration checksum mismatch")
@@ -140,15 +123,12 @@ def run(prereg_path: Path, config_path: Path, output_dir: Path) -> dict:
         raise DataError("frozen profile window is not exactly 360 days")
     if prereg["minimum_available_memory_bytes"] != STOP_FLOOR_BYTES:
         raise DataError("profile stop line differs from the required 2 GiB")
-    root = Path(__file__).resolve().parents[1]
     for relative, expected in prereg["source_code_sha256"].items():
-        source_code = _routeb_path(root / relative, "profile source code", must_exist=True)
-        if sha256_file(source_code) != expected:
+        if sha256_file(Path(relative)) != expected:
             raise DataError(f"frozen source code changed: {relative}")
 
     environment = config["environment"]
-    rules_path = _routeb_path(environment["rules_path"], "scenario rules source", must_exist=True)
-    if sha256_file(rules_path) != prereg["rules_sha256"]:
+    if sha256_file(Path(environment["rules_path"])) != prereg["rules_sha256"]:
         raise DataError("scenario rules source checksum changed")
     seed = int(config["seed"])
     full_window = prereg["window"]
@@ -158,16 +138,13 @@ def run(prereg_path: Path, config_path: Path, output_dir: Path) -> dict:
     # any Parquet payload. Labels and marker identities are frozen in prereg.
     registered = []
     for source in prereg["sources"]:
-        source_path = _routeb_path(source["path"], f"{source['name']} Train source", must_exist=True)
+        source_path = Path(source["path"])
         marker_path = source_path.with_name(source_path.name + ".COMPLETED.json")
-        marker_path = _routeb_path(marker_path, f"{source['name']} completion marker", must_exist=True)
-        import_path = _routeb_path(source_path.parent / "import.json",
-                                   f"{source['name']} import manifest", must_exist=True)
         if sha256_file(marker_path) != source["marker_sha256"]:
             raise DataError(f"{source['name']} completion marker changed")
-        if sha256_file(import_path) != source["import_manifest_sha256"]:
+        if sha256_file(source_path.parent / "import.json") != source["import_manifest_sha256"]:
             raise DataError(f"{source['name']} import manifest changed")
-        marker = _parse_json_object(marker_path.read_bytes(), f"{source['name']} completion marker")
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
         if (marker.get("snapshot_hash") != source["snapshot_hash"]
                 or marker.get("file_sha256") != source["file_sha256"]):
             raise DataError(f"{source['name']} marker identity differs from preregistration")
@@ -203,7 +180,7 @@ def run(prereg_path: Path, config_path: Path, output_dir: Path) -> dict:
             allow_legacy_isolated_snapshot=True,
         ))
     market_events = tuple(event for store in stores for event in store.events)
-    rule_events = tuple(load_rules(rules_path))
+    rule_events = tuple(load_rules(environment["rules_path"]))
     store = CuratedStore((*market_events, *rule_events))
     source_load_seconds = time.perf_counter() - load_started
     if store.snapshot_hash != prereg["expected_snapshot_hash"]:

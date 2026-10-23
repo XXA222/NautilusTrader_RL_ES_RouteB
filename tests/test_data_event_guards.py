@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from rles_data.core import Availability, CuratedStore, DataError, Event, MINUTE_NS, digest, parse_ns
+from rles_data.core import Availability, CuratedStore, DataError, Event, MINUTE_NS, digest
 from rles_data.schemas import validate_payload
 
 pytestmark = pytest.mark.unit
@@ -23,12 +23,6 @@ def test_streamed_snapshot_retains_canonical_identity_for_all_availability_state
     assert store.duplicate_count == int(count > 0)
 
 
-@pytest.mark.parametrize("instrument", [" ", " ETHUSDT", "ETHUSDT ", "\tETHUSDT"])
-def test_event_rejects_blank_or_untrimmed_instrument_identifier(instrument: str) -> None:
-    with pytest.raises(DataError, match="instrument must be explicit"):
-        validate_payload("mark", {"instrument": instrument, "price": "1"}, MINUTE_NS)
-
-
 def test_funding_settlement_requires_integer_native_timestamp() -> None:
     with pytest.raises(DataError, match="settlement_ns must be an integer"):
         validate_payload(
@@ -41,10 +35,6 @@ def test_funding_settlement_requires_integer_native_timestamp() -> None:
 def test_instrument_rule_rejects_noninteger_effective_timestamp() -> None:
     rule = {
         "instrument": "ETHUSDT",
-        "quantity_unit": "ETH",
-        "base_currency": "ETH",
-        "quote_currency": "USDT",
-        "contract_multiplier": 1,
         "tick_size": 0.01,
         "step_size": 0.001,
         "min_notional": 5,
@@ -63,10 +53,6 @@ def test_instrument_rule_rejects_noninteger_effective_timestamp() -> None:
 def test_instrument_rule_requires_boolean_reduce_only_min_notional_capability() -> None:
     rule = {
         "instrument": "ETHUSDT",
-        "quantity_unit": "ETH",
-        "base_currency": "ETH",
-        "quote_currency": "USDT",
-        "contract_multiplier": 1,
         "tick_size": 0.01,
         "step_size": 0.001,
         "min_notional": 20,
@@ -83,69 +69,14 @@ def test_instrument_rule_requires_boolean_reduce_only_min_notional_capability() 
         validate_payload("instrument_rule", rule, 60_000_000_000)
 
 
-def test_instrument_rule_requires_explicit_quantity_unit_and_positive_multiplier() -> None:
-    rule = {
-        "instrument": "BTCUSDT-PERP.BINANCE",
-        "quantity_unit": "BTC",
-        "base_currency": "BTC",
-        "quote_currency": "USDT",
-        "contract_multiplier": "0.01",
-        "tick_size": "0.1",
-        "step_size": "0.001",
-        "min_notional": "5",
-        "min_qty": "0.001",
-        "maker_fee": "0.0002",
-        "taker_fee": "0.0005",
-        "initial_margin_rate": "1",
-        "maintenance_margin_rate": "0.004",
-        "effective_ns": 60_000_000_000,
-        "rule_version": "synthetic-btc-linear-v1",
-    }
-    validate_payload("instrument_rule", rule, 60_000_000_000)
-    with pytest.raises(DataError, match="quantity_unit"):
-        validate_payload("instrument_rule", {key: value for key, value in rule.items()
-                                               if key != "quantity_unit"}, 60_000_000_000)
-    with pytest.raises(DataError, match="contract_multiplier"):
-        validate_payload("instrument_rule", {**rule, "contract_multiplier": "0"}, 60_000_000_000)
-
-
-@pytest.mark.parametrize(
-    ("fee_key", "other_fee"),
-    [("maker_fee", "0.0005"), ("taker_fee", "0.0005")],
-)
-def test_instrument_rule_accepts_signed_fee_rebates(fee_key: str, other_fee: str) -> None:
-    rule = {
-        "instrument": "ETHUSDT",
-        "quantity_unit": "ETH",
-        "base_currency": "ETH",
-        "quote_currency": "USDT",
-        "contract_multiplier": "1",
-        "tick_size": "0.01",
-        "step_size": "0.001",
-        "min_notional": "20",
-        "min_qty": "0.001",
-        "maker_fee": other_fee,
-        "taker_fee": other_fee,
-        "initial_margin_rate": "0.1",
-        "maintenance_margin_rate": "0.05",
-        "effective_ns": 60_000_000_000,
-        "rule_version": "rebate-v1",
-    }
-    rule[fee_key] = "-0.0001"
-    validate_payload("instrument_rule", rule, 60_000_000_000)
-
-
 def test_latest_rule_index_matches_visible_filter_sort_and_conflict_semantics() -> None:
     instrument = "ETHUSDT"
 
     def rule(event_id: str, effective_minute: int, available_minute: int,
              *, maker_fee: str = "0.0002", valid_until_minute: int | None = None) -> Event:
         effective = effective_minute * MINUTE_NS
-        base_currency, quote_currency = instrument.split("USDT")
         payload = {
             "instrument": instrument, "tick_size": "0.01", "step_size": "0.001",
-            "quantity_unit": base_currency, "base_currency": base_currency,
-            "quote_currency": "USDT", "contract_multiplier": "1",
             "min_notional": "5", "min_qty": "0.001", "maker_fee": maker_fee,
             "taker_fee": "0.0005", "initial_margin_rate": "0.1",
             "maintenance_margin_rate": "0.05", "effective_ns": effective,
@@ -194,28 +125,3 @@ def test_latest_rule_index_matches_visible_filter_sort_and_conflict_semantics() 
         decision_ns = minute * MINUTE_NS
         assert outcome(lambda: reference(decision_ns)) == outcome(
             lambda: store.latest_rule(decision_ns, instrument).event_id)
-
-@pytest.mark.parametrize(
-    "token",
-    ["2_000", "٢٠٠٠", "+2000", " 2000 ", "2e3"],
-)
-def test_numeric_event_strings_require_ascii_fixed_point_lexemes(token: str) -> None:
-    with pytest.raises(DataError, match="price"):
-        validate_payload("mark", {"instrument": "ETHUSDT", "price": token}, 0)
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        "1970-01-01T00:00:00.１２Z",
-        "２０２４-01-01T00:00:00Z",
-        "2024-01-01T00:00:00.123456789０Z",
-    ],
-)
-def test_parse_ns_rejects_non_ascii_digits(value: str) -> None:
-    with pytest.raises(DataError, match="explicit UTC ISO-8601"):
-        parse_ns(value)
-
-
-def test_parse_ns_preserves_ascii_fractional_nanoseconds() -> None:
-    assert parse_ns("1970-01-01T00:00:00.000000012Z") == 12

@@ -9,8 +9,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-from rles_data.json_utils import loads_unique_json
-
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BUNDLE = (ROOT / ".artifacts/audit-development-20261017/m12-three-objective"
@@ -64,23 +62,13 @@ def _json(path: Path, payload: Any) -> None:
                     encoding="utf-8")
 
 
-def _load_json_object(path: Path) -> dict:
-    try:
-        value = loads_unique_json(path.read_bytes())
-    except (OSError, UnicodeError, ValueError) as exc:
-        raise ValueError(f"cannot read unambiguous M1.3 JSON object: {path}") from exc
-    if not isinstance(value, dict):
-        raise ValueError(f"M1.3 JSON input root must be an object: {path}")
-    return value
-
-
 def _load_bundle(bundle_root: Path) -> tuple[dict, str]:
     bundle_path = bundle_root / "bundle.json"
     marker = bundle_path.with_suffix(".json.sha256")
     actual = _sha(bundle_path)
     if not marker.is_file() or marker.read_text(encoding="ascii").strip() != actual:
         raise SystemExit("bundle identity check failed")
-    return _load_json_object(bundle_path), actual
+    return json.loads(bundle_path.read_text(encoding="utf-8")), actual
 
 
 def _preregister(bundle_root: Path, output: Path, registration: Path) -> dict:
@@ -96,7 +84,7 @@ def _preregister(bundle_root: Path, output: Path, registration: Path) -> dict:
     if actor_hash != actor["actor_hash"]:
         raise SystemExit("R1 inference actor receipt mismatch")
     manifest_path = Path(env["market_path"]).parent / "import.json"
-    manifest = _load_json_object(manifest_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("schema") not in {"rles.binance-archive.v1", "rles.binance-archive-range.v1"}:
         raise SystemExit("Train-inner fixture import manifest schema mismatch")
     for entry in manifest["sources"]:
@@ -119,7 +107,7 @@ def _preregister(bundle_root: Path, output: Path, registration: Path) -> dict:
         "modes": ["base", "stress"],
         "bundle_root": str(bundle_root),
         "bundle_sha256": bundle_sha,
-        "run_id": _load_json_object(bundle_root / "COMPLETED.json")["run_id"],
+        "run_id": json.loads((bundle_root / "COMPLETED.json").read_text(encoding="utf-8"))["run_id"],
         "actor_sha256": actor_hash,
         "lineage": bundle["lineage"],
         "training_end_ns": bundle["training_end_ns"],
@@ -144,7 +132,7 @@ def _preregister(bundle_root: Path, output: Path, registration: Path) -> dict:
         "source_sha256": {relative: _sha(ROOT / relative) for relative in SOURCE_FILES},
     }
     if registration.exists():
-        previous = _load_json_object(registration)
+        previous = json.loads(registration.read_text(encoding="utf-8"))
         if previous != registration_payload:
             raise SystemExit("frozen M1.3 registration already exists with different inputs")
     else:
@@ -159,7 +147,7 @@ def _verify_registration(registration: Path, output: Path) -> dict:
     marker = registration.with_suffix(registration.suffix + ".sha256")
     if not registration.is_file() or not marker.is_file() or marker.read_text(encoding="ascii").strip() != _sha(registration):
         raise SystemExit("M1.3 preregistration receipt mismatch")
-    frozen = _load_json_object(registration)
+    frozen = json.loads(registration.read_text(encoding="utf-8"))
     if _sha(Path(__file__).resolve()) != frozen["runner_sha256"]:
         raise SystemExit("M1.3 runner changed after preregistration")
     for relative, expected in frozen["source_sha256"].items():

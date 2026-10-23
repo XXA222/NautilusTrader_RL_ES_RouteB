@@ -1,9 +1,7 @@
 import numpy as np
 import pytest
 
-from rles_world_model.routeb.evaluation import estimate_student_t_df, sample_e0_paths
-
-pytestmark = pytest.mark.unit
+from rles_world_model.routeb.evaluation import sample_e0_paths
 
 
 def test_e0_paths_are_finite_reproducible_and_anchor_causal():
@@ -38,13 +36,3 @@ def test_e0_paths_are_finite_reproducible_and_anchor_causal():
 def test_e0_rejects_invalid_sampling_configuration(kwargs):
     with pytest.raises(ValueError):
         sample_e0_paths(np.asarray([0.1, -0.1]), np.zeros((1, 0)), **kwargs)
-
-
-def test_s0_student_t_is_fitted_from_train_and_matches_train_variance():
-    train = np.asarray([-.03, -.01, -.005, -.002, .001, .003, .007, .04])
-    df = estimate_student_t_df(train)
-    assert 2.1 <= df <= 200
-    paths = sample_e0_paths(train, np.zeros((1, 0)), paths=50_000,
-                            horizon=1, seed=20261018)
-    assert abs(float(paths["S0_ZERO_DRIFT_FIXED_VOL"][0].var())
-               - float(np.mean((train - train.mean()) ** 2))) < 0.001

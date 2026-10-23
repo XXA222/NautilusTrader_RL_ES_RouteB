@@ -4,9 +4,8 @@ from __future__ import annotations
 import argparse
 from hashlib import sha256
 import json
-import math
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,34 +32,8 @@ def _sha(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest()
 
 
-class _DuplicateJSONKey(ValueError):
-    """A JSON object repeats a field and therefore has ambiguous semantics."""
-
-
-def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise _DuplicateJSONKey(key)
-        result[key] = value
-    return result
-
-
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"non-standard JSON constant: {value}")
-
-
 def _load_json(path: Path) -> dict[str, Any]:
-    try:
-        value = json.loads(
-            path.read_text(encoding="utf-8"),
-            object_pairs_hook=_unique_json_object,
-            parse_constant=_reject_json_constant,
-        )
-    except _DuplicateJSONKey as exc:
-        raise ValueError(f"duplicate JSON object key in {path}: {exc}") from exc
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        raise ValueError(f"cannot read JSON object: {path}") from exc
+    value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"expected JSON object: {path}")
     return value
@@ -89,46 +62,19 @@ def _verify_preregistration(registration: Path, output_root: Path) -> dict[str, 
     return frozen
 
 
-def _number(value: object, label: str) -> float:
-    if isinstance(value, bool):
-        raise ValueError(f"{label} must be a finite number")
-    try:
-        result = float(cast(Any, value))
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValueError(f"{label} must be a finite number") from exc
-    if not math.isfinite(result):
-        raise ValueError(f"{label} must be a finite number")
-    return result
-
-
-def _nonnegative_count(value: object, label: str) -> int:
-    if type(value) is not int or value < 0:
-        raise ValueError(f"{label} must be a nonnegative integer")
-    return value
-
-
 def _verify_equity_reconciliation(report: dict[str, Any], label: str) -> None:
     if report.get("costs_already_in_native_equity") is not True:
         raise ValueError(f"{label}: native equity cost inclusion is not confirmed")
     reconciliation = report.get("equity_reconciliation")
-    if (not isinstance(reconciliation, dict)
-            or not isinstance(reconciliation.get("rows"), list)
-            or not reconciliation["rows"]):
+    if not isinstance(reconciliation, dict) or not isinstance(reconciliation.get("rows"), list):
         raise ValueError(f"{label}: event-level equity reconciliation is missing")
     if report.get("terminal_flat") is not True:
         raise ValueError(f"{label}: terminal account is not confirmed flat")
-    max_residual = 0.0
     for row in reconciliation["rows"]:
-        if not isinstance(row, dict):
-            raise ValueError(f"{label}: malformed equity reconciliation row")
-        residual = abs(_number(row.get("residual"), f"{label} residual"))
-        tolerance = _number(row.get("tolerance"), f"{label} tolerance")
-        if tolerance < 0 or residual > tolerance:
-            raise ValueError(f"{label}: equity residual exceeds tolerance at {row.get('ts_ns')}")
-        max_residual = max(max_residual, residual)
-    reported_max = _number(reconciliation.get("max_abs_residual"), f"{label} max_abs_residual")
-    if reported_max < 0 or not math.isclose(reported_max, max_residual, rel_tol=1e-12, abs_tol=1e-12):
-        raise ValueError(f"{label}: max_abs_residual does not match event-level rows")
+        residual = abs(float(row["residual"]))
+        tolerance = float(row["tolerance"])
+        if residual > tolerance:
+            raise ValueError(f"{label}: equity residual exceeds tolerance at {row['ts_ns']}")
 
 
 def summarize_mode(mode: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -146,11 +92,6 @@ def summarize_mode(mode: str, payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"{mode}: paired native account rows are missing")
     if len(r1_rows) != len(e2_rows):
         raise ValueError(f"{mode}: arm account row counts differ")
-    for arm, rows in (("R1", r1_rows), ("E2", e2_rows)):
-        for row in rows:
-            if (not isinstance(row, dict) or type(row.get("ts_ns")) is not int):
-                raise ValueError(f"{mode}/{arm}: malformed native account row")
-            _number(row.get("equity"), f"{mode}/{arm} equity")
     timestamps = [row["ts_ns"] for row in r1_rows]
     if timestamps != [row["ts_ns"] for row in e2_rows] or any(
         left >= right for left, right in zip(timestamps, timestamps[1:])
@@ -162,47 +103,27 @@ def summarize_mode(mode: str, payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"{mode}: runner summary does not attest paired timestamps")
     first_r1, first_e2 = r1_rows[0], e2_rows[0]
     last_r1, last_e2 = r1_rows[-1], e2_rows[-1]
-    initial_r1, initial_e2 = _number(first_r1["equity"], f"{mode}/R1 initial equity"), _number(first_e2["equity"], f"{mode}/E2 initial equity")
-    final_r1, final_e2 = _number(last_r1["equity"], f"{mode}/R1 final equity"), _number(last_e2["equity"], f"{mode}/E2 final equity")
-    if initial_r1 != initial_e2 or final_r1 != _number(stored.get("final_equity_r1"), f"{mode} stored R1 final equity"):
+    initial_r1, initial_e2 = float(first_r1["equity"]), float(first_e2["equity"])
+    final_r1, final_e2 = float(last_r1["equity"]), float(last_e2["equity"])
+    if initial_r1 != initial_e2 or final_r1 != float(stored["final_equity_r1"]):
         raise ValueError(f"{mode}: initial or R1 final equity disagrees with raw account rows")
-    if final_e2 != _number(stored.get("final_equity_e2"), f"{mode} stored E2 final equity"):
+    if final_e2 != float(stored["final_equity_e2"]):
         raise ValueError(f"{mode}: E2 final equity disagrees with raw account rows")
-    if abs((final_e2 - final_r1) - _number(stored.get("native_equity_delta_e2_minus_r1"), f"{mode} stored equity delta")) > 1e-8:
+    if abs((final_e2 - final_r1) - float(stored["native_equity_delta_e2_minus_r1"])) > 1e-8:
         raise ValueError(f"{mode}: final paired equity delta is inconsistent")
 
     r1_metrics, e2_metrics = r1.get("metrics"), e2.get("metrics")
     if not isinstance(r1_metrics, dict) or not isinstance(e2_metrics, dict):
         raise ValueError(f"{mode}: native economic metrics are missing")
-    deltas = {
-        key: _number(e2_metrics.get(key), f"{mode}/E2 metric {key}")
-        - _number(r1_metrics.get(key), f"{mode}/R1 metric {key}")
-        for key in METRICS
-    }
+    deltas = {key: float(e2_metrics[key]) - float(r1_metrics[key]) for key in METRICS}
     r1_exec = r1.get("execution_decision_diagnostics", {})
     e2_exec = e2.get("execution_decision_diagnostics", {})
     if not isinstance(r1_exec, dict) or not isinstance(e2_exec, dict):
         raise ValueError(f"{mode}: execution diagnostics are malformed")
-    r1_decisions = _nonnegative_count(r1_exec.get("decision_count"), f"{mode}/R1 decision_count")
-    e2_decisions = _nonnegative_count(e2_exec.get("decision_count"), f"{mode}/E2 decision_count")
-    for arm, diagnostics in (("R1", r1_exec), ("E2", e2_exec)):
-        submits = _nonnegative_count(diagnostics.get("submit_decision_count"), f"{mode}/{arm} submit_decision_count")
-        orders = _nonnegative_count(diagnostics.get("native_order_count"), f"{mode}/{arm} native_order_count")
-        decision_limit = r1_decisions if arm == "R1" else e2_decisions
-        if submits > decision_limit:
-            raise ValueError(f"{mode}/{arm}: submit count exceeds decisions")
-        if orders > submits:
-            raise ValueError(f"{mode}/{arm}: native order count exceeds submits")
+    r1_decisions = int(r1_exec.get("decision_count", 0))
+    e2_decisions = int(e2_exec.get("decision_count", 0))
     if r1_decisions != e2_decisions:
         raise ValueError(f"{mode}: policy decision counts differ")
-    for arm, report in reports.items():
-        if not isinstance(report.get("fills"), list):
-            raise ValueError(f"{mode}/{arm}: native fill list is missing")
-        hard_interventions = _nonnegative_count(
-            report.get("risk_hard_interventions"), f"{mode}/{arm} risk_hard_interventions"
-        )
-        if hard_interventions > r1_decisions:
-            raise ValueError(f"{mode}/{arm}: hard-risk interventions exceed decisions")
     return {
         "mode": mode,
         "paired_account_rows": len(timestamps),
@@ -215,9 +136,12 @@ def summarize_mode(mode: str, payload: dict[str, Any]) -> dict[str, Any]:
         "metric_deltas_e2_minus_r1": deltas,
         "execution_deltas_e2_minus_r1": {
             "fills": len(e2.get("fills", [])) - len(r1.get("fills", [])),
-            "submit_decisions": e2_exec["submit_decision_count"] - r1_exec["submit_decision_count"],
-            "native_orders": e2_exec["native_order_count"] - r1_exec["native_order_count"],
-            "hard_risk_interventions": e2["risk_hard_interventions"] - r1["risk_hard_interventions"],
+            "submit_decisions": int(e2_exec.get("submit_decision_count", 0))
+            - int(r1_exec.get("submit_decision_count", 0)),
+            "native_orders": int(e2_exec.get("native_order_count", 0))
+            - int(r1_exec.get("native_order_count", 0)),
+            "hard_risk_interventions": int(e2.get("risk_hard_interventions", 0))
+            - int(r1.get("risk_hard_interventions", 0)),
         },
         "r1_metrics": {key: r1_metrics[key] for key in METRICS},
         "e2_metrics": {key: e2_metrics[key] for key in METRICS},

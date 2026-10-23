@@ -748,7 +748,6 @@ class WorkerLaneDispatcher:
                 "risk_intervention_rate": intervention_rate,
                 "tail_fraction": self.tail_fraction,
                 "insolvency": value["insolvency"],
-                "margin_facts_known": value["margin_facts_known"],
                 "maintenance_margin_breach": value["maintenance_margin_breach"],
                 "native_liquidation_detected": value["native_liquidation_detected"],
             }
@@ -760,7 +759,6 @@ class WorkerLaneDispatcher:
                 feasible, rejection_reason = decision.feasible, decision.rejection_reason
             else:
                 fitness_facts.pop("insolvency")
-                fitness_facts.pop("margin_facts_known")
                 fitness_facts.pop("maintenance_margin_breach")
                 fitness_facts.pop("native_liquidation_detected")
                 fitness = self.fitness_spec.score_episode(**fitness_facts)

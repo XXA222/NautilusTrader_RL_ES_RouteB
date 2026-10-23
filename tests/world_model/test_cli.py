@@ -1,9 +1,7 @@
 import json
-from pathlib import Path
 import subprocess
 
 import numpy as np
-import pytest
 from rles_data.core import DAY_NS
 from rles_data.core import FoldManifest, Window, MINUTE_NS
 from rles_world_model.baselines import BaselineScore
@@ -12,27 +10,11 @@ import rles_world_model.cli as world_model_cli
 from rles_world_model.contracts import MarketFrame, MarketReplay
 
 
-def test_json_input_rejects_duplicate_keys_recursively(tmp_path):
-    from rles_data.core import DataError
-
-    path = tmp_path / "duplicate.json"
-    path.write_text('{"schema":"outer","nested":{"x":1,"x":2}}', encoding="utf-8")
-    with pytest.raises(DataError, match="cannot read valid JSON"):
-        world_model_cli._read_json(str(path))
-
-
-def test_code_identity_falls_back_to_explicit_snapshot_commit(tmp_path, monkeypatch):
+def test_code_identity_falls_back_to_explicit_snapshot_commit(monkeypatch):
     def no_git_commit(*_args, **_kwargs):
         raise subprocess.CalledProcessError(128, "git rev-parse HEAD")
 
     monkeypatch.setattr(world_model_cli.subprocess, "run", no_git_commit)
-    workspace_root = Path(__file__).resolve().parents[1]
-    monkeypatch.setattr(
-        world_model_cli, "__file__",
-        str(workspace_root / ".venv" / "lib" / "python3.14" / "site-packages"
-            / "rles_world_model" / "cli.py"),
-    )
-    monkeypatch.chdir(tmp_path)
     identity = world_model_cli._routeb_code_identity()
     assert identity["repository_commit"] == "c24d1bc4a47584f91a4c4db93bf77117d4e8341c"
     assert len(identity["source_code_sha256"]) == 64
@@ -70,17 +52,6 @@ def test_code_identity_binds_nested_routeb_sources(tmp_path, monkeypatch):
     second = world_model_cli._routeb_code_identity(tmp_path)
     assert first["repository_commit"] == second["repository_commit"] == "d" * 40
     assert first["source_code_sha256"] != second["source_code_sha256"]
-
-    from rles_data.core import DataError
-
-    marker.write_text(
-        '{"schema_version":"rles.routeb.repository_base.v0",'
-        '"repository_commit":"' + "d" * 40 + '","repository_commit":"'
-        + "d" * 40 + '"}',
-        encoding="utf-8",
-    )
-    with pytest.raises(DataError, match="cannot freeze Route B repository commit"):
-        world_model_cli._routeb_code_identity(tmp_path)
 
 
 def test_world_model_cli_dispatches_through_rles(tmp_path, capsys):
@@ -197,10 +168,10 @@ def test_registered_fold_baseline_cli_uses_frozen_reader_before_scoring(
         "schema_version": "0.4.0", "dataset_hash": "a" * 64, "feature_hash": "b" * 64,
         "train": {"warmup_start_ns": 0, "score_start_ns": DAY_NS,
                   "score_end_ns": 61 * DAY_NS},
-        "validation": {"warmup_start_ns": 51 * DAY_NS, "score_start_ns": 62 * DAY_NS,
-                       "score_end_ns": 77 * DAY_NS},
-        "test": {"warmup_start_ns": 67 * DAY_NS, "score_start_ns": 78 * DAY_NS,
-                 "score_end_ns": 93 * DAY_NS},
+        "validation": {"warmup_start_ns": 60 * DAY_NS, "score_start_ns": 61 * DAY_NS,
+                       "score_end_ns": 76 * DAY_NS},
+        "test": {"warmup_start_ns": 75 * DAY_NS, "score_start_ns": 76 * DAY_NS,
+                 "score_end_ns": 91 * DAY_NS},
         "purge_ns": 0, "embargo_ns": 0, "scaler_hash": None,
     }
     monkeypatch.setattr(world_model_cli, "score_baselines",
@@ -523,15 +494,3 @@ def test_run_registered_fold_reserves_once_then_hands_same_replay_to_pipeline(
     receipt = json.loads((output_dir / "registration_receipt.json").read_text())
     assert receipt["fold_hash"] == fold.hash
     assert receipt["read_scope"]["includes_test"] is False
-
-
-def test_registered_60_15_15_fold_accepts_declared_one_day_gaps():
-    fold = FoldManifest(
-        "0.4.0", "a" * 64, "b" * 64,
-        Window(0, DAY_NS, 61 * DAY_NS),
-        Window(51 * DAY_NS, 62 * DAY_NS, 77 * DAY_NS),
-        Window(67 * DAY_NS, 78 * DAY_NS, 93 * DAY_NS),
-        3_600_000_000_000, 82_800_000_000_000, None,
-    )
-    world_model_cli._validate_registered_b0_fold(fold)
-    assert fold.test.score_end_ns - fold.train.score_start_ns == 92 * DAY_NS

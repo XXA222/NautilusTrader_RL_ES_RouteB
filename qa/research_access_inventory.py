@@ -9,61 +9,20 @@ from __future__ import annotations
 import argparse
 from hashlib import sha256
 import json
-import os
 from pathlib import Path
 import sqlite3
 import subprocess
 
-from rles_data.core import MAX_NS, digest
-from rles_data.json_utils import loads_unique_json
-
-
-def _contained_path(root: Path, path: Path, label: str, *, must_exist: bool = True) -> Path:
-    root = root.resolve()
-    if not path.is_absolute() and ".." in path.parts:
-        raise ValueError(f"{label} contains parent traversal")
-    candidate = path if path.is_absolute() else root / path
-    try:
-        relative = Path(os.path.abspath(candidate)).relative_to(root)
-    except ValueError as exc:
-        raise ValueError(f"{label} escapes the inventory root") from exc
-    current = root
-    for part in relative.parts:
-        current = current / part
-        if current.is_symlink():
-            raise ValueError(f"{label} traverses a symlink")
-    resolved = current.resolve(strict=must_exist)
-    if not resolved.is_relative_to(root):
-        raise ValueError(f"{label} escapes the inventory root")
-    return resolved
-
-
-def _read_json_object(path: Path) -> dict:
-    try:
-        value = loads_unique_json(path.read_bytes())
-    except (OSError, UnicodeError, ValueError) as exc:
-        raise ValueError(f"cannot read unambiguous JSON object: {path}") from exc
-    if not isinstance(value, dict):
-        raise ValueError(f"JSON inventory input must be an object: {path}")
-    return value
+from rles_data.core import MAX_NS, MINUTE_NS, digest
 
 
 def inventory(root: Path) -> dict:
-    root = root.resolve()
     scan_roots = [root / ".tmp" / "real-ethusdt-scenario",
                   root / ".tmp" / "wfo-validation-recovery-20261013"]
-    unresolved: list[dict] = []
     configs = []
     for folder in scan_roots:
-        _contained_path(root, folder.relative_to(root), "legacy scan root", must_exist=False)
-        if not folder.is_dir():
-            unresolved.append({
-                "path": folder.relative_to(root).as_posix(),
-                "reason": "legacy research root missing; historical access coverage unresolved",
-            })
         for path in sorted(folder.glob("config*.json")):
-            path = _contained_path(root, path.relative_to(root), "legacy config")
-            value = _read_json_object(path)
+            value = json.loads(path.read_text(encoding="utf-8"))
             configs.append((path, value))
     discovery = subprocess.run([
         "rg", "--files", "--hidden", "--no-ignore", "--no-messages",
@@ -71,21 +30,11 @@ def inventory(root: Path) -> dict:
     ], capture_output=True, text=True, check=False)
     entries: list[dict] = []
     databases: list[dict] = []
-    if discovery.returncode not in (0, 1):
-        unresolved.append({
-            "reason": "legacy WFO manifest discovery failed; historical access coverage unresolved",
-            "discovery_exit_code": discovery.returncode,
-        })
+    unresolved: list[dict] = []
     for name in sorted(discovery.stdout.splitlines()):
-        manifest_path = _contained_path(root, Path(name), "legacy WFO manifest")
-        manifest = _read_json_object(manifest_path)
+        manifest_path = Path(name)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         db = manifest_path.parent / "research.sqlite"
-        try:
-            db = _contained_path(root, db.relative_to(root), "legacy research database")
-        except ValueError as exc:
-            unresolved.append({"manifest": str(manifest_path.relative_to(root)),
-                               "reason": f"ledger path rejected: {exc}"})
-            continue
         if not db.is_file():
             unresolved.append({"manifest": str(manifest_path.relative_to(root)), "reason": "missing ledger"})
             continue
@@ -131,6 +80,12 @@ def inventory(root: Path) -> dict:
                 if start is None and matching:
                     start = matching[0]["wfo"]["holdout_start_ns"]
                 end = matching[0]["wfo"]["holdout_end_ns"] if matching else None
+                if end is None:
+                    report_path = db.parent / "holdout-report.json"
+                    if report_path.is_file():
+                        rows = json.loads(report_path.read_text(encoding="utf-8")).get("account_rows", [])
+                        if rows:
+                            end = max(row["ts_ns"] for row in rows) + MINUTE_NS
                 if start is None or end is None:
                     unresolved.append({"database": db_rel, "reason": "unknown Holdout boundary; quarantined"})
                     start, end = start or 1, end or MAX_NS
@@ -143,14 +98,7 @@ def inventory(root: Path) -> dict:
             continue
         output = Path(config["output"])
         output = output if output.is_absolute() else config_path.parent / output
-        try:
-            report_path = _contained_path(
-                root, output / "report.json", "standalone report", must_exist=False,
-            )
-        except ValueError as exc:
-            unresolved.append({"config": str(config_path.relative_to(root)),
-                               "reason": f"standalone report path rejected: {exc}"})
-            continue
+        report_path = output / "report.json"
         if not report_path.is_file():
             continue
         split = evaluation.get("split", "validation")

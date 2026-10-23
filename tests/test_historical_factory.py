@@ -1,13 +1,9 @@
-Warning: truncated output (original token count: 24647)
-Total output lines: 1946
-
 """Synthetic contract tests for production assembly; never real-data claims."""
+from bisect import bisect_left, bisect_right
 from dataclasses import asdict
-from decimal import Decimal
 from hashlib import sha256
 import json
 from pathlib import Path
-from types import MappingProxyType
 
 import numpy as np
 import pytest
@@ -16,9 +12,7 @@ from rles_data.core import Availability, CuratedStore, DataError, Event, MINUTE_
 from rles_data.features import make_feature_row
 from rles_data.io import write_curated
 from rles_data.contracts import to_market_event
-from rles_gym_bridge.historical import (HistoricalEnvironmentFactory, _money, _visible_batches_by_decision,
-                                        _CompactReportSnapshot, _CompactReportSnapshotSeries,
-                                        _SpooledReportSnapshotSequence,
+from rles_gym_bridge.historical import (HistoricalEnvironmentFactory, _visible_batches_by_decision,
                                         historical_feature_spec, partition_decision_lanes,
                                         scheduled_funding_time_features)
 from rles_gym_bridge.episode import BarrierFrame, EpisodeReplay
@@ -27,20 +21,6 @@ from rles_contracts.dto import DataQualityGrade
 from rles_risk import SoftRiskParams
 
 pytestmark = pytest.mark.micro_golden
-
-
-@pytest.mark.parametrize("value", ["1,2 USDT", "1,234.50 USDT", "12 USDC", "NaN", "1 USDT extra"])
-def test_native_account_money_rejects_ambiguous_or_wrong_currency(value):
-    with pytest.raises(DataError):
-        _money(value, "USDT")
-
-
-@pytest.mark.parametrize(("value", "expected"), [
-    ("1234.50000000 USDT", Decimal("1234.50000000")),
-    ("1234.50000000", Decimal("1234.50000000")),
-])
-def test_native_account_money_accepts_strict_decimal_wire_values(value, expected):
-    assert _money(value, "USDT") == expected
 
 
 def test_checked_in_ethusdt_real_config_has_valid_soft_risk_domain():
@@ -78,65 +58,54 @@ def test_historical_frame_batch_partition_is_ordered_complete_and_linear_windowe
     assert tuple(batch for frame in frames for batch in frame) == tuple(batch for _, batch in batches)
 
 
-def test_factory_lazy_episode_frames_match_windowed_visible_event_grouping(tmp_path, monkeypatch):
-    import rles_gym_bridge.historical as historical_module
-
+def test_factory_market_batch_index_matches_uncached_visible_event_grouping(tmp_path):
     factory = HistoricalEnvironmentFactory(**recipe(tmp_path, bar_count=30))
-    # CuratedStore owns the validated events; keeping a second Fold-wide tuple
-    # of the same OHLCV Event references serves no consumer.
-    assert not hasattr(factory, "_bars")
     warmup_minutes = max(
         field.lookback_bars * field.timeframe_minutes
         for field in factory.features.fields if field.source_kind == "ohlcv_1m"
     ) + 2
-    original_features = historical_module.visible_market_features
-    feature_calls = []
+    feed_start_ns = max(0, factory.rows[0].decision_ts_ns - warmup_minutes * MINUTE_NS)
+    feed_end_ns = factory.rows[-1].decision_ts_ns
+    expected = {}
+    for event in factory.store.available_event_window(feed_start_ns, feed_end_ns):
+        if event.kind in {"instrument_rule", "funding_update"}:
+            continue
+        if event.payload.get("instrument") != factory.instrument:
+            continue
+        expected.setdefault(event.available_at_ns, []).append(event.event_id)
 
-    def counted_features(*args, **kwargs):
-        feature_calls.append(kwargs["decision_ts_ns"])
-        return original_features(*args, **kwargs)
+    first = factory._visible_market_batch_index()
+    second = factory._visible_market_batch_index()
 
-    monkeypatch.setattr(historical_module, "visible_market_features", counted_features)
+    assert first is second
+    assert [(timestamp, [event.event_id for event in batch.events])
+            for timestamp, batch in first] == list(expected.items())
+    batch_times = tuple(timestamp for timestamp, _batch in first)
     for start_offset in (0, 7):
-        feature_calls.clear()
         episode_rows = factory.rows[start_offset:start_offset + 8]
         episode_feed_start = max(
             0, episode_rows[0].decision_ts_ns - warmup_minutes * MINUTE_NS,
         )
+        left = bisect_left(batch_times, episode_feed_start)
+        right = bisect_right(batch_times, episode_rows[-1].decision_ts_ns)
+        uncached = _visible_batches_by_decision(
+            first[left:right], tuple(row.decision_ts_ns for row in episode_rows),
+        )
+        cached = factory._episode_market_batch_groups(
+            start_offset=start_offset, episode_rows=episode_rows,
+            feed_start_ns=episode_feed_start,
+        )
+        assert cached == uncached
         frames = factory._episode_barrier_frames(
             start_offset=start_offset, episode_rows=episode_rows,
             feed_start_ns=episode_feed_start,
         )
-        assert not isinstance(frames, tuple)
-        assert len(feature_calls) == 0
-        for index, row in enumerate(episode_rows):
-            start_available_ns = (episode_feed_start if index == 0
-                                  else episode_rows[index - 1].decision_ts_ns + 1)
-            expected_groups = {}
-            for event in factory.store.available_event_window(
-                    start_available_ns, row.decision_ts_ns):
-                if (event.kind in {"instrument_rule", "funding_update"}
-                        or event.payload.get("instrument") != factory.instrument
-                        or event.available_at_ns is None):
-                    continue
-                expected_groups.setdefault(event.available_at_ns, []).append(
-                    to_market_event(event, quality_grade=DataQualityGrade(
-                        factory.quality.grade.value)))
-            expected_batches = tuple(
-                VisibleBatch(timestamp, tuple(events), True)
-                for timestamp, events in sorted(expected_groups.items())
-            )
-            frame = frames[index]
-            assert frame.batches == expected_batches
-            assert frame.market == original_features(
-                row, factory.features, factory.schema, instrument=factory.instrument,
-                decision_ts_ns=row.decision_ts_ns,
-            )
-            assert frame.time_features == {}
-            assert feature_calls[-1] == row.decision_ts_ns
-        assert frames[0] == frames[0]  # repeated reads are deterministic, not retained in a Fold cache
-        assert feature_calls[-1] == episode_rows[0].decision_ts_ns
-        assert not hasattr(factory, "_barrier_frames_by_row")
+        cached_frames = factory._barrier_frames_by_row
+        assert cached_frames is not None
+        assert frames[0].batches == uncached[0]
+        assert frames[0].market == cached_frames[start_offset].market
+        assert frames[0].time_features == cached_frames[start_offset].time_features
+        assert frames[1:] == cached_frames[start_offset + 1:start_offset + len(episode_rows)]
 
 
 def test_cached_episode_frames_preserve_native_replay_boundary_and_ledger(tmp_path, monkeypatch):
@@ -228,37 +197,6 @@ def test_cached_episode_frames_preserve_native_replay_boundary_and_ledger(tmp_pa
         reference_env.close()
         if cached_resume_env is not None:
             cached_resume_env.close()
-
-
-def test_training_environment_can_skip_diagnostic_snapshot_retention_without_changing_rollout(tmp_path):
-    config = recipe(tmp_path, bar_count=24)
-    reference_factory = HistoricalEnvironmentFactory(**config)
-    lean_factory = HistoricalEnvironmentFactory(**config)
-    actions = (0.5, -0.25, 0.0, 0.75)
-
-    reference = reference_factory.make_env()
-    try:
-        reference_observation, reference_info = reference.reset(seed=71)
-        reference_steps = [reference.step(np.asarray([action], dtype=np.float32))
-                           for action in actions]
-    finally:
-        reference.close()
-    assert reference_factory.snapshots
-
-    lean = lean_factory.make_env(retain_report_snapshots=False)
-    try:
-        lean_observation, lean_info = lean.reset(seed=71)
-        lean_steps = [lean.step(np.asarray([action], dtype=np.float32)) for action in actions]
-    finally:
-        lean.close()
-
-    assert np.array_equal(reference_observation, lean_observation)
-    assert reference_info == lean_info
-    for expected, actual in zip(reference_steps, lean_steps, strict=True):
-        assert np.array_equal(expected[0], actual[0])
-        assert expected[1:] == actual[1:]
-    assert lean_factory.snapshots == []
-    assert lean_factory.fill_references == {}
 
 
 def test_stress_execution_identity_changes_only_the_mode_from_frozen_base(tmp_path):
@@ -416,14 +354,9 @@ def test_funding_schedule_countdown_is_bounded_and_uses_strict_future_schedule()
     }
 
 
-def recipe(tmp_path, *, price_jump=False, bar_count=20, start_minute=6,
-           base_currency="ETH", quote_currency="USDT", contract_multiplier="1"):
-    symbol = f"{base_currency}{quote_currency}-PERP.SIM"
-    quantity_unit = base_currency
-    rule = {"instrument": symbol, "quantity_unit": quantity_unit,
-            "base_currency": base_currency, "quote_currency": quote_currency,
-            "contract_multiplier": contract_multiplier,
-            "tick_size": "0.01", "step_size": "0.001", "min_qty": "0.001",
+def recipe(tmp_path, *, price_jump=False, bar_count=20, start_minute=6):
+    symbol = "ETHUSDT-PERP.SIM"
+    rule = {"instrument": symbol, "tick_size": "0.01", "step_size": "0.001", "min_qty": "0.001",
             "min_notional": "1", "maker_fee": "0.001", "taker_fee": "0.001", "initial_margin_rate": "1",
             "maintenance_margin_rate": "0.35", "effective_ns": MINUTE_NS,
             "valid_until_ns": (bar_count + 1) * MINUTE_NS,
@@ -470,67 +403,12 @@ def recipe(tmp_path, *, price_jump=False, bar_count=20, start_minute=6,
                 fit_scaler=True)
 
 
-def test_historical_planner_uses_frozen_quantity_unit_and_contract_multiplier(tmp_path, monkeypatch):
-    import rles_gym_bridge.historical as historical
-
-    planned = []
-    original = historical.to_contract_plan
-
-    def capture(decision, factory, *args, latency_model_id, quantity_unit):
-        planned.append((decision.target_qty, quantity_unit))
-        return original(decision, factory, *args, latency_model_id=latency_model_id,
-                        quantity_unit=quantity_unit)
-
-    monkeypatch.setattr(historical, "to_contract_plan", capture)
-    factory = HistoricalEnvironmentFactory(**recipe(
-        tmp_path, bar_count=14, base_currency="BTC", contract_multiplier="2",
-    ))
-    units = dict(zip(factory.schema.names, factory.schema.units, strict=True))
-    assert units["market.volume_5m"] == "BTC"
-    assert units["account.equity"] == "USDT"
-    assert units["account.position_quantity"] == "BTC"
-    env = factory.make_env()
-    try:
-        env.reset(seed=17)
-        env.step(np.asarray([0.5], dtype=np.float32))
-    finally:
-        env.close()
-
-    assert planned
-    assert all(unit == "BTC" for _quantity, unit in planned)
-    assert any(quantity == Decimal("0.250") for quantity, _unit in planned)
-
-
-def test_historical_observation_and_risk_exposures_apply_contract_multiplier(tmp_path):
-    from types import SimpleNamespace
-
-    factory = HistoricalEnvironmentFactory(**recipe(
-        tmp_path, bar_count=14, base_currency="BTC", contract_multiplier="2",
-    ))
-    snapshot = SimpleNamespace(
-        mark=Decimal("1000"), equity=Decimal("10000"), currency="USDT",
-        positions=({"quantity": "0.5", "side": "LONG"},),
-        account_events=({"balances": ({"currency": "USDT", "total": "10000", "free": "9000"},)},),
-        margins=(), orders=({"side": "BUY", "leaves_qty": "0.25"},),
-        cumulative_submitted_qty=Decimal("1"), cumulative_filled_qty=Decimal("0.5"),
-    )
-
-    state = factory.observation_state(snapshot)
-
-    assert state["account"]["net_exposure"] == pytest.approx(1.0)
-    assert state["account"]["position_quantity"] == pytest.approx(1.0)
-    assert state["execution"]["pending_signed_exposure"] == pytest.approx(0.5)
-    assert state["execution"]["pending_gross_exposure"] == pytest.approx(0.5)
-
-
 def test_causal_mtf_profile_adds_regime_features_without_future_leakage():
     maximum_age = {"mark": 60 * MINUTE_NS, "index": 60 * MINUTE_NS,
                    "funding_update": 60 * MINUTE_NS}
-    legacy = historical_feature_spec(maximum_age, quantity_unit="ETH", quote_currency="USDT")
-    profile_v1 = historical_feature_spec(maximum_age, quantity_unit="ETH", quote_currency="USDT",
-                                         profile="causal_mtf_v1")
-    profile = historical_feature_spec(maximum_age, quantity_unit="ETH", quote_currency="USDT",
-                                      profile="causal_mtf_v2")
+    legacy = historical_feature_spec(maximum_age)
+    profile_v1 = historical_feature_spec(maximum_age, profile="causal_mtf_v1")
+    profile = historical_feature_spec(maximum_age, profile="causal_mtf_v2")
     assert profile.fields[:len(legacy.fields)] == legacy.fields
     assert profile.fields[:len(profile_v1.fields)] == profile_v1.fields
     assert tuple(field.name for field in profile.fields[len(legacy.fields):len(profile_v1.fields)]) == (
@@ -589,7 +467,777 @@ def test_trend_efficiency_encodes_chop_is_bounded_and_rejects_gaps():
         close = 100.0 if minute < 47 or minute % 2 == 0 else 101.0
         timestamp = minute * MINUTE_NS
         for kind, payload in {
-            "ohlcv_1m":…9647 tokens truncated…sert resources["gpu_max_allocated_bytes"] is None
+            "ohlcv_1m": {"open": str(close), "high": str(close), "low": str(close),
+                         "close": str(close), "volume": "1"},
+            "mark": {"price": str(close)}, "index": {"price": str(close)},
+        }.items():
+            events.append(Event(f"{kind}-{minute}", kind, timestamp, timestamp, timestamp,
+                                Availability.NATIVE, "c" * 64, {"instrument": symbol, **payload},
+                                f"synthetic:trend-efficiency:{kind}"))
+    spec = FeatureSpec("0.4.0", (
+        FeatureField("trend_efficiency_15m", "float64", "ratio", "ohlcv_1m", 15, 1,
+                     "trend_efficiency"),
+    ))
+    decision = 61 * MINUTE_NS
+    row = make_feature_row(CuratedStore(events), spec, decision, instrument=symbol)
+    efficiency = row.values[0]
+    assert isfinite(efficiency) and -1 <= efficiency <= 1
+    assert efficiency == pytest.approx(1 / 15, rel=1e-4)
+
+    gap_events = [event for event in events if event.event_id != "ohlcv_1m-55"]
+    with pytest.raises(DataError, match="gap|not enough"):
+        make_feature_row(CuratedStore(gap_events), spec, decision, instrument=symbol)
+
+
+def test_production_factory_uses_native_models_full_observations_and_terminal_costs(tmp_path):
+    factory = HistoricalEnvironmentFactory(**recipe(tmp_path))
+    env = factory.make_env()
+    try:
+        obs, info = env.reset(seed=31)
+        assert obs.shape == (23,) and np.isfinite(obs).all()
+        assert float(info["initial_equity"]) == 10000
+        while True:
+            obs, _, terminated, truncated, info = env.step(np.array([0.5], dtype=np.float32))
+            assert info["risk_intervention_components_known"] is True
+            assert info["risk_soft_adjustment"] == pytest.approx(0.0)
+            assert info["risk_hard_adjustment"] == pytest.approx(0.0)
+            if terminated or truncated:
+                break
+        final = factory.snapshots[-1]
+        assert info["terminal_settled"] and final.positions == final.orders == ()
+        assert final.equity < 10000
+        observed_positions = [row for snapshot in factory.snapshots for row in snapshot.positions]
+        assert observed_positions
+        assert all(not ({"events", "adjustments", "commissions", "venue_order_ids", "trade_ids"}
+                        & set(row)) for row in observed_positions)
+        assert {f["order_side"] for f in final.fills} == {"BUY", "SELL"}
+        assert all(float(f["last_px"]) > 1000 for f in final.fills if f["order_side"] == "BUY")
+        assert all(float(f["last_px"]) < 1000 for f in final.fills if f["order_side"] == "SELL")
+        assert obs[factory.schema.names.index("execution.prev_raw_target")] == np.float32(0.5)
+        from rles_research.native_metrics import native_report
+
+        report = native_report(factory.snapshots, fill_references=factory.fill_references, sample_interval_ns=MINUTE_NS)
+        metrics = report["metrics"]
+        assert metrics["total_fee"] > 0 and metrics["total_slippage_cost"] > 0
+        assert metrics["total_funding"] == 0
+        assert metrics["net_return"] == pytest.approx(float(final.equity / 10000 - 1))
+        assert report["terminal_flat"]
+        assert report["liquidations"] == 0
+        assert report["liquidations_observed"] is True
+    finally:
+        env.close()
+
+
+def test_short_episode_boundary_has_extra_native_flatten_cost_vs_continuous_account(tmp_path):
+    from rles_research.native_metrics import native_report
+
+    config = recipe(tmp_path)
+    continuous = HistoricalEnvironmentFactory(**config)
+    short = HistoricalEnvironmentFactory(**config)
+    full_env = continuous.make_env()
+    try:
+        full_env.reset(seed=31)
+        for index in range(5):
+            _full_obs, _, full_done, full_truncated, full_info = full_env.step(
+                np.asarray([0.5], dtype=np.float32))
+            if index < 4:
+                assert not (full_done or full_truncated)
+        assert not (full_done or full_truncated)
+        assert full_info["terminal_settled"] is False
+        full_report = native_report(continuous.snapshots,
+                                    fill_references=continuous.fill_references,
+                                    sample_interval_ns=MINUTE_NS)
+    finally:
+        full_env.close()
+    short_env = short.make_env(episode_steps=5)
+    try:
+        short_env.reset(seed=31)
+        for index in range(5):
+            _short_obs, _, short_done, short_truncated, short_info = short_env.step(
+                np.asarray([0.5], dtype=np.float32))
+            if index < 4:
+                assert not (short_done or short_truncated)
+        assert short_done or short_truncated
+        assert short_info["terminal_settled"] is True
+        short_report = native_report(short.snapshots,
+                                     fill_references=short.fill_references,
+                                     sample_interval_ns=MINUTE_NS)
+        assert not full_report["terminal_flat"] and short_report["terminal_flat"]
+        assert short_report["metrics"]["total_fee"] > full_report["metrics"]["total_fee"]
+        assert len(short_report["fills"]) > len(full_report["fills"])
+    finally:
+        short_env.close()
+
+
+def test_soft_funding_adjustment_is_not_reported_as_hard_risk_violation(tmp_path):
+    config = recipe(tmp_path)
+    config["soft_risk"] = {**config["soft_risk"], "funding_sensitivity": "1"}
+    factory = HistoricalEnvironmentFactory(**config)
+    env = factory.make_env()
+    try:
+        env.reset(seed=31)
+        _observation, _reward, terminated, truncated, info = env.step(np.array([0.5], dtype=np.float32))
+        assert not terminated and not truncated
+        assert info["risk_intervention_components_known"] is True
+        assert info["risk_soft_adjustment"] == pytest.approx(0.0005)
+        assert info["risk_hard_adjustment"] == pytest.approx(0.0)
+        assert info["risk_guard_intervention"] == pytest.approx(info["risk_soft_adjustment"])
+    finally:
+        env.close()
+
+
+def test_exact_neutral_multiplier_replays_identical_perpetual_funding_ledger(tmp_path):
+    from rles_rl_sb3.actor import InferenceActor
+    from rles_rl_sb3.config import PolicySpec, RLConfig, SeedSpec, TransitionFingerprint, digest
+    from rles_rl_sb3.provider import RLProvider
+    from rles_research.native_metrics import native_report
+    from rles_data.io import read_curated
+
+    source_recipe = recipe(tmp_path, bar_count=50, start_minute=6)
+    source_path = source_recipe["market_path"]
+    events = list(read_curated(source_path).events)
+    settlements = (20 * MINUTE_NS, 40 * MINUTE_NS)
+    source_recipe["coverage_policy"]["settlement_times_ns"] = {
+        source_recipe["instrument"]: settlements,
+    }
+    for timestamp in settlements:
+        events.append(Event(
+            f"funding-settlement-{timestamp}", "funding_settlement", timestamp,
+            timestamp, timestamp, Availability.NATIVE, "a" * 64,
+            {"instrument": source_recipe["instrument"], "rate": "0.001",
+             "settlement_ns": timestamp}, "synthetic:neutral-parity-settlement",
+        ))
+    market_path = tmp_path / "neutral-parity-market.parquet"
+    write_curated(market_path, CuratedStore(events))
+    source_recipe["market_path"] = market_path
+
+    actor_factory = HistoricalEnvironmentFactory(**source_recipe)
+    fingerprint = TransitionFingerprint(
+        env_contract=digest("NautilusBarrierEnv-v0.4.0"),
+        dataset=actor_factory.store.snapshot_hash,
+        feature=actor_factory.features.hash, feature_scaler=actor_factory.scaler.hash,
+        observation=actor_factory.schema.hash,
+        action=digest({"target_net_exposure": [-1, 1], "shape": [1]}),
+        action_transform=digest("soft-hard-native-quantity"),
+        execution=actor_factory.execution.fingerprint(), hard_risk=actor_factory.hard.signature(),
+        soft_risk=digest({name: str(value) for name, value in asdict(actor_factory.soft).items()}),
+        reward=digest({"lambda_dd": 0, "lambda_guard": 0}),
+        normalization=digest({"VecNormalize": False}),
+        engine=digest("nautilus_trader-2.0.0rc6"), adapter=digest("rles.perpetual-native-v2"),
+        fold=digest([actor_factory.start_ns, actor_factory.end_ns]),
+        terminal=digest("force_flatten_with_cost:finite_settlement_no_bootstrap_v1"),
+    )
+    rl_config = RLConfig(
+        algorithm="PPO",
+        policy=PolicySpec(
+            observation_dim=len(actor_factory.schema.names), hidden_layers=(4,), value_layers=(4,),
+            observation_schema_hash=actor_factory.schema.hash, action_schema_hash="c" * 64,
+        ),
+        fingerprint=fingerprint, seeds=SeedSpec(812, (813,), 814, 815), device="cpu",
+        hyperparameters={"n_steps": 2, "batch_size": 2, "n_epochs": 1},
+    )
+    provider = RLProvider(
+        rl_config, lambda _rank, _seed, _phase: actor_factory.make_env(fingerprint.hash),
+        lambda _gates, _config: True,
+    )
+    try:
+        provider.create()
+        provider.train(4)
+        artifact = provider.export_inference(
+            tmp_path / "neutral-parity-l4-actor",
+            np.zeros((4, len(actor_factory.schema.names)), dtype=np.float32),
+        )
+    finally:
+        provider.close()
+    actor = InferenceActor(artifact, verify=True)
+
+    def replay(multipliers):
+        factory = HistoricalEnvironmentFactory(**source_recipe)
+        env = factory.make_env(soft_multipliers=multipliers)
+        try:
+            observation, _ = env.reset(seed=812)
+            trace = []
+            while True:
+                action = actor.predict(observation[None, :])[0]
+                observation, _reward, terminated, truncated, info = env.step(action)
+                trace.append(tuple(info[key] for key in (
+                    "requested_action", "risk_soft_target", "risk_adjusted_target",
+                    "execution_plan_action", "execution_plan_reason", "executed_action",
+                    "native_equity", "r_econ", "drawdown",
+                )))
+                if terminated or truncated:
+                    break
+            report = native_report(
+                factory.snapshots, fill_references=factory.fill_references,
+                sample_interval_ns=MINUTE_NS, linear_equity_rounding=None,
+            )
+            fills = tuple(tuple(fill[key] for key in (
+                "order_side", "last_qty", "last_px", "commission", "ts_event",
+            )) for fill in report["fills"])
+            funding = tuple(tuple(row[key] for key in (
+                "pnl_change", "ts_event", "ts_init",
+            )) for row in report["funding"])
+            return tuple(trace), fills, funding, tuple(report["account_rows"]), report["metrics"]
+        finally:
+            env.close()
+
+    baseline = replay({})
+    neutral = replay({"exposure_multiplier": 1.0, "drawdown_throttle": 1.0})
+    assert neutral == baseline
+    assert baseline[1]  # Native fills include both opening and terminal-close costs.
+    assert len(baseline[2]) == 2 and sum(float(row[0].split()[0]) for row in baseline[2]) < 0
+
+
+@pytest.mark.parametrize("requested, expected_plan", ((0.1, "NOOP"), (0.4, "SUBMIT")))
+def test_native_execution_distinguishes_scaled_deadband_from_risk_target(tmp_path, requested, expected_plan):
+    config = recipe(tmp_path)
+    config["execution"]["deadband"] = "0.05"
+    factory = HistoricalEnvironmentFactory(**config)
+    env = factory.make_env(soft_multipliers={
+        "exposure_multiplier": 0.5, "volatility_throttle": 0.5, "drawdown_throttle": 1.0,
+    })
+    try:
+        env.reset(seed=31)
+        _observation, _reward, _terminated, _truncated, info = env.step(np.array([requested], dtype=np.float32))
+        assert info["risk_soft_target"] == pytest.approx(requested * 0.25)
+        assert info["risk_adjusted_target"] == pytest.approx(requested * 0.25)
+        assert info["risk_hard_adjustment"] == 0.0
+        assert info["execution_plan_action"] == expected_plan
+        assert info["execution_plan_reason"] == ("deadband" if expected_plan == "NOOP" else "rebalance")
+        assert info["execution_decision_id"] == (
+            f"policy-{factory.snapshots[-2].decision_ts_ns}")
+        assert info["execution_plan_id"] and info["execution_idempotency_key"]
+        if expected_plan == "NOOP":
+            assert float(info["execution_delta_qty"]) == 0
+            assert info["execution_client_order_id"] is None
+            assert info["execution_cancel_order_ids"] == ()
+            assert info["policy_executed_action_pre_terminal"] == 0.0
+            assert factory.snapshots[-1].fills == ()
+        else:
+            assert float(info["execution_delta_qty"]) != 0
+            assert info["execution_client_order_id"].startswith("RLES-")
+            assert info["policy_executed_action_pre_terminal"] == pytest.approx(0.1)
+            assert factory.snapshots[-1].fills
+            assert {fill["client_order_id"] for fill in factory.snapshots[-1].fills} == {
+                info["execution_client_order_id"]
+            }
+    finally:
+        env.close()
+
+
+def test_rollout_execution_trace_joins_decisions_to_native_orders_and_fills(tmp_path):
+    from decimal import Decimal
+    from rles_orchestrator.application import rollout
+
+    factory = HistoricalEnvironmentFactory(**recipe(tmp_path, bar_count=14))
+    report, _ = rollout(
+        factory, lambda _batch: np.asarray([[0.5]], dtype=np.float32), seed=31,
+        collect_observations=False, include_account_rows=False, include_execution_trace=True,
+    )
+    assert len(factory.snapshots) == 1
+    retained_report, _ = rollout(
+        factory, lambda _batch: np.asarray([[0.5]], dtype=np.float32), seed=31,
+        collect_observations=False, include_account_rows=True, include_execution_trace=True,
+    )
+    for field in ("metrics", "funding", "terminal_flat", "liquidations",
+                  "liquidations_observed", "liquidation_orders"):
+        assert report[field] == retained_report[field]
+    transient_fill_fields = {"event_id", "trade_id"}
+    assert [
+        {key: value for key, value in fill.items() if key not in transient_fill_fields}
+        for fill in report["fills"]
+    ] == [
+        {key: value for key, value in fill.items() if key not in transient_fill_fields}
+        for fill in retained_report["fills"]
+    ]
+    online_reconciliation = dict(report["equity_reconciliation"])
+    retained_reconciliation = dict(retained_report["equity_reconciliation"])
+    online_reconciliation.pop("rows", None)
+    retained_reconciliation.pop("rows", None)
+    assert online_reconciliation == retained_reconciliation
+    summary = report["execution_decision_diagnostics"]
+    trace = report["execution_decision_trace"]
+    terminal_trace = report["terminal_settlement_trace"]
+    assert summary["components_known"] is True
+    assert summary["trace_included"] is True
+    assert summary["decision_count"] == report["action_diagnostics"]["count"]
+    assert len(trace) == summary["decision_count"]
+    assert all(type(row["net_exposure"]) is float
+               and isinstance(row["market_features"], dict)
+               and "volatility_5m" in row["market_features"]
+               for row in trace)
+    assert all(row["actor_raw_action_unit"] == "normalized_box[-1,1]"
+               and row["risk_target_unit"] == "fraction_of_risk_budget"
+               and row["actor_raw_action"] == row["actor_requested_target"] == 0.5
+               for row in trace)
+    assert all(row["equity_currency"] == "USDT"
+               and Decimal(row["policy_equity_after"]) - Decimal(row["policy_equity_before"])
+               == Decimal(row["policy_equity_change"])
+               for row in trace)
+    assert all(row["soft_target"] is None or -1 <= row["soft_target"] <= 1
+               for row in trace)
+    submitted = [row for row in trace if row["action"] == "SUBMIT"]
+    noops = [row for row in trace if row["action"] == "NOOP"]
+    assert submitted and noops
+    assert summary["native_order_count"] == len(submitted)
+    assert summary["submitted_decisions_with_fills"] == len(submitted)
+    all_report_fills = {
+        fill["event_id"]: fill for fill in report["fills"]
+    }
+    linked_fill_ids = set()
+    for row in submitted:
+        assert row["client_order_id"].startswith("RLES-")
+        assert row["submission_status"] == "native_order_observed"
+        assert row["native_order_status"] == "FILLED"
+        assert row["unfilled_reason"] is None
+        assert float(row["filled_qty"]) > 0
+        assert row["fee_currency"] == "USDT"
+        assert Decimal(row["fee"]) == Decimal(row["fees_by_currency"]["USDT"])
+        for fill in row["fills"]:
+            linked_fill_ids.add(fill["event_id"])
+            assert fill["fee"].endswith(" USDT")
+    assert linked_fill_ids <= set(all_report_fills)
+    assert any(row["fills"] for row in submitted)
+    assert all(row["client_order_id"] is None and row["fills"] == []
+               and row["related_order_ids"] == []
+               for row in noops)
+    assert len(terminal_trace) == 1
+    settlement = terminal_trace[0]
+    assert settlement["decision_id"] == trace[-1]["decision_id"]
+    assert settlement["settlement_barrier_ts_ns"] >= settlement["policy_barrier_ts_ns"]
+    assert settlement["pre_terminal_net_exposure"] > 0
+    assert Decimal(settlement["equity_before"]) == Decimal(trace[-1]["policy_equity_after"])
+    assert settlement["post_terminal_open_position_count"] == 0
+    assert Decimal(settlement["equity_after"]) - Decimal(settlement["equity_before"]) == Decimal(
+        settlement["equity_delta"]
+    )
+    terminal_order_ids = {row["client_order_id"] for row in settlement["orders"]}
+    assert terminal_order_ids - {row["client_order_id"] for row in submitted}
+    terminal_fill_ids = {row["event_id"] for row in settlement["fills"]}
+    assert terminal_fill_ids
+    assert terminal_fill_ids <= set(all_report_fills)
+    json.dumps(terminal_trace, allow_nan=False)
+
+
+def test_partial_native_fill_exposes_remaining_quantity_for_cancel_replace(tmp_path):
+    config = recipe(tmp_path, bar_count=14)
+    config["execution"]["stress_fill"]["simulated_depth_fraction"] = "0.5"
+    factory = HistoricalEnvironmentFactory(**config, mode="stress")
+    env = factory.make_env()
+    try:
+        env.reset(seed=31)
+        action = np.asarray([0.8], dtype=np.float32)
+        _observation, _reward, terminated, truncated, submitted = env.step(action)
+        assert not terminated and not truncated
+        pending = factory.snapshots[-1].orders
+        assert len(pending) == 1
+        order = pending[0]
+        assert order["status"] == "PARTIALLY_FILLED"
+        assert order["quantity"] == "0.800"
+        assert order["filled_qty"] == "0.400"
+        assert order["leaves_qty"] == "0.400"
+        assert submitted["execution_client_order_id"] == order["client_order_id"]
+
+        _observation, _reward, terminated, truncated, canceled = env.step(action)
+        assert not terminated and not truncated
+        assert canceled["execution_plan_action"] == "CANCEL"
+        assert canceled["execution_plan_reason"] == "cancel then resnapshot and replan after ACK"
+        assert canceled["execution_related_order_ids"] == (order["client_order_id"],)
+        assert factory.snapshots[-1].orders == ()
+        final_order = next(row for row in factory.snapshots[-1].all_orders
+                           if row["client_order_id"] == order["client_order_id"])
+        assert final_order["status"] == "CANCELED"
+        assert final_order["filled_qty"] == "0.400"
+        assert final_order["quantity"] == "0.800"
+        assert any(fill["client_order_id"] == order["client_order_id"]
+                   for snapshot in factory.snapshots for fill in snapshot.fills)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize(
+    "order, filled_qty, expected",
+    ((None, "0", "unknown"),
+     ({"quantity": "1", "filled_qty": "0", "status": "REJECTED",
+       "reject_reason": "insufficient margin"},
+      "0", "insufficient margin"),
+     ({"quantity": "1", "filled_qty": "0", "status": "REJECTED",
+       "reject_reason": {"code": "MARGIN"}},
+      "0", "REJECTED"),
+     ({"quantity": "1", "filled_qty": "0", "status": "DENIED",
+       "reject_reason": [], "reason": "risk limit"},
+      "0", "risk limit"),
+     ({"quantity": "1", "filled_qty": "0", "status": "CANCELED"},
+      "0", "canceled_unfilled"),
+     ({"quantity": "1", "filled_qty": "0.4", "status": "CANCELED"},
+      "0.4", "canceled_after_partial_fill"),
+     ({"quantity": "1", "filled_qty": "0.4", "status": "PARTIALLY_FILLED"},
+      "0.4", "partial_fill_open"),
+     ({"quantity": "1", "filled_qty": "0.4", "status": "PENDING_CANCEL"},
+      "0.4", "cancel_pending"),
+     ({"quantity": "1", "filled_qty": "0", "status": "PENDING_UPDATE"},
+      "0", "update_pending"),
+     ({"quantity": "1", "filled_qty": "0", "status": "ACCEPTED"},
+      "0", "awaiting_fill"),
+     ({"quantity": "1", "filled_qty": "0", "status": "INITIALIZED"},
+      "0", "initialized_unfilled"),
+     ({"quantity": "1", "filled_qty": "0", "status": "EMULATED"},
+      "0", "emulated_unfilled"),
+     ({"quantity": "1", "filled_qty": "0", "status": "RELEASED"},
+      "0", "released_unfilled"),
+     ({"quantity": "1", "filled_qty": "0", "status": "TRIGGERED"},
+      "0", "triggered_unfilled"),
+     ({"quantity": "1", "filled_qty": "0", "status": "VOIDED"},
+      "0", "voided_unfilled"),
+     ({"quantity": "1", "filled_qty": "1", "status": "FILLED"}, "1", None)),
+)
+def test_execution_trace_unfilled_reason_uses_final_native_order_state(
+        order, filled_qty, expected) -> None:
+    from decimal import Decimal
+    from rles_orchestrator.application import _unfilled_order_reason
+
+    assert _unfilled_order_reason(order, Decimal(filled_qty)) == expected
+
+
+def test_execution_trace_classifies_every_locked_nautilus_order_status() -> None:
+    from decimal import Decimal
+    from nautilus_trader.model import OrderStatus
+    from rles_orchestrator.application import _unfilled_order_reason
+
+    for native_status in OrderStatus.variants():
+        status = str(native_status)
+        filled = Decimal("1") if status == "FILLED" else (
+            Decimal("0.5") if status == "PARTIALLY_FILLED" else Decimal(0)
+        )
+        result = _unfilled_order_reason(
+            {"quantity": "1", "filled_qty": str(filled), "status": status},
+            filled,
+        )
+        assert result != "unknown", f"native order status has no trace classification: {status}"
+
+
+def test_execution_trace_rejects_mismatch_between_native_order_and_fill_events() -> None:
+    from decimal import Decimal
+    from rles_data.core import DataError
+    from rles_orchestrator.application import _unfilled_order_reason
+
+    order = {"quantity": "1", "filled_qty": "0.5", "status": "PARTIALLY_FILLED"}
+    with pytest.raises(DataError, match="disagree with cumulative order"):
+        _unfilled_order_reason(order, Decimal("0.4"))
+    with pytest.raises(DataError, match="no matching order"):
+        _unfilled_order_reason(None, Decimal("0.1"))
+
+
+@pytest.mark.parametrize(
+    "order, filled_qty, message",
+    (({"quantity": "1", "filled_qty": "0.4", "status": "FILLED"},
+      "0.4", "FILLED status conflicts"),
+     ({"quantity": "1", "filled_qty": "0", "status": "PARTIALLY_FILLED"},
+      "0", "PARTIALLY_FILLED status conflicts"),
+     ({"quantity": "1", "filled_qty": "1", "status": "PARTIALLY_FILLED"},
+      "1", "PARTIALLY_FILLED status conflicts")),
+)
+def test_execution_trace_rejects_order_status_fill_quantity_conflicts(
+        order, filled_qty, message) -> None:
+    from decimal import Decimal
+    from rles_data.core import DataError
+    from rles_orchestrator.application import _unfilled_order_reason
+
+    with pytest.raises(DataError, match=message):
+        _unfilled_order_reason(order, Decimal(filled_qty))
+
+
+def test_non_submit_trace_preserves_related_partial_fill_and_fee_facts() -> None:
+    from rles_orchestrator.application import _related_native_order_trace
+
+    order = {"client_order_id": "RLES-partial", "quantity": "1.000",
+             "filled_qty": "0.400", "status": "CANCELED"}
+    fills = ({"event_id": "fill-1", "last_qty": "0.400", "commission": "0.1 USDT"},)
+
+    related = _related_native_order_trace("RLES-partial", order, fills)
+
+    assert related == {
+        "client_order_id": "RLES-partial",
+        "status": "CANCELED",
+        "order_quantity": "1.000",
+        "cumulative_filled_qty": "0.400",
+        "fill_event_ids": ["fill-1"],
+        "fees": {"fee": "0.1", "fee_currency": "USDT", "fees_by_currency": {"USDT": "0.1"}},
+        "unfilled_reason": "canceled_after_partial_fill",
+    }
+
+
+@pytest.mark.parametrize("identity", [None, 7, [], {}, "", " order-1 "])
+def test_execution_trace_rejects_invalid_native_order_identity(identity) -> None:
+    from rles_data.core import DataError
+    from rles_orchestrator.application import _index_native_orders
+
+    with pytest.raises(DataError, match="native order history lacks valid client identity"):
+        _index_native_orders(({"client_order_id": identity, "quantity": "1"},))
+
+
+def test_execution_trace_rejects_conflicting_duplicate_native_order_identity() -> None:
+    from rles_data.core import DataError
+    from rles_orchestrator.application import _index_native_orders
+
+    orders = (
+        {"client_order_id": "order-1", "quantity": "1", "status": "CANCELED"},
+        {"client_order_id": "order-1", "quantity": "2", "status": "FILLED"},
+    )
+    with pytest.raises(DataError, match="native order identity has conflicting final facts"):
+        _index_native_orders(orders)
+
+
+def test_execution_trace_deduplicates_identical_final_native_order_facts() -> None:
+    from rles_orchestrator.application import _index_native_orders
+
+    order = {"client_order_id": "order-1", "quantity": "1", "status": "CANCELED"}
+    assert _index_native_orders((order, dict(order))) == {"order-1": order}
+
+
+def test_execution_trace_fee_summary_preserves_currency_units() -> None:
+    from rles_data.core import DataError
+    from rles_orchestrator.application import _fee_summary
+
+    summary = _fee_summary([
+        {"commission": "0.10 USDT"},
+        {"commission": "0.002 BNB"},
+        {"commission": "0.20 USDT"},
+    ])
+    assert summary == {
+        "fee": None,
+        "fee_currency": None,
+        "fees_by_currency": {"BNB": "0.002", "USDT": "0.30"},
+    }
+    assert _fee_summary([{"commission": "0.30 USDT"}]) == {
+        "fee": "0.30",
+        "fee_currency": "USDT",
+        "fees_by_currency": {"USDT": "0.30"},
+    }
+    with pytest.raises(DataError, match="amount and currency"):
+        _fee_summary([{"commission": "0.30"}])
+    with pytest.raises(DataError, match="finite"):
+        _fee_summary([{"commission": "NaN USDT"}])
+
+
+def test_native_hard_cap_price_drift_reduces_inside_deadband(tmp_path):
+    from decimal import Decimal
+
+    config = recipe(tmp_path, price_jump=True)
+    config["execution"]["deadband"] = "0.05"
+    config["hard_risk"]["max_notional"] = "500"
+    factory = HistoricalEnvironmentFactory(**config, compact_native_history=False)
+    env = factory.make_env()
+    try:
+        env.reset(seed=31)
+        observed_reduction = False
+        while True:
+            _, _, terminated, truncated, info = env.step(np.array([1.0], dtype=np.float32))
+            if info["execution_plan_reason"] == "hard_risk_reduce":
+                observed_reduction = True
+                assert info["execution_plan_action"] == "SUBMIT"
+                assert info["risk_adjusted_target"] == 0.5
+                snapshot = factory.snapshots[-1]
+                quantity = Decimal(snapshot.positions[0]["signed_qty"])
+                assert 0 < quantity * snapshot.mark <= 500
+                assert snapshot.fills[-1]["order_side"] == "SELL"
+            if terminated or truncated:
+                break
+        assert observed_reduction
+        terminal = factory.snapshots[-1]
+        assert terminal.positions == terminal.orders == ()
+        assert sum(order["is_reduce_only"] for order in terminal.all_orders) == 2
+    finally:
+        env.close()
+
+
+def test_native_cache_compaction_preserves_historical_accounting(tmp_path):
+    from rles_research.native_metrics import native_report
+
+    config = recipe(tmp_path)
+
+    def run(compact: bool):
+        factory = HistoricalEnvironmentFactory(**config, compact_native_history=compact)
+        env = factory.make_env()
+        try:
+            observation, _ = env.reset(seed=91)
+            while True:
+                observation, _, terminated, truncated, _ = env.step(
+                    np.asarray([0.5], dtype=np.float32),
+                )
+                if terminated or truncated:
+                    break
+            report = native_report(
+                factory.snapshots, fill_references=factory.fill_references,
+                sample_interval_ns=MINUTE_NS,
+            )
+            fill_economics = sorted(
+                (row["order_side"], row["last_qty"], row["last_px"], row["commission"])
+                for row in report["fills"]
+            )
+            position_economics = [
+                sorted((row["side"], row["signed_qty"], row["quantity"],
+                        row["avg_px_open"], row["avg_px_close"], row["realized_pnl"])
+                       for row in snapshot.positions)
+                for snapshot in factory.snapshots
+            ]
+            funding_economics = sorted(
+                (row["pnl_change"], row["currency"])
+                for row in report["funding"]
+            )
+            return (
+                [snapshot.equity for snapshot in factory.snapshots],
+                position_economics,
+                [snapshot.orders for snapshot in factory.snapshots],
+                report["metrics"], fill_economics, funding_economics,
+                report["liquidations"], report["terminal_flat"],
+            )
+        finally:
+            env.close()
+
+    assert run(compact=True) == run(compact=False)
+
+
+def test_native_observation_exposes_pending_order_direction_and_size(tmp_path):
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    factory = HistoricalEnvironmentFactory(**recipe(tmp_path))
+    orders = (
+        {"side": "BUY", "leaves_qty": "0.5"},
+        {"side": "SELL", "leaves_qty": "0.25"},
+    )
+    all_orders = (
+        {"quantity": "1", "filled_qty": "0.5"},
+        {"quantity": "1", "filled_qty": "0.5"},
+    )
+    snapshot = SimpleNamespace(
+        equity=Decimal("10000"), currency="USDT", mark=Decimal("1000"), positions=(),
+        orders=orders, all_orders=all_orders, margins=(),
+        account_events=({"balances": ({"currency": "USDT", "total": "10000 USDT", "free": "9000 USDT"},)},),
+    )
+    state = factory.observation_state(snapshot)
+    assert state["execution"]["pending_order_count"] == 2
+    assert state["execution"]["pending_signed_exposure"] == pytest.approx(0.25)
+    assert state["execution"]["pending_gross_exposure"] == pytest.approx(0.75)
+    assert state["execution"]["fill_rate"] == pytest.approx(0.5)
+
+    invalid = SimpleNamespace(**{**vars(snapshot), "orders": ({"side": "UNKNOWN", "leaves_qty": "0.1"},)})
+    with pytest.raises(DataError, match="pending order side/quantity"):
+        factory.observation_state(invalid)
+
+
+def test_production_factory_rejects_missing_rules_and_evaluation_fit(tmp_path):
+    config = recipe(tmp_path)
+    with pytest.raises(DataError, match="only Train-inner"):
+        HistoricalEnvironmentFactory(**{**config, "split": "test"})
+    with pytest.raises(DataError, match="rules unavailable"):
+        HistoricalEnvironmentFactory(**{**config, "rules_path": tmp_path / "missing.json"})
+
+
+def test_prepared_history_reuses_verified_store_and_preserves_native_trajectory(tmp_path, monkeypatch):
+    import rles_gym_bridge.historical as historical
+
+    config = recipe(tmp_path)
+    original = HistoricalEnvironmentFactory(**config)
+    monkeypatch.setattr(historical, "read_curated", lambda *_: pytest.fail("verified history must be shared"))
+    shared = HistoricalEnvironmentFactory(**config, prepared_store=original.store)
+    assert shared.store is original.store
+    assert shared.metadata() == original.metadata()
+    assert shared.transition_hash == original.transition_hash
+    trajectories = []
+    for factory in (original, shared):
+        env = factory.make_env()
+        try:
+            obs, _ = env.reset(seed=31)
+            rows = [(obs.tolist(),)]
+            while True:
+                obs, reward, terminated, truncated, info = env.step(np.array([0.5], dtype=np.float32))
+                rows.append((obs.tolist(), reward, terminated, truncated, info["native_equity"],
+                             info["execution_plan_action"], info["execution_plan_reason"]))
+                if terminated or truncated:
+                    break
+            trajectories.append(rows)
+        finally:
+            env.close()
+    assert trajectories[0] == trajectories[1]
+
+
+def test_market_audit_reports_only_registered_train_coverage_without_granting_missing_rules(
+    monkeypatch, tmp_path,
+):
+    from rles_orchestrator.application import audit_market
+    from rles_data.io import read_curated
+
+    config = recipe(tmp_path)
+    calls = []
+
+    def read_train_window(run, window, *, marker_sha256, label,
+                          allow_legacy_isolated_snapshot=False):
+        calls.append((run, window, marker_sha256, label, allow_legacy_isolated_snapshot))
+        return read_curated(run["environment"]["market_path"])
+
+    monkeypatch.setattr("rles_orchestrator.application.read_registered_train_window",
+                        read_train_window)
+    access = {"start_ns": config["start_ns"], "end_ns": config["end_ns"],
+              "marker_sha256": "a" * 64, "label": "train-market-audit-test"}
+    run = {"output": str(tmp_path / "audit"), "environment": config,
+           "train_data_access": access}
+    result = audit_market(run)
+    report = result["splits"]["train"]
+    assert result["schema"] == "rles.market-audit.v2"
+    assert result["access_scope"] == {"split": "train_inner", "start_ns": config["start_ns"],
+                                      "end_ns": config["end_ns"]}
+    assert set(result["splits"]) == {"train"}
+    assert calls == [(run, {"start_ns": access["start_ns"], "end_ns": access["end_ns"]},
+                      access["marker_sha256"], access["label"], False)]
+    assert report["grade"] == "DQ-C"
+    assert "instrument_rule_coverage_gap" in report["findings"]
+    assert set(report["verified_coverage"]) >= {"mark", "index", "funding_update"}
+
+
+@pytest.mark.parametrize("algorithm", ("PPO", "SAC", "TD3", "DDPG"))
+def test_application_rl_train_bundle_load_and_disjoint_native_backtest(tmp_path, algorithm):
+    from rles_orchestrator.application import backtest, load_config, train
+
+    config = recipe(tmp_path)
+    config["end_ns"] = 12 * MINUTE_NS
+    config["market_path"], config["rules_path"] = str(config["market_path"]), str(config["rules_path"])
+    run = {"environment": config, "evaluation": {"start_ns": 12 * MINUTE_NS, "end_ns": 20 * MINUTE_NS,
+                                                   "coverage_policy": config["coverage_policy"]},
+           "output": str(tmp_path / "run"), "algorithm": algorithm, "steps": 4, "hidden_layers": [2],
+           "hyperparameters": {"n_steps": 2, "batch_size": 2, "n_epochs": 1} if algorithm == "PPO" else
+                                {"learning_starts": 2, "buffer_size": 32, "batch_size": 2, "train_freq": 1, "gradient_steps": 1},
+           "normalize_observation": True, "rl_corpus_episode_steps": 2}
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(run), encoding="utf-8")
+    resolved = load_config(config_path)
+    result = train(resolved)
+    run_manifest = json.loads((tmp_path / "run" / "run.json").read_text(encoding="utf-8"))
+    assert run_manifest["gpu_lease"] is None
+    exploratory = {**resolved, "evaluation": {**resolved["evaluation"], "split": "validation"}}
+    restored = backtest(exploratory, result["output"])
+    assert restored["evaluation_scope"]["formal"] is False
+    with pytest.raises(DataError, match="requires WFO research access"):
+        backtest(resolved, result["output"])
+    assert result["terminal_flat"] and restored["terminal_flat"]
+    assert result["metrics"] == restored["metrics"]
+    assert restored["market_data_provenance"] == [
+        "synthetic:funding_update", "synthetic:index", "synthetic:mark", "synthetic:ohlcv_1m",
+    ]
+    assert restored["rule_provenance"] == ["synthetic:factory-test-rule"]
+    if algorithm == "PPO":
+        learning = tmp_path / "run" / "R1-learning.json"
+        learning_record = json.loads(learning.read_text(encoding="utf-8"))
+        assert learning_record["schema"] == "rles.r1-learning.v5"
+        assert learning_record["final_steps"] == 4
+        assert sum(block["samples"] for block in learning_record["blocks"]) == 4
+        resources = learning_record["blocks"][0]["resource_measurements"]
+        assert resources["scope"] == (
+            "cpu_rss_at_learn_call_end; torch_cuda_allocator_peaks_since_learn_call_start"
+        )
+        assert resources["cpu_rss_bytes"] is None or resources["cpu_rss_bytes"] > 0
+        assert resources["gpu_max_allocated_bytes"] is None
         assert resources["gpu_max_reserved_bytes"] is None
         bundle_record = json.loads((tmp_path / "run" / "bundle.json").read_text(encoding="utf-8"))
         assert bundle_record["runtime_resources"]["gpu_lease"] is None
@@ -725,7 +1373,7 @@ def test_application_es_and_hybrid_use_installed_historical_spawn_factory(tmp_pa
     bundle_files_before = {str(path.relative_to(bundle_root)): sha256(path.read_bytes()).hexdigest()
                            for path in bundle_root.rglob("*") if path.is_file()}
     with monkeypatch.context() as diagnostic_patch:
-        from rles_data.io import curated_source_identity, read_curated
+        from rles_data.io import read_curated
 
         def forbidden(*_args, **_kwargs):
             pytest.fail("Train diagnostics must not refit scaling or construct an evaluation")
@@ -741,8 +1389,7 @@ def test_application_es_and_hybrid_use_installed_historical_spawn_factory(tmp_pa
             **run, "evaluation": None,
             "train_data_access": {
                 "start_ns": MINUTE_NS, "end_ns": 31 * MINUTE_NS,
-                "marker_sha256": curated_source_identity(config["market_path"])["marker_sha256"],
-                "label": "train-diagnostic-test",
+                "marker_sha256": "a" * 64, "label": "train-diagnostic-test",
             },
         }
         diagnostic = diagnose_train(scoped_run, bundle_root)
@@ -1043,122 +1690,3 @@ def test_application_finalizes_full_budget_r1_checkpoint_without_retraining(tmp_
     assert bundle["lineage"][0]["usage"]["rl_steps"] == 4
     assert (root / "COMPLETED.json").is_file()
     assert list(root.glob("FAILED-*.json"))
-
-def test_compact_report_positions_are_immutable_facts(tmp_path):
-    config = recipe(tmp_path, bar_count=32)
-    config["compact_report_snapshots"] = True
-    factory = HistoricalEnvironmentFactory(**config)
-    env = factory.make_env()
-    try:
-        env.reset(seed=83)
-        for _ in range(12):
-            observation, reward, terminated, truncated, info = env.step(
-                np.asarray([0.5], dtype=np.float32),
-            )
-            if terminated or truncated:
-                break
-    finally:
-        env.close()
-
-    positions = [snapshot.positions[0] for snapshot in factory.snapshots
-                 if snapshot.positions]
-    assert len(positions) >= 3
-    compact_accounts = [snapshot.account for snapshot in factory.snapshots]
-    assert compact_accounts[0] is compact_accounts[-1]
-    with pytest.raises(TypeError):
-        compact_accounts[0]["balance"] = "0"
-    assert factory.snapshots[0].equity == next(iter(factory.snapshots)).equity
-    assert factory.snapshots[-1].decision_ts_ns == tuple(factory.snapshots)[-1].decision_ts_ns
-    assert factory.snapshots[1:3] == tuple(factory.snapshots)[1:3]
-    with pytest.raises(TypeError):
-        positions[0]["quantity"] = "0"
-
-
-def test_compact_snapshot_numeric_columns_preserve_decimal_and_timestamp_values():
-    series = _CompactReportSnapshotSeries()
-    equities = (Decimal("-0.00100"), Decimal("1.2300"),
-                Decimal("123456789012345678901234567890.12300"), Decimal("NaN"))
-    marks = (Decimal("-0"), Decimal("0.0001"), Decimal("1E+33"), None)
-    timestamps = (1, -7, (1 << 63) + 1, True)
-    for equity, mark, timestamp in zip(equities, marks, timestamps, strict=True):
-        series.append(_CompactReportSnapshot(
-            equity=equity, currency="USDT", positions=(), orders=(), account={},
-            account_events=(), fills=(), funding=(), all_orders=(),
-            liquidation_orders=(), margins=(), mark=mark,
-            liquidation_capability=True, decision_ts_ns=timestamp,
-            cumulative_submitted_qty=Decimal("0.000"),
-            cumulative_filled_qty=Decimal("-0.000"),
-        ))
-
-    for index, (equity, mark, timestamp) in enumerate(zip(equities, marks, timestamps, strict=True)):
-        restored = series[index]
-        assert restored.equity.as_tuple() == equity.as_tuple()
-        if isinstance(mark, Decimal):
-            assert restored.mark.as_tuple() == mark.as_tuple()
-        else:
-            assert restored.mark is mark
-        assert restored.decision_ts_ns is timestamp or restored.decision_ts_ns == timestamp
-        assert restored.cumulative_submitted_qty.as_tuple() == Decimal("0.000").as_tuple()
-        assert restored.cumulative_filled_qty.as_tuple() == Decimal("-0.000").as_tuple()
-
-
-def test_compact_snapshot_run_columns_retain_only_fact_changes():
-    series = _CompactReportSnapshotSeries()
-    stable_position = (MappingProxyType({"position_id": "P1", "quantity": "1"}),)
-    changed_position = (MappingProxyType({"position_id": "P1", "quantity": "2"}),)
-    fill = ({"event_id": "F1", "last_qty": "1"},)
-    for index in range(6):
-        series.append(_CompactReportSnapshot(
-            equity=Decimal(100 + index), currency="USDT",
-            positions=stable_position if index < 4 else changed_position,
-            orders=(), account={}, account_events=(),
-            fills=fill if index == 2 else (), funding=(), all_orders=(),
-            liquidation_orders=(), margins=(), mark=Decimal(10),
-            liquidation_capability=True, decision_ts_ns=index,
-            cumulative_submitted_qty=Decimal(1 if index >= 3 else 0),
-            cumulative_filled_qty=Decimal(1 if index >= 3 else 0),
-        ))
-
-    assert len(series) == 6
-    assert len(series._positions._values) == 2
-    assert len(series._orders._values) == 1
-    assert len(series._fills._values) == 3
-    assert len(series._funding._values) == 1
-    assert len(series._all_orders._values) == 1
-    assert len(series._liquidation_orders._values) == 1
-    assert len(series._cumulative_submitted_qty._values) == 2
-    assert series[0].positions is stable_position
-    assert series[4].positions is changed_position
-    assert series[1].fills == ()
-    assert series[2].fills == fill
-    assert series[5].cumulative_submitted_qty == Decimal(1)
-
-
-def test_spooled_summary_snapshots_round_trip_exact_report_facts():
-    spool = _SpooledReportSnapshotSequence()
-    snapshot = _CompactReportSnapshot(
-        equity=Decimal("-0.00100"), currency="USDT",
-        positions=(MappingProxyType({"quantity": Decimal("1.2300")}),),
-        orders=(), account={}, account_events=({"value": Decimal("-sNaN007")},),
-        fills=({"event_id": "F1", "last_qty": Decimal("-0.000")},),
-        funding=(), all_orders=(), liquidation_orders=(), margins=(Decimal("-Infinity"),),
-        mark=Decimal("1E+33"), liquidation_capability=True,
-        decision_ts_ns=1_700_000_000_000_000_000,
-        cumulative_submitted_qty=Decimal("2.00"),
-        cumulative_filled_qty=Decimal("1.000"),
-    )
-    try:
-        spool.append(snapshot)
-        restored = spool[0]
-        assert len(spool) == 1
-        assert restored.equity.as_tuple() == snapshot.equity.as_tuple()
-        assert restored.positions[0]["quantity"].as_tuple() == Decimal("1.2300").as_tuple()
-        assert restored.fills[0]["last_qty"].as_tuple() == Decimal("-0.000").as_tuple()
-        assert restored.account_events[0]["value"].as_tuple() == Decimal("-sNaN007").as_tuple()
-        assert restored.margins[0].as_tuple() == Decimal("-Infinity").as_tuple()
-        assert restored.mark.as_tuple() == Decimal("1E+33").as_tuple()
-        iterated = next(iter(spool))
-        assert iterated.equity.as_tuple() == snapshot.equity.as_tuple()
-    finally:
-        spool.close()
-

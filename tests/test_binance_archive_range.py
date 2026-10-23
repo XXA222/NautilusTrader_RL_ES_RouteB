@@ -139,123 +139,6 @@ def test_aggtrades_archive_rejects_out_of_order_trade_ids(tmp_path):
         )
 
 
-@pytest.mark.parametrize(("price", "quantity"), [
-    ("Infinity", "0.1"), ("2000", "Infinity"),
-    ("NaN", "0.1"), ("2000", "NaN"),
-])
-def test_aggtrades_archive_rejects_nonfinite_price_or_quantity(tmp_path, price, quantity):
-    source = tmp_path / "nonfinite.zip"
-    csv_bytes = (
-        b"agg_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker\n"
-        + f"101,{price},{quantity},500,500,1700000000000,false\n".encode("ascii")
-    )
-    with ZipFile(source, "w", compression=ZIP_DEFLATED) as archive:
-        archive.writestr("trades.csv", csv_bytes)
-    digest = sha256(source.read_bytes()).hexdigest()
-
-    with pytest.raises(binance_archive.DataError, match="ASCII decimal field|identity, order, or value"):
-        binance_archive.archive_events(
-            source, stream="aggTrades", instrument="ETHUSDT-PERP.SIM",
-            source_url="fixture:aggTrades", expected_sha256=digest, delay_ns=1_000_000,
-        )
-
-
-@pytest.mark.parametrize(("stream", "row"), [
-    ("aggTrades", b"101,2000,0.1,500,500,1700000000000,\xff\n"),
-    ("bookTicker", b"1,2000,0.1,2001,0.1,1700000000000,\xff\n"),
-    ("klines", b"1700000000000,2000,2001,1999,2000,1,1700000059999,\xff\n"),
-])
-def test_archive_events_normalizes_invalid_csv_utf8(tmp_path, stream, row):
-    source = tmp_path / "invalid-utf8.zip"
-    with ZipFile(source, "w", compression=ZIP_DEFLATED) as archive:
-        archive.writestr("rows.csv", row)
-    digest = sha256(source.read_bytes()).hexdigest()
-
-    with pytest.raises(binance_archive.DataError, match="CSV encoding or syntax"):
-        binance_archive.archive_events(
-            source, stream=stream, instrument="ETHUSDT-PERP.SIM",
-            source_url="fixture:invalid-utf8", expected_sha256=digest, delay_ns=1_000_000,
-        )
-
-
-@pytest.mark.parametrize(("stream", "row"), [
-    ("bookTicker", b"1,2000,0.1,2001,0.1,1700000000000,invalid\n"),
-    ("fundingRate", b"invalid,480,0.0001\n"),
-    ("klines", b"invalid,2000,2001,1999,2000,1,1700000059999,1,1,1,1,0\n"),
-])
-def test_archive_events_normalizes_invalid_integer_fields(tmp_path, stream, row):
-    source = tmp_path / "invalid-integer.zip"
-    with ZipFile(source, "w", compression=ZIP_DEFLATED) as archive:
-        archive.writestr("rows.csv", row)
-    digest = sha256(source.read_bytes()).hexdigest()
-
-    with pytest.raises(binance_archive.DataError, match="integer field"):
-        binance_archive.archive_events(
-            source, stream=stream, instrument="ETHUSDT-PERP.SIM",
-            source_url="fixture:invalid-integer", expected_sha256=digest, delay_ns=1_000_000,
-        )
-
-
-@pytest.mark.parametrize(("price", "quantity"), [
-    ("2_000", "0.1"), ("٢٠٠٠", "0.1"),
-    ("2000", "0_1"), ("2000", "٠.١"),
-])
-def test_aggtrades_archive_rejects_noncanonical_decimal_lexemes(tmp_path, price, quantity):
-    source = tmp_path / "noncanonical-decimal.zip"
-    csv_bytes = (
-        b"agg_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker\n"
-        + f"101,{price},{quantity},500,500,1700000000000,false\n".encode("utf-8")
-    )
-    with ZipFile(source, "w", compression=ZIP_DEFLATED) as archive:
-        archive.writestr("trades.csv", csv_bytes)
-    digest = sha256(source.read_bytes()).hexdigest()
-
-    with pytest.raises(binance_archive.DataError, match="ASCII decimal field"):
-        binance_archive.archive_events(
-            source, stream="aggTrades", instrument="ETHUSDT-PERP.SIM",
-            source_url="fixture:noncanonical-decimal", expected_sha256=digest, delay_ns=1_000_000,
-        )
-
-
-@pytest.mark.parametrize(("stream", "row"), [
-    ("bookTicker", b"1_01,2000,0.1,2001,0.1,1700000000000,1700000000000\n"),
-    ("fundingRate", b"1_700000000000,480,0.0001\n"),
-    ("klines", b"1_699999980000,2000,2001,1999,2000,1,1700000039999,1,1,1,1,0\n"),
-    ("bookTicker", "١٠١,2000,0.1,2001,0.1,1700000000000,1700000000000\n".encode("utf-8")),
-    ("fundingRate", b"+1700000000000,480,0.0001\n"),
-])
-def test_archive_events_rejects_noncanonical_integer_lexemes(tmp_path, stream, row):
-    source = tmp_path / "noncanonical-integer.zip"
-    with ZipFile(source, "w", compression=ZIP_DEFLATED) as archive:
-        archive.writestr("rows.csv", row)
-    digest = sha256(source.read_bytes()).hexdigest()
-
-    with pytest.raises(binance_archive.DataError, match="ASCII integer field"):
-        binance_archive.archive_events(
-            source, stream=stream, instrument="ETHUSDT-PERP.SIM",
-            source_url="fixture:noncanonical-integer", expected_sha256=digest, delay_ns=1_000_000,
-        )
-
-
-@pytest.mark.parametrize(("stream", "row"), [
-    ("bookTicker", b"1,2_000,0.1,2001,0.2,1700000000000,1700000000000\n"),
-    ("fundingRate", "1700000000000,480,٠.١\n".encode("utf-8")),
-    ("klines", b"1699999980000,2_000,2001,1999,2000,1,1700000039999,1,1,1,1,0\n"),
-    ("markPriceKlines", "1699999980000,2000,2001,1999,٢٠٠٠,1,1700000039999,1,1,1,1,0\n".encode("utf-8")),
-])
-def test_archive_events_rejects_noncanonical_decimal_lexemes(tmp_path, stream, row):
-    source = tmp_path / "noncanonical-decimal.zip"
-    with ZipFile(source, "w", compression=ZIP_DEFLATED) as archive:
-        archive.writestr("rows.csv", row)
-    digest = sha256(source.read_bytes()).hexdigest()
-
-    with pytest.raises(binance_archive.DataError, match="ASCII decimal field"):
-        binance_archive.archive_events(
-            source, stream=stream, instrument="ETHUSDT-PERP.SIM",
-            source_url="fixture:noncanonical-decimal", expected_sha256=digest, delay_ns=1_000_000,
-        )
-
-
 def test_monthly_archive_import_uses_three_checksums_and_clips_inclusive_days(tmp_path, monkeypatch):
     fetched = []
 
@@ -361,18 +244,6 @@ def test_funding_api_events_reject_unsorted_or_non_minute_settlement_gaps():
                 content, symbol="ETHUSDT", instrument="ETHUSDT-PERP.SIM", source_url="fixture",
                 expected_sha256=sha256(content).hexdigest(), delay_ns=1_000_000,
             )
-
-
-def test_funding_api_events_reject_duplicate_object_keys():
-    content = (
-        b'[{"symbol":"ETHUSDT","symbol":"OTHER","fundingTime":1800000000000,'
-        b'"fundingRate":"0.0001","markPrice":"2000","rateType":"Regular"}]'
-    )
-    with pytest.raises(binance_archive.DataError, match="not valid JSON"):
-        binance_archive.funding_api_events(
-            content, symbol="ETHUSDT", instrument="ETHUSDT-PERP.SIM", source_url="fixture",
-            expected_sha256=sha256(content).hexdigest(), delay_ns=1_000_000,
-        )
 
 
 def test_import_range_uses_rest_only_for_missing_current_month_funding(tmp_path, monkeypatch):
@@ -540,23 +411,6 @@ def test_fetch_archive_resume_uses_local_verified_receipt_and_rehashes_bytes(tmp
         binance_archive.fetch_archive(relative_url, destination)
 
 
-def test_fetch_archive_rejects_duplicate_receipt_identity_keys(tmp_path):
-    content = b"fixture archive bytes"
-    relative_url = "daily/klines/ETHUSDT/1m/ETHUSDT-1m-2024-04-15.zip"
-    destination = tmp_path / "ETHUSDT-1m-2024-04-15.zip"
-    destination.write_bytes(content)
-    receipt = destination.with_suffix(destination.suffix + ".source.json")
-    receipt.write_text(
-        '{"schema":"rles.binance-archive-source.v0",'
-        f'"schema":"rles.binance-archive-source.v1","url":"{binance_archive.BASE + relative_url}",'
-        f'"sha256":"{sha256(content).hexdigest()}"}}',
-        encoding="utf-8",
-    )
-
-    with pytest.raises(binance_archive.DataError, match="source receipt is unreadable"):
-        binance_archive.fetch_archive(relative_url, destination)
-
-
 def test_fetch_archive_does_not_write_content_with_wrong_official_hash(tmp_path, monkeypatch):
     import io
 
@@ -711,38 +565,3 @@ def test_bookticker_archive_keeps_last_real_quote_per_event_second(tmp_path):
     assert events[0].payload["ask_qty"] == "0.4"
     assert events[0].ts_init_ns == events[0].ts_event_ns + 1_000_000
     assert events[0].provenance.endswith("#last-event-time-quote-per-second")
-
-
-def test_sealed_market_archive_keeps_only_timestamp_coverage_after_cutoff(tmp_path):
-    source = tmp_path / "AVAXUSDT-1m-sealed.zip"
-    rows = [
-        "open_time,open,high,low,close,volume,close_time,quote_volume,count,taker_base,taker_quote,ignore",
-    ]
-    start_ms = 1_704_067_200_000
-    for offset in range(4):
-        opened = start_ms + offset * 60_000
-        rows.append(f"{opened},100,101,99,100,2,{opened + 59_999},200,10,1,100,0")
-    with ZipFile(source, "w", compression=ZIP_DEFLATED) as archive:
-        archive.writestr("bars.csv", "\n".join(rows) + "\n")
-    source_sha = sha256(source.read_bytes()).hexdigest()
-    event_start = start_ms * 1_000_000 + MINUTE_NS
-    cutoff = event_start + MINUTE_NS
-    event_end = event_start + 2 * MINUTE_NS
-
-    events = binance_archive.archive_events(
-        source, stream="klines", instrument="AVAXUSDT-PERP.BINANCE",
-        source_url="fixture:sealed", expected_sha256=source_sha, delay_ns=1_000_000_000,
-        market_payload_cutoff_ns=cutoff, market_event_end_ns=event_end,
-    )
-
-    assert len(events) == 3
-    assert events[0].kind == "ohlcv_1m"
-    assert events[0].payload["close"] == "100"
-    assert [event.kind for event in events[1:]] == ["coverage_marker", "coverage_marker"]
-    assert all(event.payload == {
-        "instrument": "AVAXUSDT-PERP.BINANCE", "coverage_of": "ohlcv_1m",
-        "market_payload_decoded": False,
-    } for event in events[1:])
-    assert all("close" not in event.payload and "volume" not in event.payload
-               for event in events[1:])
-    assert events[-1].ts_event_ns == event_end

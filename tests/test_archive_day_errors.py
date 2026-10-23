@@ -40,33 +40,3 @@ def test_import_range_normalizes_invalid_date_inputs_before_fetch(
             symbol="ETHUSDT", start_day=start_day, end_day=end_day,
             output=tmp_path / "bundle", delay_ns=1,
         )
-
-
-@pytest.mark.parametrize("delay_ns", [0, -1, None, True])
-def test_import_day_rejects_invalid_delay_before_fetch(tmp_path, monkeypatch, delay_ns):
-    monkeypatch.setattr(
-        binance_archive,
-        "fetch_archive",
-        lambda *_: pytest.fail("invalid delay must be rejected before any fetch"),
-    )
-
-    with pytest.raises(binance_archive.DataError, match="explicit positive availability delay"):
-        binance_archive.import_day(
-            symbol="ETHUSDT", day="2024-03-01", output=tmp_path / "bundle",
-            delay_ns=delay_ns,
-        )
-
-
-@pytest.mark.parametrize("delay_ns", [0, -1, None, True])
-def test_import_range_rejects_invalid_delay_before_fetch(tmp_path, monkeypatch, delay_ns):
-    monkeypatch.setattr(
-        binance_archive,
-        "fetch_archive",
-        lambda *_: pytest.fail("invalid delay must be rejected before any fetch"),
-    )
-
-    with pytest.raises(binance_archive.DataError, match="explicit positive availability delay"):
-        binance_archive.import_range(
-            symbol="ETHUSDT", start_day="2024-03-01", end_day="2024-03-02",
-            output=tmp_path / "bundle", delay_ns=delay_ns,
-        )

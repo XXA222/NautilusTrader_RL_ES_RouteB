@@ -1,0 +1,69 @@
+{
+  "schema": "rles.audit-evidence.v1",
+  "work_package": "M0.1 exact native report arithmetic and F7 online summary reducer",
+  "status": "ENGINEERING_FIX_VERIFIED",
+  "date": "2026-10-23",
+  "workspace": "C:/Users/QX/Documents/ChatGPT/RouteB",
+  "changes": [
+    {
+      "path": "packages/research/src/rles_research/native_metrics.py",
+      "sha256": "e9c2fbdd6ecad1fa2c18f2617f43520b19674e3181a03dbe061cf0344257d74f",
+      "summary": "Native fill summaries and linear-equity reconciliation use exact Decimal helpers. NativeReportAccumulator reduces snapshots by timestamp group, incrementally accumulates metrics, fill/funding facts, liquidation state, cashflows, and optional reconciliation."
+    },
+    {
+      "path": "packages/gym_bridge/src/rles_gym_bridge/historical.py",
+      "sha256": "7cf96faaa72d715e733f38a88ed55e35ebeb02c0501dddb9af1afba29f1f9ed2",
+      "summary": "HistoricalEnvironmentFactory streams compact snapshots to the optional summary reducer and retains only the latest report snapshot in that mode."
+    },
+    {
+      "path": "packages/orchestrator/src/rles_orchestrator/application.py",
+      "sha256": "407d7a8eb5aaf2cb989c3cad3f690a7b6cb63a21d7bca4a542a71053af60cab8",
+      "summary": "Summary-only rollout now wires NativeReportAccumulator into native snapshot collection and restores the factory's prior compaction setting on exit."
+    },
+    {
+      "path": "tests/test_native_decimal_arithmetic.py",
+      "sha256": "745fd6bf2fc3e257cf29e545143b672a39d260b29ef25dc1b1018f164e20d47b",
+      "summary": "Four synthetic regressions cover low-precision turnover/slippage, open/close equity reconciliation, subnormal operands with inherited flags, and fail-closed precision loss."
+    },
+    {
+      "path": "tests/test_native_report_accumulator_parity.py",
+      "sha256": "19cf954f528c4c278ff0778242d616476deba5c7ad07193eeadb5a467fa3bd72",
+      "summary": "Seven synthetic parity regressions cover duplicate timestamps and cashflows, exact tail metrics, same-timestamp fill/funding aggregation, snapshot release, reference validation, and open/closed equity reconciliation."
+    },
+    {
+      "path": "tests/test_historical_factory.py",
+      "sha256": "16da7d27518b4b8ee69c0b9ce09a9a6997bfe93f7c3c41d0f8488c81306a9ece",
+      "summary": "Summary-only rollout parity regression compares account metrics, fill facts, funding, liquidation output, and reconciliation against a retained-report replay; verifies only one report snapshot remains retained."
+    }
+  ],
+  "runtime": {
+    "python": "3.14.7",
+    "platform": "Windows",
+    "environment": "NautilusTrader_RL_ES .venv, with RouteB workspace package sources on PYTHONPATH"
+  },
+  "verification": [
+    {
+      "command": "python -m pytest -q tests/test_historical_factory.py tests/test_native_report_accumulator_parity.py tests/test_native_decimal_arithmetic.py tests/test_research_metrics.py tests/test_native_liquidation_facts.py",
+      "result": "173 passed in 104.81s; 18 third-party warnings"
+    },
+    {
+      "command": "ruff check packages/research/src/rles_research/native_metrics.py packages/gym_bridge/src/rles_gym_bridge/historical.py packages/orchestrator/src/rles_orchestrator/application.py tests/test_native_decimal_arithmetic.py tests/test_native_report_accumulator_parity.py tests/test_historical_factory.py",
+      "result": "All checks passed"
+    },
+    {
+      "command": "mypy --platform win32 --ignore-missing-imports --follow-imports=silent packages/research/src/rles_research/native_metrics.py packages/gym_bridge/src/rles_gym_bridge/historical.py packages/orchestrator/src/rles_orchestrator/application.py",
+      "result": "Success: no issues found in 3 source files"
+    },
+    {
+      "command": "python qa/source_manifest.py --verify",
+      "result": "verified 366 files; source_identity_sha256=0d2d5e3ab71bc47984ddf19c07dd151a1b879709054a5888eebd860807b5e8d5"
+    }
+  ],
+  "data_access": "Synthetic values only. No market, account, Train, Validation, Test, or Holdout payload was read.",
+  "boundaries": [
+    "This is local Windows evidence, not clean Hosted Linux/Windows CI.",
+    "The full repository selector and installed-wheel selector were not run. Exact VaR/CVaR still retains the return sequence; requested account rows still materialize in batch mode.",
+    "The tests used the existing NautilusTrader_RL_ES .venv executable read-only with RouteB sources on PYTHONPATH because the designated RouteB venv was not accessible; no packages were installed or changed in that environment.",
+    "The actual D:/Program Files/NautilusTrader_RL_ES_RouteB checkout was inaccessible from this turn's filesystem policy; changes are in the current RouteB workspace copy and have not been claimed as synchronized to that path or GitHub."
+  ]
+}

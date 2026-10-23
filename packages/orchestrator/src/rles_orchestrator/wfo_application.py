@@ -13,15 +13,15 @@ from typing import Callable, cast
 
 import numpy as np
 
-from rles_data.core import DataError, digest
+from rles_data.core import CuratedStore, DataError, digest
+from rles_data.coverage import CoveragePolicy
 from rles_data.features import Scaler
 from rles_data.folds import bind_fold_scaler, build_folds
-from rles_data.io import curated_source_identity
+from rles_data.io import curated_source_identity, read_curated_window
 from rles_execution import ResolvedExecutionConfig
 from rles_gym_bridge.historical import (
     HistoricalEnvironmentFactory,
     historical_feature_spec,
-    instrument_units_from_rules,
     load_rules,
 )
 from rles_research.baselines import BaselinePolicy, BaselineSpec
@@ -37,11 +37,9 @@ from rles_research.statistics import (
     pbo_cscv,
 )
 
-from .application import (_file_hash, _read_wfo_market_scope, _rl_sampling_policy,
-                          _verify_file, _worker_memory_policy, _write_verified,
-                          backtest, rollout, train)
+from .application import (_file_hash, _rl_sampling_policy, _verify_file,
+                          _worker_memory_policy, _write_verified, backtest, rollout, train)
 from . import research_access
-from .json_utils import loads_unique_json
 
 
 _CANDIDATE_FIELDS = {
@@ -117,6 +115,19 @@ def _coverage(template: dict, instrument: str, start_ns: int, end_ns: int) -> di
         "settlement_timestamp_tolerance_ns": template.get("settlement_timestamp_tolerance_ns", 0),
         "provenance": template["provenance"],
     }
+
+
+def _require_window(store: CuratedStore, template: dict, instrument: str,
+                    start_ns: int, end_ns: int) -> None:
+    """Gate every read window, including read-only feature warmup."""
+    policy = CoveragePolicy(**_coverage(template, instrument, start_ns, end_ns))
+    report = store.quality(
+        start_ns=start_ns,
+        end_ns=end_ns,
+        expected_instruments=(instrument,),
+        coverage_policy=policy,
+    )
+    store.require_usable(report, "rl_es")
 
 
 def _candidate(base: dict, values: dict, output: Path) -> dict:
@@ -350,7 +361,7 @@ def _source_tree_hash(root: Path) -> str:
 
 def _scaler(bundle_root: Path) -> Scaler:
     _verify_file(bundle_root / "bundle.json")
-    bundle = loads_unique_json((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
     values = dict(bundle["preprocessing"]["scaler"])
     values["mean"], values["std"] = tuple(values["mean"]), tuple(values["std"])
     return Scaler(**values)
@@ -360,24 +371,16 @@ def _stress_validation_report(run: dict, bundle_root: Path, *, start_ns: int, en
                               coverage_policy: dict) -> dict:
     """Replay a completed candidate on the same Validation bars under frozen stress costs."""
     _verify_file(bundle_root / "bundle.json")
-    bundle = loads_unique_json((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
     environment = bundle.get("environment")
     if not isinstance(environment, dict):
         raise DataError("stress validation bundle lacks its frozen environment")
-    prepared_store, _identity = _read_wfo_market_scope(
-        run, score_start_ns=start_ns, score_end_ns=end_ns,
-        label_prefix="validation-wfo-", reserve_development=True,
-    )
     factory = HistoricalEnvironmentFactory(**{
         **environment, "start_ns": start_ns, "end_ns": end_ns,
         "coverage_policy": coverage_policy, "fit_scaler": False,
         "split": "validation", "mode": "stress", "scaler": _scaler(bundle_root),
-        "reward_scale": bundle.get("reward_scale", 1.0), "prepared_store": prepared_store,
+        "reward_scale": bundle.get("reward_scale", 1.0),
     })
-    setattr(factory, "application_registered_evaluation_access",
-            digest([run["environment"], run["evaluation_data_access"]]))
-    if "wfo_dataset_hash" in run:
-        setattr(factory, "application_dataset_identity_hash", run["wfo_dataset_hash"])
     report = backtest(run, bundle_root, factory=factory, allow_execution_stress=True)
     if report.get("execution_mode") != "stress":
         raise DataError("stress validation report lacks stress execution identity")
@@ -385,16 +388,11 @@ def _stress_validation_report(run: dict, bundle_root: Path, *, start_ns: int, en
 
 
 def _baseline_reports(config: dict, bundle_root: Path, *, seed: int) -> dict[str, dict]:
-    bundle = loads_unique_json((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
     scaler = _scaler(bundle_root)
-    prepared_store, _identity = _read_wfo_market_scope(
-        config, score_start_ns=config["evaluation"]["start_ns"],
-        score_end_ns=config["evaluation"]["end_ns"],
-        label_prefix="test-wfo-", reserve_development=False,
-    )
     factory = HistoricalEnvironmentFactory(**{
         **bundle["environment"], **config["evaluation"], "fit_scaler": False,
-        "split": "test", "scaler": scaler, "prepared_store": prepared_store,
+        "split": "test", "scaler": scaler,
         "reward_scale": bundle.get("reward_scale", 1.0),
     })
     output = {}
@@ -447,7 +445,7 @@ def _latest_final_retrain_checkpoint(run_root: Path, route: str) -> Path | None:
     manifest_path = run_root / "run.json"
     if manifest_path.is_symlink() or not manifest_path.is_file():
         raise DataError("partial final retrain has no durable application run manifest")
-    manifest = loads_unique_json(manifest_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     attempt_id = manifest.get("attempt_id") if isinstance(manifest, dict) else None
     if (not isinstance(manifest, dict)
             or manifest.get("schema") != "rles.historical-run.v1"
@@ -550,9 +548,6 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
 
     environment = dict(config["environment"])
     instrument = environment["instrument"]
-    quantity_unit, quote_currency = instrument_units_from_rules(
-        load_rules(environment["rules_path"]), instrument,
-    )
     protocol_id = settings["protocol_id"]
     market_source_identity = curated_source_identity(environment["market_path"])
     research_access.record_development(config, {
@@ -611,11 +606,9 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
     } for profile in candidate_profiles.values()):
         raise DataError("WFO candidates contain an unknown feature profile")
     candidate_features = {
-        identity: (historical_feature_spec(dict(template["maximum_age_ns"]),
-                                           quantity_unit=quantity_unit, quote_currency=quote_currency)
+        identity: (historical_feature_spec(dict(template["maximum_age_ns"]))
                    if profile == "legacy" else
-                   historical_feature_spec(dict(template["maximum_age_ns"]), profile=profile,
-                                           quantity_unit=quantity_unit, quote_currency=quote_currency))
+                   historical_feature_spec(dict(template["maximum_age_ns"]), profile=profile))
         for identity, profile in candidate_profiles.items()
     }
     candidate_feature_hashes = {
@@ -644,8 +637,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                         for manifest in manifests)
         for identity in candidate_ids
     }
-    source_root = (research_access._workspace_root_from_module(__file__)
-                   or Path(__file__).resolve().parent)
+    source_root = Path(__file__).resolve().parents[4]
     source_hash = _source_tree_hash(source_root)
     rules_source_hash = _file_hash(Path(environment["rules_path"]))
     config_identity_hash = digest({key: value for key, value in config.items() if key != "output"})
@@ -683,15 +675,26 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
         },
     )
     intent_ids.append("final-holdout")
-    # Declare every formal scope before any query can be consumed. Do not decode
-    # market payloads here: the Train, Validation, Test, and Holdout runners must
-    # open only their own registered scope at the corresponding execution gate.
+    # Every formal scope is durably declared before the complete source is decoded.
+    # The ordinary WFO ledger still decides when each evaluation may start.
     registry.start_query_intents(protocol_id=protocol_id, owner=owner,
                                  intent_ids=tuple(intent_ids))
-    dataset_hash = digest([
-        "rles.wfo-market-plus-rules-dataset.v1",
-        market_source_identity["snapshot_hash"], rules_source_hash,
-    ])
+    market_store = read_curated_window(
+        environment["market_path"], settings["data_start_ns"], holdout_end,
+        expected_marker_sha256=market_source_identity["marker_sha256"],
+        allow_legacy_isolated_snapshot=True,
+    )
+    if market_store.snapshot_hash != market_source_identity["snapshot_hash"]:
+        raise DataError("WFO market payload differs from its pre-read registered identity")
+    store = CuratedStore((*market_store.events, *load_rules(environment["rules_path"])))
+    for manifest in manifests:
+        for window in (manifest.train, manifest.validation, manifest.test):
+            _require_window(store, template, instrument, window.warmup_start_ns,
+                            window.score_end_ns)
+    _require_window(store, template, instrument, settings["start_ns"] - settings["warmup_ns"],
+                    holdout_start)
+    _require_window(store, template, instrument, holdout_start - settings["warmup_ns"],
+                    holdout_end)
     trial_attempt_keys: dict[str, str] = {}
     trial_attempt_records: dict[str, dict] = {}
     for values in candidates:
@@ -713,7 +716,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
         "protocol_id": protocol_id,
         "config_hash": config_identity_hash,
         "source_hash": source_hash,
-        "dataset_hash": dataset_hash,
+        "dataset_hash": store.snapshot_hash,
         "market_source_identity": market_source_identity,
         "feature_hash": protocol_feature_hash,
         "candidate_feature_hashes": candidate_feature_hashes,
@@ -730,7 +733,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
         ledger = ResearchLedger(root / "research.sqlite")
         manifest_path = root / "wfo-run.json"
         _verify_file(manifest_path)
-        saved_manifest = loads_unique_json(manifest_path.read_text(encoding="utf-8"))
+        saved_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if saved_manifest != resume_manifest:
             raise DataError("WFO resume configuration, source, data, features, or folds changed")
         protocol_state = ledger.state(protocol_id)["state"]
@@ -745,15 +748,15 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
         completed_report = root / "wfo-report.json"
         if protocol_state == "CLOSED" and completed_report.exists():
             _verify_file(completed_report)
-            report = loads_unique_json(completed_report.read_text(encoding="utf-8"))
+            report = json.loads(completed_report.read_text(encoding="utf-8"))
             if (report.get("protocol_id") != protocol_id
-                    or report.get("dataset_hash") != dataset_hash
+                    or report.get("dataset_hash") != store.snapshot_hash
                     or report.get("feature_hash") != protocol_feature_hash
                     or report.get("candidate_feature_hashes") != candidate_feature_hashes):
                 raise DataError("closed WFO report differs from the frozen protocol identity")
             holdout_path = root / "holdout-report.json"
             _verify_file(holdout_path)
-            holdout = loads_unique_json(holdout_path.read_text(encoding="utf-8"))
+            holdout = json.loads(holdout_path.read_text(encoding="utf-8"))
             if digest(report.get("holdout")) != digest(holdout) or not ledger.verify_audit_chain():
                 raise DataError("closed WFO Holdout artifact or ledger audit chain is inconsistent")
             registry.verify_report(access_key("final-holdout"), _verify_file(holdout_path))
@@ -811,19 +814,6 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                     "coverage_policy": _coverage(template, instrument, manifest.validation.score_start_ns,
                                                    manifest.validation.score_end_ns),
                 }
-                run["wfo_dataset_hash"] = dataset_hash
-                run["train_data_access"] = {
-                    "start_ns": manifest.train.warmup_start_ns,
-                    "end_ns": manifest.train.score_end_ns,
-                    "marker_sha256": market_source_identity["marker_sha256"],
-                    "label": f"train-wfo-{fold_id}-{candidate_id}",
-                }
-                run["evaluation_data_access"] = {
-                    "start_ns": manifest.validation.warmup_start_ns,
-                    "end_ns": manifest.validation.score_end_ns,
-                    "marker_sha256": market_source_identity["marker_sha256"],
-                    "label": f"validation-wfo-{fold_id}-{candidate_id}",
-                }
                 query_id = f"validation-{fold_index}-{candidate_id}"
                 existing_query = ledger.query(protocol_id, query_id)
                 if existing_query is not None:
@@ -859,7 +849,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                     report_hash, bundle_hash = _verify_file(report_path), _verify_file(bundle_path)
                     if not completed_path.is_file():
                         raise DataError("resumed WFO Validation training has no completion receipt")
-                    completed = loads_unique_json(completed_path.read_text(encoding="utf-8"))
+                    completed = json.loads(completed_path.read_text(encoding="utf-8"))
                     if (completed.get("report_sha256") != report_hash
                             or completed.get("bundle_sha256") != bundle_hash):
                         raise DataError("WFO Validation completion receipt does not match its artifacts")
@@ -871,7 +861,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                     trained = train_fn(run)
                 report_path = Path(trained["output"]) / "report.json"
                 _verify_file(report_path)
-                report = loads_unique_json(report_path.read_text(encoding="utf-8"))
+                report = json.loads(report_path.read_text(encoding="utf-8"))
                 if cost_stress_validation and report.get("execution_mode") != "base":
                     raise DataError("paired cost validation requires a base-mode Validation report")
                 validation[candidate_id].append(report)
@@ -894,8 +884,8 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                             raise DataError("reserved stress Validation may have been consumed; refusing to replay")
                         stress_report_hash = _verify_file(stress_report_path)
                         _verify_file(stress_receipt_path)
-                        stress_report = loads_unique_json(stress_report_path.read_text(encoding="utf-8"))
-                        stress_receipt = loads_unique_json(stress_receipt_path.read_text(encoding="utf-8"))
+                        stress_report = json.loads(stress_report_path.read_text(encoding="utf-8"))
+                        stress_receipt = json.loads(stress_receipt_path.read_text(encoding="utf-8"))
                         expected_receipt = {
                             "schema": "rles.wfo-stress-validation.v1", "protocol_id": protocol_id,
                             "fold_id": fold_id, "candidate_id": candidate_id,
@@ -1019,7 +1009,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
             _write_verified(root / "wfo-report.json", {
                 "schema": "rles.wfo-report.v1",
                 "protocol_id": protocol_id,
-                "dataset_hash": dataset_hash,
+                "dataset_hash": store.snapshot_hash,
                 "feature_hash": protocol_feature_hash,
                 "candidate_feature_hashes": candidate_feature_hashes,
                 "fold_manifests": {
@@ -1079,7 +1069,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
         selection_path = root / "selection.json"
         if selection_path.exists():
             _verify_file(selection_path)
-            saved_selection = loads_unique_json(selection_path.read_text(encoding="utf-8"))
+            saved_selection = json.loads(selection_path.read_text(encoding="utf-8"))
             if saved_selection != selection_payload:
                 raise DataError("WFO frozen selection artifact differs from Validation evidence")
         else:
@@ -1105,18 +1095,11 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
             manifest = candidate_manifests[selected_id][fold_index]
             bundle_root = bundles[(fold_index, selected_id)]
             run = _candidate(config, selected_values, bundle_root)
-            run["environment"] = loads_unique_json((bundle_root / "bundle.json").read_text(encoding="utf-8"))["environment"]
+            run["environment"] = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))["environment"]
             run["evaluation"] = {
                 "start_ns": manifest.test.score_start_ns, "end_ns": manifest.test.score_end_ns,
                 "split": "test", "coverage_policy": _coverage(
                     template, instrument, manifest.test.score_start_ns, manifest.test.score_end_ns),
-            }
-            run["wfo_dataset_hash"] = dataset_hash
-            run["evaluation_data_access"] = {
-                "start_ns": manifest.test.warmup_start_ns,
-                "end_ns": manifest.test.score_end_ns,
-                "marker_sha256": market_source_identity["marker_sha256"],
-                "label": f"test-wfo-{fold_id}-{selected_id}",
             }
             query_id = f"test-{fold_index}-{selected_id}"
             test_root = root / "folds" / fold_id / "test"
@@ -1132,7 +1115,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                 if not test_root.is_dir():
                     raise DataError("WFO Test was reserved without a durable report; one-shot Test cannot be replayed")
                 _verify_file(report_path)
-                report = loads_unique_json(report_path.read_text(encoding="utf-8"))
+                report = json.loads(report_path.read_text(encoding="utf-8"))
                 registry.verify_report(access_key(query_id), _verify_file(report_path))
             else:
                 if test_root.exists():
@@ -1147,7 +1130,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
             tests.append(report)
             if baseline_path.exists():
                 _verify_file(baseline_path)
-                baseline = loads_unique_json(baseline_path.read_text(encoding="utf-8"))
+                baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
                 registry.verify_report(access_key(query_id, "baselines"), _verify_file(baseline_path))
             else:
                 access = evaluation_access(
@@ -1200,12 +1183,6 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
             final_run["environment"], start_ns=settings["start_ns"], end_ns=holdout_start,
             coverage_policy=_coverage(template, instrument, settings["start_ns"], holdout_start),
         )
-        final_run["train_data_access"] = {
-            "start_ns": settings["data_start_ns"], "end_ns": holdout_start,
-            "marker_sha256": market_source_identity["marker_sha256"],
-            "label": f"train-wfo-final-{protocol_id}",
-        }
-        final_run["wfo_dataset_hash"] = dataset_hash
         final_run.pop("evaluation", None)
         if _source_tree_hash(source_root) != source_hash:
             raise DataError("source tree changed after WFO recipe freeze")
@@ -1216,7 +1193,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
         def verify_final_retrain() -> str:
             """Validate a completed final-train artifact before it can open Holdout."""
             bundle_hash = _verify_file(final_bundle_path)
-            bundle = loads_unique_json(final_bundle_path.read_text(encoding="utf-8"))
+            bundle = json.loads(final_bundle_path.read_text(encoding="utf-8"))
             if digest(bundle.get("environment")) != digest(final_run["environment"]):
                 raise DataError("final retrain bundle does not match the frozen pre-Holdout run")
             if bundle.get("training_end_ns") != holdout_start:
@@ -1225,13 +1202,13 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                     or not isinstance(bundle.get("lineage"), list)):
                 raise DataError("final retrain bundle lacks actor or stage lineage")
             app_receipt_path = final_root / "COMPLETED.json"
-            app_receipt = loads_unique_json(app_receipt_path.read_text(encoding="utf-8"))
+            app_receipt = json.loads(app_receipt_path.read_text(encoding="utf-8"))
             if (app_receipt.get("bundle_sha256") != bundle_hash
                     or app_receipt.get("route") != final_run.get("route")
                     or app_receipt.get("algorithm") != final_run.get("algorithm")):
                 raise DataError("final retrain completion receipt does not match its bundle")
             run_manifest_path = final_root / "run.json"
-            run_manifest = loads_unique_json(run_manifest_path.read_text(encoding="utf-8"))
+            run_manifest = json.loads(run_manifest_path.read_text(encoding="utf-8"))
             recipe = {key: value for key, value in final_run.items()
                       if key not in {"output", "resume_checkpoint"}}
             if (run_manifest.get("schema") != "rles.historical-run.v1"
@@ -1240,13 +1217,13 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                 raise DataError("final retrain run manifest differs from the frozen run recipe")
             if final_receipt_path.exists():
                 _verify_file(final_receipt_path)
-                saved = loads_unique_json(final_receipt_path.read_text(encoding="utf-8"))
+                saved = json.loads(final_receipt_path.read_text(encoding="utf-8"))
                 if saved != {
                     "schema": "rles.wfo-final-retrain.v1",
                     "protocol_id": protocol_id,
                     "recipe_sha": frozen_recipe,
                     "source_sha": source_hash,
-                    "dataset_sha": dataset_hash,
+                    "dataset_sha": store.snapshot_hash,
                     "bundle_sha256": bundle_hash,
                 }:
                     raise DataError("final retrain receipt differs from the frozen WFO identity")
@@ -1256,7 +1233,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                     "protocol_id": protocol_id,
                     "recipe_sha": frozen_recipe,
                     "source_sha": source_hash,
-                    "dataset_sha": dataset_hash,
+                    "dataset_sha": store.snapshot_hash,
                     "bundle_sha256": bundle_hash,
                 })
             return bundle_hash
@@ -1296,11 +1273,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
             if frozen["retrain_sha"] != retrain_hash:
                 raise DataError("registered final retrain hash differs from its durable bundle")
 
-        # The one-shot ledger binds Holdout to its source-market identity, while
-        # reports and bundles use the composite market-plus-rules dataset hash.
-        holdout_dataset_hash = digest([
-            market_source_identity["snapshot_hash"], holdout_start, holdout_end,
-        ])
+        holdout_dataset_hash = digest([store.snapshot_hash, holdout_start, holdout_end])
         holdout_was_open = protocol_state in {"HOLDOUT_OPENED", "CLOSED"}
         if protocol_state == "RETRAINED":
             ledger.open_holdout(protocol_id, holdout_dataset_sha=holdout_dataset_hash,
@@ -1313,18 +1286,12 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
             "start_ns": holdout_start, "end_ns": holdout_end, "split": "holdout",
             "coverage_policy": _coverage(template, instrument, holdout_start, holdout_end),
         }
-        final_run["evaluation_data_access"] = {
-            "start_ns": max(settings["data_start_ns"], holdout_start - settings["warmup_ns"]),
-            "end_ns": holdout_end,
-            "marker_sha256": market_source_identity["marker_sha256"],
-            "label": f"holdout-wfo-{protocol_id}",
-        }
         holdout_path = root / "holdout-report.json"
         if holdout_path.exists():
             if protocol_state not in {"HOLDOUT_OPENED", "CLOSED"}:
                 raise DataError("Holdout report exists without a durable one-shot ledger reservation")
             holdout_hash = _verify_file(holdout_path)
-            holdout = loads_unique_json(holdout_path.read_text(encoding="utf-8"))
+            holdout = json.loads(holdout_path.read_text(encoding="utf-8"))
             registry.verify_report(access_key("final-holdout"), holdout_hash)
         else:
             if protocol_state == "CLOSED":
@@ -1347,7 +1314,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
             protocol_state = "CLOSED"
         report = {
             "schema": "rles.wfo-report.v1", "protocol_id": protocol_id,
-            "dataset_hash": dataset_hash, "feature_hash": protocol_feature_hash,
+            "dataset_hash": store.snapshot_hash, "feature_hash": protocol_feature_hash,
             "candidate_feature_hashes": candidate_feature_hashes,
             "fold_manifests": [asdict(value) for value in selected_bound_manifests],
             "validation_candidates": aggregate, "selection": selected,

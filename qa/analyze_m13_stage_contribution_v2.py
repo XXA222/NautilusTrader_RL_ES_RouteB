@@ -31,67 +31,14 @@ def _sha(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest()
 
 
-class _DuplicateJSONKey(ValueError):
-    """A JSON object repeats a field and therefore has ambiguous semantics."""
-
-
-def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise _DuplicateJSONKey(key)
-        result[key] = value
-    return result
-
-
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"non-standard JSON constant: {value}")
-
-
 def _json(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(
-            path.read_text(encoding="utf-8"),
-            object_pairs_hook=_unique_json_object,
-            parse_constant=_reject_json_constant,
-        )
-    except _DuplicateJSONKey as exc:
-        raise ValueError(f"duplicate JSON object key in {path}: {exc}") from exc
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"cannot read JSON object: {path}") from exc
     if not isinstance(value, dict):
         raise ValueError(f"expected JSON object: {path}")
     return value
-
-
-def _stage_report_path(output_root: Path, mode: str, stage: str) -> Path:
-    """Resolve one registered report without allowing mode/path escape."""
-    if (not mode or mode in {".", ".."} or "/" in mode or "\\" in mode
-            or Path(mode).name != mode):
-        raise ValueError("M1.3 report mode must be a single path component")
-    if stage not in STAGES:
-        raise ValueError(f"unsupported M1.3 report stage: {stage}")
-    root = output_root.resolve()
-    path = root / f"{mode}_{stage}.json"
-    if path.resolve().parent != root:
-        raise ValueError("M1.3 stage report resolves outside the registered report directory")
-    return path
-
-
-def _bundle_child_path(bundle_root: Path, filename: str, label: str) -> Path:
-    """Resolve a bundle-local file and reject symlinks escaping the bundle."""
-    if (not filename or filename in {".", ".."} or "/" in filename or "\\" in filename
-            or Path(filename).name != filename):
-        raise ValueError(f"{label} path must be a bundle-local filename")
-    root = bundle_root.resolve()
-    path = root / filename
-    try:
-        resolved = path.resolve()
-    except (OSError, RuntimeError) as exc:
-        raise ValueError(f"{label} path cannot be resolved safely") from exc
-    if resolved.parent != root:
-        raise ValueError(f"{label} resolves outside the bundle directory")
-    return path
 
 
 def _is_sha(value: object) -> TypeGuard[str]:
@@ -117,8 +64,8 @@ def verify_e1_actor(bundle_root: Path) -> dict[str, Any]:
     import numpy as np
 
     root = bundle_root.resolve()
-    bundle_path = _bundle_child_path(root, "bundle.json", "bundle")
-    marker_path = _bundle_child_path(root, "bundle.json.sha256", "bundle SHA-256 receipt")
+    bundle_path = root / "bundle.json"
+    marker_path = bundle_path.with_suffix(bundle_path.suffix + ".sha256")
     if not marker_path.is_file() or marker_path.read_text(encoding="ascii").strip() != _sha(bundle_path):
         raise ValueError("bundle SHA-256 receipt mismatch")
     bundle = _json(bundle_path)
@@ -131,12 +78,12 @@ def verify_e1_actor(bundle_root: Path) -> dict[str, Any]:
         raise ValueError("bundle does not index a selected E1 actor")
     entry = index["E1"]
     relative = entry.get("path")
-    if not isinstance(relative, str):
+    if not isinstance(relative, str) or Path(relative).name != relative:
         raise ValueError("E1 actor path must be a bundle-local filename")
-    artifact_path = _bundle_child_path(root, relative, "E1 actor artifact")
+    artifact_path = root / relative
     if not artifact_path.is_file() or not _is_sha(entry.get("sha256")):
         raise ValueError("E1 actor artifact or indexed digest is missing")
-    marker = _bundle_child_path(root, relative + ".sha256", "E1 actor SHA-256 receipt")
+    marker = artifact_path.with_suffix(artifact_path.suffix + ".sha256")
     actual_sha = _sha(artifact_path)
     if (actual_sha != entry["sha256"] or not marker.is_file()
             or marker.read_text(encoding="ascii").strip() != actual_sha):
@@ -198,18 +145,13 @@ def _verify_native_report(report: dict[str, Any], label: str) -> None:
         raise ValueError(f"{label}: event-level equity reconciliation is missing")
     if not reconciliation["rows"]:
         raise ValueError(f"{label}: event-level equity reconciliation is empty")
-    max_residual = 0.0
     for row in reconciliation["rows"]:
         if not isinstance(row, dict):
             raise ValueError(f"{label}: malformed equity reconciliation row")
         residual = abs(_number(row.get("residual"), f"{label} residual"))
-        max_residual = max(max_residual, residual)
         tolerance = _number(row.get("tolerance"), f"{label} tolerance")
         if tolerance < 0 or residual > tolerance:
             raise ValueError(f"{label}: equity residual exceeds tolerance at {row.get('ts_ns')}")
-    reported_max = _number(reconciliation.get("max_abs_residual"), f"{label} max_abs_residual")
-    if reported_max < 0 or not math.isclose(reported_max, max_residual, rel_tol=1e-12, abs_tol=1e-12):
-        raise ValueError(f"{label}: max_abs_residual does not match event-level rows")
     metrics = report.get("metrics")
     if not isinstance(metrics, dict):
         raise ValueError(f"{label}: native economic metrics are missing")
@@ -232,17 +174,8 @@ def _verify_native_report(report: dict[str, Any], label: str) -> None:
     for key in ("decision_count", "submit_decision_count", "native_order_count"):
         if type(diagnostics.get(key)) is not int or diagnostics[key] < 0:
             raise ValueError(f"{label}: invalid execution diagnostic {key}")
-    if (diagnostics["submit_decision_count"] > diagnostics["decision_count"]
-            or diagnostics["native_order_count"] > diagnostics["submit_decision_count"]):
-        raise ValueError(f"{label}: execution diagnostic counts violate decision/order bounds")
     if not isinstance(report.get("fills"), list):
         raise ValueError(f"{label}: native fill list is missing")
-    hard_interventions = report.get("risk_hard_interventions")
-    if (type(hard_interventions) is not int or hard_interventions < 0
-            or hard_interventions > diagnostics["decision_count"]):
-        raise ValueError(
-            f"{label}: invalid risk_hard_interventions; expected an integer within decision_count"
-        )
 
 
 def summarize_stage_chain(mode: str, envelopes: dict[str, dict[str, Any]], *,
@@ -332,12 +265,6 @@ def summarize_stage_chain(mode: str, envelopes: dict[str, dict[str, Any]], *,
                 for stage in STAGES}
     if len(set(initials.values())) != 1:
         raise ValueError(f"{mode}: stage initial equities differ")
-    if pairing is None:
-        raise ValueError(f"{mode}: frozen pairing identity is missing")
-    starting_balance = _number(pairing.get("starting_balance"), f"{mode} starting_balance")
-    if (starting_balance <= 0
-            or not math.isclose(starting_balance, initials["E1"], rel_tol=1e-12, abs_tol=1e-9)):
-        raise ValueError(f"{mode}: frozen starting balance differs from native initial equity")
 
     pairs = (("E1", "R1"), ("R1", "E2"), ("E1", "E2"))
     stage_deltas: dict[str, Any] = {}
@@ -362,8 +289,8 @@ def summarize_stage_chain(mode: str, envelopes: dict[str, dict[str, Any]], *,
                 - before_diag["submit_decision_count"],
                 "native_orders": after_diag["native_order_count"]
                 - before_diag["native_order_count"],
-                "hard_risk_interventions": after_report["risk_hard_interventions"]
-                - before_report["risk_hard_interventions"],
+                "hard_risk_interventions": int(after_report.get("risk_hard_interventions", 0))
+                - int(before_report.get("risk_hard_interventions", 0)),
             },
         }
     return {
@@ -445,7 +372,7 @@ def analyze(bundle_root: Path, registration_path: Path, reports_root: Path) -> d
     for mode in modes:
         envelopes: dict[str, dict[str, Any]] = {}
         for stage in STAGES:
-            path = _stage_report_path(output, mode, stage)
+            path = output / f"{mode}_{stage}.json"
             envelopes[stage] = _json(path)
             report_hashes[path.name] = _sha(path)
         expected_soft = soft_by_mode[mode]

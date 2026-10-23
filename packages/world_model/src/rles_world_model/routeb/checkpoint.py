@@ -17,8 +17,6 @@ import json
 import os
 import tempfile
 import numpy as np
-from .randomness import validate_jax_seed
-from ..json_utils import loads_unique_json
 
 SCHEMA = "routeb.jax-checkpoint.v2"
 
@@ -30,12 +28,7 @@ def optimizer_recipe(model_config: Any, train_config: Any) -> dict:
     t = asdict(train_config)
     t.pop("steps", None)
     t.pop("report_interval", None)
-    model = asdict(model_config)
-    for key in ("risk_horizons", "risk_horizon_weights",
-                "path_log_rv_crps_horizons"):
-        if key in model:
-            model[key] = list(model[key])
-    return {"model": model, "train": t}
+    return {"model": asdict(model_config), "train": t}
 
 
 def _sha_file(path: Path) -> str:
@@ -56,11 +49,7 @@ def _signature(tree) -> str:
 def save_checkpoint(path: str | Path, *, params, opt_state, step: int,
                     seed: int, identity: dict, config: dict) -> None:
     import jax
-    try:
-        validate_jax_seed(seed, name="checkpoint seed")
-    except ValueError as exc:
-        raise ValueError('valid checkpoint step, seed, Train identity and config required') from exc
-    if (type(step) is not int or step < 0
+    if (type(step) is not int or step < 0 or type(seed) is not int or seed < 0
         or not isinstance(identity, dict) or not identity.get('train_scope_id')
         or not isinstance(config, dict)):
         raise ValueError('valid checkpoint step, seed, Train identity and config required')
@@ -101,41 +90,15 @@ def save_checkpoint(path: str | Path, *, params, opt_state, step: int,
 
 
 def load_checkpoint(path: str | Path, *, params_template, opt_template,
-                    expected_identity: dict, expected_config: dict,
-                    allow_seed_stream_metadata: bool = False):
+                    expected_identity: dict, expected_config: dict):
     import jax
     path = Path(path)
-    try:
-        meta = loads_unique_json(path.with_suffix('.json').read_text(encoding='utf-8'))
-    except (OSError, UnicodeError, ValueError) as exc:
-        raise ValueError('checkpoint metadata is unreadable or ambiguous') from exc
-    saved_config = meta.get('config')
-    config_matches = saved_config == expected_config
-    if (not config_matches and allow_seed_stream_metadata
-            and isinstance(saved_config, dict) and 'seed_streams' in saved_config):
-        seed_streams = saved_config.get('seed_streams')
-        expected_stream_keys = {'initialization_seed', 'sampler_seed', 'model_seed'}
-        if (isinstance(seed_streams, dict)
-                and set(seed_streams) == expected_stream_keys
-                and all(type(value) is int for value in seed_streams.values())):
-            try:
-                for name, value in seed_streams.items():
-                    validate_jax_seed(value, name=f'checkpoint {name}')
-            except ValueError:
-                pass
-            else:
-                base_config = {key: value for key, value in saved_config.items()
-                               if key != 'seed_streams'}
-                config_matches = base_config == expected_config
+    meta = json.loads(path.with_suffix('.json').read_text(encoding='utf-8'))
     if (meta.get('schema') != SCHEMA or meta.get('identity') != expected_identity
-        or not config_matches):
+        or meta.get('config') != expected_config):
         raise ValueError('checkpoint schema/train/config identity mismatch')
-    if type(meta.get('step')) is not int or meta['step'] < 0:
+    if type(meta.get('step')) is not int or meta['step'] < 0 or type(meta.get('seed')) is not int:
         raise ValueError('malformed checkpoint step/seed')
-    try:
-        validate_jax_seed(meta.get('seed'), name='checkpoint seed')
-    except ValueError as exc:
-        raise ValueError('malformed checkpoint step/seed') from exc
     if _sha_file(path) != meta.get('sha256'):
         raise ValueError('checkpoint file corruption or partial publication')
     lp, pt = jax.tree_util.tree_flatten(params_template)

@@ -30,6 +30,8 @@ from rles_nautilus_adapter.session import EngineBoundaryError, EngineSession, Na
 from rles_contracts.dto import DataQualityGrade, ExecutionPlan, MarketEvent, OrderType, PendingOrderPolicy, TimeInForce
 from rles_contracts.frozen import FrozenFields
 from rles_nautilus_adapter import NativeMarketEventDecoder, NativePlanSubmitter, VisibleBatch
+from rles_nautilus_adapter.limit_submitter import NativeLimitSubmitter
+from rles_contracts.limit_execution import LimitInstrumentRules, LimitOrderIntent, OrderIntentKind
 
 pytestmark = pytest.mark.micro_golden
 
@@ -607,6 +609,72 @@ def test_native_perpetual_funding_rate_settles_once_in_account(
         session.close()
 
 
+def test_native_l08_pending_limit_remains_unfunded_across_perpetual_settlement() -> None:
+    from dataclasses import replace
+    from nautilus_trader.model import BarType
+
+    instrument = _perpetual_instrument()
+    rules = LimitInstrumentRules(
+        instrument_id=str(instrument.id), price_tick=Decimal("0.01"),
+        qty_step=Decimal("0.001"), min_qty=Decimal("0.001"),
+        min_notional=Decimal("10"),
+    )
+    submitter = NativeLimitSubmitter(rules=rules, quantity_unit="ETH")
+    bar_type = BarType.from_str(f"{instrument.id}-1-MINUTE-LAST-EXTERNAL")
+    decoder = NativeMarketEventDecoder(instrument=instrument, bar_type=bar_type)
+    session = EngineSession(
+        build_native=_perpetual_builder(submitter), submit_plan=lambda _engine, _plan: None,
+        decode_event=decoder,
+        facts_reader=NativeFactsReader(
+            account_id=AccountId.from_str("SIM-001"), instrument_id=instrument.id,
+            currency="USDT",
+        ),
+        contract_snapshot_factory=lambda **facts: SimpleNamespace(**facts),
+        certified_barrier_protocol=EngineSession.BARRIER_PROTOCOL,
+        submit_limit_intent=lambda engine, intent, ts: submitter(
+            engine, intent, decision_ts_ns=ts,
+        ),
+    )
+    session.open(SimpleNamespace(dataset_hash="a" * 64, fold_hash="b" * 64,
+                                 config_hash="c" * 64))
+    try:
+        initial = session.bootstrap((_perpetual_batch(1),), decision_ts_ns=60_000_000_000)
+        pending = session.advance_limit(
+            LimitOrderIntent(
+                intent_id="native-l08-order", instrument_id=str(instrument.id),
+                kind=OrderIntentKind.LIMIT, signed_qty=Decimal("1.000"),
+                decision_ts_ns=60_000_000_000, effective_ts_ns=60_000_000_001,
+                limit_price=Decimal("500.00"), pending_id="native-l08-pending",
+            ),
+            batches=(_perpetual_batch(2),), next_decision_ts_ns=120_000_000_000,
+        )
+        wait = replace(_perpetual_plan("native-l08-funding-observe", "1.000"),
+                       action="NOOP", delta_qty=Decimal(0))
+        mark = ("mark", {"instrument": str(instrument.id), "price": "1000.00"})
+        rate = ("funding_update", {"instrument": str(instrument.id), "rate": "0.001",
+                                   "interval_minutes": 480,
+                                   "next_funding_ns": 240_000_000_000})
+        session.advance(
+            wait, batches=(_perpetual_batch(3, mark, rate),),
+            next_decision_ts_ns=180_000_000_000,
+        )
+        settled = session.advance(
+            replace(wait, decision_id="native-l08-settlement", plan_id="native-l08-settlement",
+                    idempotency_key="native-l08-settlement"),
+            batches=(_perpetual_batch(4, ("funding_settlement", {
+                "instrument": str(instrument.id), "rate": "0.001",
+                "interval_minutes": 480, "settlement_ns": 240_000_000_000,
+            })),),
+            next_decision_ts_ns=240_000_000_000,
+        )
+        assert len(pending.orders) == len(settled.orders) == 1
+        assert pending.orders[0]["status"] == settled.orders[0]["status"] == "ACCEPTED"
+        assert settled.fills == settled.positions == settled.funding == ()
+        assert settled.equity == initial.equity
+    finally:
+        session.close()
+
+
 def test_compact_funding_reader_skips_unchanged_positions_and_emits_only_new_facts() -> None:
     reader = NativeFactsReader(account_id="SIM-001", instrument_id="ETHUSDT-PERP.SIM",
                                currency="USDT", compact_history=True)
@@ -666,18 +734,11 @@ def test_native_quote_execution_uses_displayed_book_and_records_submission_refer
         FillProfile("native-book-stress", Decimal(0), "quote"),
     )
     rule = {
-        "instrument": "ETHUSDT-PERP.SIM", "quantity_unit": "ETH", "base_currency": "ETH",
-        "quote_currency": "USDT", "contract_multiplier": "1",
-        "tick_size": "0.01", "step_size": "0.001",
+        "instrument": "ETHUSDT-PERP.SIM", "tick_size": "0.01", "step_size": "0.001",
         "min_qty": "0.001", "min_notional": "10", "maker_fee": "0.001",
         "taker_fee": "0.001", "initial_margin_rate": "0.01",
         "maintenance_margin_rate": "0.005", "effective_ns": 1,
     }
-    mismatched_rule = {**rule, "quantity_unit": "BTC", "base_currency": "BTC"}
-    with pytest.raises(EngineBoundaryError, match="symbol conflicts"):
-        make_perpetual_session(
-            rule=mismatched_rule, execution=execution, mode="base", starting_balance=Decimal("100000"),
-        )
     references: dict[str, Decimal] = {}
     session = make_perpetual_session(
         rule=rule, execution=execution, mode="base", starting_balance=Decimal("100000"),
@@ -728,9 +789,7 @@ def test_native_bar_depth_stress_limits_fill_size_to_frozen_synthetic_fraction()
         FillProfile("bar-limited-depth", Decimal("2"), simulated_depth_fraction=Decimal("0.4")),
     )
     rule = {
-        "instrument": "ETHUSDT-PERP.SIM", "quantity_unit": "ETH", "base_currency": "ETH",
-        "quote_currency": "USDT", "contract_multiplier": "1",
-        "tick_size": "0.01", "step_size": "0.001",
+        "instrument": "ETHUSDT-PERP.SIM", "tick_size": "0.01", "step_size": "0.001",
         "min_qty": "0.001", "min_notional": "10", "maker_fee": "0.001",
         "taker_fee": "0.001", "initial_margin_rate": "0.01",
         "maintenance_margin_rate": "0.005", "effective_ns": 1,
@@ -751,148 +810,6 @@ def test_native_bar_depth_stress_limits_fill_size_to_frozen_synthetic_fraction()
         assert filled == Decimal("0.200")
         assert filled / Decimal("0.500") == Decimal("0.4")
         assert len(snapshot.orders) == 1
-    finally:
-        session.close()
-
-
-@pytest.mark.parametrize("symbol", ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
-def test_official_usdm_current_rules_drive_precision_funding_and_quote_equity(symbol: str) -> None:
-    """Current public Binance rules feed all three linear-perpetual paths.
-
-    The funding event is a synthetic unit check; the fixture is current exchange
-    metadata and does not claim historical rule or funding interval coverage.
-    """
-    import json
-    from pathlib import Path
-    from dataclasses import replace
-    from rles_execution import FillProfile, LatencyProfile, ResolvedExecutionConfig
-    from rles_nautilus_adapter.perpetual import make_perpetual_session
-
-    snapshot = json.loads((Path(__file__).parent / "fixtures"
-                           / "binance_usdm_exchange_info_20261022.json").read_text(encoding="utf-8"))
-    source_symbol = next(item for item in snapshot["symbols"] if item["symbol"] == symbol)
-    filters = {item["filterType"]: item for item in source_symbol["filters"]}
-    price_filter = filters["PRICE_FILTER"]
-    lot_filter = filters["LOT_SIZE"]
-    min_notional_filter = filters["MIN_NOTIONAL"]
-    base = source_symbol["baseAsset"]
-    quote = source_symbol["quoteAsset"]
-    instrument_id = f"{symbol}-PERP.SIM"
-    step = Decimal(lot_filter["stepSize"])
-    tick = Decimal(price_filter["tickSize"])
-    min_notional = Decimal(min_notional_filter["notional"])
-    rule = {
-        "instrument": instrument_id,
-        "quantity_unit": base,
-        "base_currency": base,
-        "quote_currency": quote,
-        # Binance USDⓈ-M quantities are expressed in base-asset units.
-        "contract_multiplier": "1",
-        "tick_size": str(tick),
-        "step_size": str(step),
-        "min_qty": lot_filter["minQty"],
-        "min_notional": str(min_notional),
-        # Fees are neutralized here; this fixture does not contain account fee tiers.
-        "maker_fee": "0",
-        "taker_fee": "0",
-        "initial_margin_rate": str(Decimal(source_symbol["requiredMarginPercent"]) / 100),
-        "maintenance_margin_rate": str(Decimal(source_symbol["maintMarginPercent"]) / 100),
-        "effective_ns": snapshot["server_time_ms"] * 1_000_000,
-    }
-    assert source_symbol["contractType"] == "PERPETUAL"
-    assert source_symbol["status"] == "TRADING"
-    assert source_symbol["marginAsset"] == quote == "USDT"
-
-    latency = LatencyProfile("cross-asset-zero-latency", 0, 0, 0)
-    stress_latency = LatencyProfile("cross-asset-stress-latency", 0, 0, 0)
-    execution = ResolvedExecutionConfig(
-        "0.4.0", Decimal("0.01"), "wait", "MARKET", "GTC", "force_flatten_with_cost",
-        latency, stress_latency, FillProfile("cross-asset-quote", Decimal(0), "quote"),
-        FillProfile("cross-asset-stress-quote", Decimal(0), "quote"),
-    )
-    session = make_perpetual_session(
-        rule=rule, execution=execution, mode="base", starting_balance=Decimal("100000"),
-    )
-    minute = 60_000_000_000
-
-    def batch(number: int, *extra_events: tuple[str, dict]) -> VisibleBatch:
-        timestamp = number * minute
-        payloads = [("ohlcv_1m", {
-            "instrument": instrument_id, "open": "1000.00", "high": "1000.00",
-            "low": "1000.00", "close": "1000.00", "volume": "1000.000",
-        }), ("best_quote", {
-            "instrument": instrument_id, "bid_price": "1000.00", "bid_qty": "1000",
-            "ask_price": "1000.00", "ask_qty": "1000",
-            "update_id": number, "transaction_time_ns": timestamp,
-        }), *extra_events]
-        events = tuple(MarketEvent(
-            event_id=f"cross-asset-{symbol}-{number}-{index}",
-            ts_event_ns=timestamp, ts_init_ns=timestamp, available_at_ns=timestamp,
-            source_hash=f"{index + 1:064x}", quality_grade=DataQualityGrade.B,
-            event_type=kind, payload=FrozenFields.from_mapping(payload),
-        ) for index, (kind, payload) in enumerate(payloads))
-        return VisibleBatch(timestamp, events, True)
-
-    # Round the minimum notional up to an exchange-valid native order quantity.
-    qty = ((min_notional / Decimal("1000") / step).to_integral_value(rounding="ROUND_CEILING")
-           * step)
-    plan = ExecutionPlan(
-        decision_id=f"cross-asset-entry-{symbol}", plan_id=f"cross-asset-entry-{symbol}",
-        instrument_id=instrument_id, quantity_unit=base, quantity_increment=step,
-        latency_model_id=latency.model_id, execution_spec_hash=execution.fingerprint(),
-        order_type=OrderType.MARKET_LIKE, tif=TimeInForce.GTC,
-        cancel_policy=PendingOrderPolicy.NONE, action="SUBMIT", reason="cross-asset rule acceptance",
-        idempotency_key=f"cross-asset-entry-{symbol}", delta_qty=qty,
-    )
-    observe = replace(
-        plan, decision_id=f"cross-asset-observe-{symbol}", plan_id=f"cross-asset-observe-{symbol}",
-        action="NOOP", reason="cross-asset funding observation",
-        idempotency_key=f"cross-asset-observe-{symbol}", delta_qty=Decimal(0),
-    )
-    try:
-        session.open(SimpleNamespace(dataset_hash="a" * 64, fold_hash="b" * 64,
-                                     config_hash=execution.fingerprint()))
-        native = session._engine.cache.instrument(InstrumentId.from_str(instrument_id))
-        assert native.base_currency.code == base
-        assert native.quote_currency.code == native.settlement_currency.code == quote
-        assert native.price_increment.as_decimal() == tick
-        assert native.size_increment.as_decimal() == step
-        assert native.multiplier.as_decimal() == Decimal("1")
-        assert native.min_quantity.as_decimal() == Decimal(lot_filter["minQty"])
-        assert native.min_notional == Money.from_str(f"{min_notional} {quote}")
-
-        initial = session.bootstrap((batch(1),), decision_ts_ns=minute)
-        assert initial.equity == Decimal("100000.00")
-        assert initial.currency == quote
-        entered = session.advance(plan, batches=(batch(2),), next_decision_ts_ns=2 * minute)
-        assert sum(Decimal(fill["last_qty"]) for fill in entered.fills) == qty
-        assert entered.currency == quote
-
-        funding_boundary = 4 * minute
-        session.advance(
-            observe,
-            batches=(batch(3, ("funding_update", {
-                "instrument": instrument_id, "rate": "0.001",
-                "interval_minutes": 480, "next_funding_ns": funding_boundary,
-            })),),
-            next_decision_ts_ns=3 * minute,
-        )
-        settled = session.advance(
-            replace(observe, decision_id=f"cross-asset-settle-{symbol}",
-                    plan_id=f"cross-asset-settle-{symbol}",
-                    idempotency_key=f"cross-asset-settle-{symbol}"),
-            batches=(batch(4, ("funding_settlement", {
-                "instrument": instrument_id, "rate": "0.001",
-                "interval_minutes": 480, "settlement_ns": funding_boundary,
-            })),),
-            next_decision_ts_ns=funding_boundary,
-        )
-        expected_funding = qty * Decimal("1000") * Decimal("0.001")
-        assert settled.currency == quote
-        assert len(settled.funding) == 1
-        assert Money.from_str(settled.funding[0]["pnl_change"]).currency == Currency.from_str(quote)
-        assert Money.from_str(settled.funding[0]["pnl_change"]).as_decimal() == -expected_funding
-        assert settled.equity == initial.equity - expected_funding
     finally:
         session.close()
 

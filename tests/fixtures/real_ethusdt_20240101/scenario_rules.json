@@ -17,10 +17,6 @@
       "source_hash": "b73028b1fca697c6dda6196a1b7c9e89d7aed0815ccb7d0facef900b3b67152f",
       "payload": {
         "instrument": "ETHUSDT-PERP.SIM",
-        "quantity_unit": "ETH",
-        "base_currency": "ETH",
-        "quote_currency": "USDT",
-        "contract_multiplier": "1",
         "tick_size": "0.01",
         "step_size": "0.001",
         "min_qty": "0.001",

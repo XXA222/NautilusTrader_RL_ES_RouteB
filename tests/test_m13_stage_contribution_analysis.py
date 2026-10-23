@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from qa.analyze_m13_stage_contribution import (
-    _load_json, _verify_equity_reconciliation, summarize_mode,
-)
+from qa.analyze_m13_stage_contribution import summarize_mode
 
 
 def _arm(*, equity: tuple[float, float], fee: float, fills: int, submits: int) -> dict:
@@ -35,7 +31,7 @@ def _arm(*, equity: tuple[float, float], fee: float, fills: int, submits: int) -
         "metrics": metrics,
         "fills": [{} for _ in range(fills)],
         "execution_decision_diagnostics": {
-            "decision_count": 3,
+            "decision_count": 1,
             "submit_decision_count": submits,
             "native_order_count": submits,
         },
@@ -63,7 +59,7 @@ def test_summarize_mode_recomputes_paired_economic_and_execution_deltas() -> Non
     result = summarize_mode("base", _mode_payload())
 
     assert result["paired_account_rows"] == 2
-    assert result["policy_decisions_per_arm"] == 3
+    assert result["policy_decisions_per_arm"] == 1
     assert result["native_equity_delta_e2_minus_r1"] == 5
     assert result["metric_deltas_e2_minus_r1"]["total_fee"] == -1
     assert result["metric_deltas_e2_minus_r1"]["net_return"] == pytest.approx(0.0005)
@@ -78,49 +74,3 @@ def test_summarize_mode_recomputes_paired_economic_and_execution_deltas() -> Non
 def test_summarize_mode_rejects_unpaired_timestamps() -> None:
     with pytest.raises(ValueError, match="timestamps are not strictly paired"):
         summarize_mode("base", _mode_payload(e2_timestamps=(10, 21)))
-
-
-@pytest.mark.parametrize("payload", [
-    b'{"schema":"first","schema":"second"}',
-    b'{"outer":{"identity":1,"identity":2}}',
-])
-def test_revision2_json_reader_rejects_duplicate_keys(tmp_path: Path, payload: bytes) -> None:
-    path = tmp_path / "ambiguous.json"
-    path.write_bytes(payload)
-    with pytest.raises(ValueError, match="duplicate JSON object key"):
-        _load_json(path)
-
-
-def test_revision2_json_reader_normalizes_invalid_utf8(tmp_path: Path) -> None:
-    path = tmp_path / "invalid-utf8.json"
-    path.write_bytes(b"{\"schema\":\"\xff\"}")
-    with pytest.raises(ValueError, match="cannot read JSON object"):
-        _load_json(path)
-
-
-@pytest.mark.parametrize("residual,tolerance", [(float("nan"), 1.0), (0.0, True)])
-def test_revision2_equity_reconciliation_rejects_non_finite_and_bool_numbers(
-    residual: float, tolerance: float,
-) -> None:
-    report = {
-        "costs_already_in_native_equity": True,
-        "terminal_flat": True,
-        "equity_reconciliation": {
-            "rows": [{"ts_ns": 1, "residual": residual, "tolerance": tolerance}],
-            "max_abs_residual": 0.0,
-        },
-    }
-    with pytest.raises(ValueError):
-        _verify_equity_reconciliation(report, "test")
-
-
-def test_revision2_summarizer_rejects_boolean_metric_and_boolean_count() -> None:
-    payload = _mode_payload()
-    payload["r1_neutral"]["metrics"]["total_fee"] = True
-    with pytest.raises(ValueError, match="finite number"):
-        summarize_mode("base", payload)
-
-    payload = _mode_payload()
-    payload["r1_neutral"]["execution_decision_diagnostics"]["decision_count"] = True
-    with pytest.raises(ValueError, match="nonnegative integer"):
-        summarize_mode("base", payload)

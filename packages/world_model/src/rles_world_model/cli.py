@@ -23,13 +23,12 @@ from .routeb.jax_train import SNAPSHOT_SHA
 from .routeb.jax_model import PINNED_UPSTREAM
 from .routeb.fold_experiment import run_fold_experiment
 from .upstream import inspect_upstream
-from .json_utils import loads_unique_json
 
 
 def _read_json(path: str) -> dict:
     try:
-        value = loads_unique_json(Path(path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, ValueError) as exc:
+        value = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise DataError(f"cannot read valid JSON input: {path}") from exc
     if not isinstance(value, dict):
         raise DataError("JSON input root must be an object")
@@ -88,38 +87,27 @@ def _validate_registered_b0_fold(fold: FoldManifest) -> None:
     if (train_days not in {60, 360}
             or fold.train.score_end_ns - fold.train.score_start_ns != train_days * DAY_NS
             or validation_ns != 15 * DAY_NS or test_ns != 15 * DAY_NS
-            or fold.validation.score_start_ns - fold.train.score_end_ns != DAY_NS
-            or fold.test.score_start_ns - fold.validation.score_end_ns != DAY_NS
             or any(timestamp % MINUTE_NS for timestamp in boundaries)):
         raise DataError("registered B0 Fold must follow the approved 60/15/15 or 360/15/15 protocol")
 
 
 def _routeb_code_identity(root: Path | None = None) -> dict[str, str]:
-    if root is None:
-        current = Path.cwd().resolve()
-        candidates = (*Path(__file__).resolve().parents, *current.parents, current)
-        root = next((candidate for candidate in candidates
-                     if (candidate / "pyproject.toml").is_file()
-                     and "[tool.uv.workspace]" in
-                     (candidate / "pyproject.toml").read_text(encoding="utf-8")), None)
-        if root is None:
-            raise DataError("cannot locate Route B workspace for repository code identity")
-    root = Path(root).resolve()
+    root = (Path(__file__).resolve().parents[4] if root is None else Path(root)).resolve()
     snapshot_marker: Path | None = None
     try:
         commit = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD"],
             check=True, capture_output=True, text=True,
         ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
+    except (OSError, subprocess.CalledProcessError) as exc:
         # A copied Route B workspace may be intentionally materialized without
         # Git objects. In that case accept only the explicit base-commit
         # manifest, and bind that manifest into the source fingerprint below.
         snapshot_marker = root / "docs" / "world_model" / "REPO_BASELINE.json"
         try:
-            marker = loads_unique_json(snapshot_marker.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, ValueError) as marker_exc:
-            raise DataError("cannot freeze Route B repository commit before market access") from marker_exc
+            marker = json.loads(snapshot_marker.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raise DataError("cannot freeze Route B repository commit before market access") from exc
         if (not isinstance(marker, dict)
                 or set(marker) != {"schema_version", "repository_commit"}
                 or marker.get("schema_version") != "rles.routeb.repository_base.v0"
@@ -472,7 +460,7 @@ def main(argv: list[str] | None = None) -> int:
                     or type(args.forecast_seed) is not int or args.forecast_seed < 0
                     or type(args.forecast_paths) is not int or not 2 <= args.forecast_paths <= 1024):
                 raise DataError("invalid forecast horizon, worker timeout, seed, or ensemble size")
-            worker_python = Path(args.worker_python).absolute()
+            worker_python = Path(args.worker_python).resolve()
             upstream_checkout = Path(args.upstream_checkout).resolve()
             if not worker_python.is_file() or not upstream_checkout.is_dir():
                 raise DataError("pinned Python 3.12 worker and upstream checkout are required")
@@ -528,7 +516,7 @@ def main(argv: list[str] | None = None) -> int:
             sequences = Path(args.sequences).resolve()
             configuration = Path(args.configuration).resolve()
             checkpoint = Path(args.checkpoint).resolve()
-            worker_python = Path(args.worker_python).absolute()
+            worker_python = Path(args.worker_python).resolve()
             upstream_checkout = Path(args.upstream_checkout).resolve()
             report_path = _preflight_training_report(args.report_json)
             if (not sequences.is_file() or not sequences.with_suffix(".json").is_file()

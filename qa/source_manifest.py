@@ -14,86 +14,58 @@ from pathlib import Path
 from typing import Any
 
 
-_SOURCE_ROOTS = ("packages", "tests", "configs", "ci", "packaging", "requirements", "qa")
+_SOURCE_ROOTS = ("packages", "tests", "configs", "ci", "packaging", "requirements",
+                 "qa/smoke", "qa/world_model")
 _ROOT_FILES = (
     ".gitattributes",
     ".python-version",
     "pyproject.toml",
     "uv.lock",
     "RLES_v0.4.0_总开发与集成基线.md",
+    "qa/reconcile_native_equity_long_20261017.py",
+    "qa/train_signal_baselines.py",
+    "qa/analyze_stage58_train_coverage.py",
+    "qa/analyze_stage59_train_diagnostics.py",
+    "qa/preregister_stage59_train_diagnostics.py",
+    "qa/analyze_stage60_fixed_regimes.py",
+    "qa/preregister_stage60_fixed_regimes.py",
+    "qa/analyze_m33_action_value.py",
+    "qa/preregister_m33_action_value.py",
+    "qa/m13_stage_contribution_20261017.py",
+    "qa/analyze_m13_stage_contribution.py",
+    "qa/research_trial_inventory.py",
 )
 _EXCLUDED_PARTS = {"__pycache__", "build", "dist", ".pytest_cache", ".mypy_cache", ".tmp"}
 _EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
-
-
-class _DuplicateManifestKey(ValueError):
-    """A manifest JSON object repeats a field and is ambiguous."""
-
-
-def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise _DuplicateManifestKey(key)
-        result[key] = value
-    return result
-
-
-def _reject_json_constant(value: str) -> None:
-    raise json.JSONDecodeError(f"non-standard JSON constant: {value}", "", 0)
-
-def _read_manifest(path: Path) -> dict[str, Any]:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"),
-                            object_pairs_hook=_unique_json_object,
-                            parse_constant=_reject_json_constant)
-    except _DuplicateManifestKey as exc:
-        raise ValueError(f"duplicate JSON manifest key in {path}: {exc}") from exc
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"cannot read JSON manifest: {path}") from exc
-    if not isinstance(value, dict):
-        raise ValueError(f"expected JSON object: {path}")
-    return value
 
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _source_bytes(path: Path) -> bytes:
-    data = path.read_bytes()
-    if b"\0" in data:
-        return data
-    try:
-        data.decode("utf-8")
-    except UnicodeDecodeError:
-        return data
-    return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
-
-
 def _source_files(root: Path) -> list[Path]:
     files: set[Path] = set()
     for relative in _ROOT_FILES:
         path = root / relative
-        if not path.is_symlink() and path.is_file():
+        if path.is_file() and not path.is_symlink():
             files.add(path)
     for relative in _SOURCE_ROOTS:
         directory = root / relative
         if not directory.is_dir() or directory.is_symlink():
             continue
         for path in directory.rglob("*"):
-            relative_parts = path.relative_to(root).parts
             generated_component = any(
                 part in _EXCLUDED_PARTS or part.startswith((".venv", "dist"))
-                for part in relative_parts
-            ) or relative_parts[:2] == ("qa", "reports")
-            if (not generated_component and not path.is_symlink() and path.is_file()
+                for part in path.relative_to(root).parts
+            )
+            if (path.is_file() and not path.is_symlink()
+                    and not generated_component
                     and path.suffix not in _EXCLUDED_SUFFIXES
                     and ".egg-info" not in path.as_posix()):
                 files.add(path)
     workflow_dir = root / ".github" / "workflows"
     if workflow_dir.is_dir() and not workflow_dir.is_symlink():
-        files.update(path for path in workflow_dir.rglob("*") if not path.is_symlink() and path.is_file())
+        files.update(path for path in workflow_dir.rglob("*") if path.is_file() and not path.is_symlink())
     for relative in ("qa/source_manifest.py", "qa/wheel_manifest.py"):
         tool = root / relative
         if tool.is_file() and not tool.is_symlink():
@@ -132,11 +104,10 @@ def build_manifest(root: Path, *, generated_at_utc: str | None = None) -> dict[s
     files = [
         {
             "path": path.relative_to(root).as_posix(),
-            "size_bytes": len(content),
-            "sha256": _sha256(content),
+            "size_bytes": path.stat().st_size,
+            "sha256": _sha256(path.read_bytes()),
         }
         for path in _source_files(root)
-        for content in (_source_bytes(path),)
     ]
     upstream = _upstream_identity(root)
     identity = {"files": files, "upstream_nautilus": upstream}
@@ -179,11 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         if not output.is_file():
             print(f"manifest not found: {output}", file=sys.stderr)
             return 2
-        try:
-            previous = _read_manifest(output)
-        except ValueError as exc:
-            print(str(exc), file=sys.stderr)
-            return 2
+        previous = json.loads(output.read_text(encoding="utf-8"))
         matches = (
             previous.get("source_identity_sha256") == fresh["source_identity_sha256"]
             and previous.get("files") == fresh["files"]

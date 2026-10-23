@@ -12,9 +12,6 @@ from qa.analyze_m13_stage_contribution_v2 import (
     analyze,
     summarize_stage_chain,
     verify_e1_actor,
-    _stage_report_path,
-    _bundle_child_path,
-    _json,
 )
 
 
@@ -28,24 +25,6 @@ def _write_json(path: Path, payload: dict) -> str:
     digest = _digest(path)
     path.with_suffix(path.suffix + ".sha256").write_text(digest, encoding="ascii")
     return digest
-
-
-@pytest.mark.parametrize("payload", [
-    b'{"schema":"first","schema":"second"}',
-    b'{"outer":{"identity":1,"identity":2}}',
-])
-def test_v2_json_reader_rejects_duplicate_keys_at_any_depth(tmp_path: Path, payload: bytes) -> None:
-    path = tmp_path / "ambiguous.json"
-    path.write_bytes(payload)
-    with pytest.raises(ValueError, match="duplicate JSON object key"):
-        _json(path)
-
-
-def test_v2_json_reader_normalizes_invalid_utf8(tmp_path: Path) -> None:
-    path = tmp_path / "invalid-utf8.json"
-    path.write_bytes(b"{\"schema\":\"\xff\"}")
-    with pytest.raises(ValueError, match="cannot read JSON object"):
-        _json(path)
 
 
 def _bundle(root: Path) -> tuple[dict, str]:
@@ -119,7 +98,7 @@ def _native_report(final_equity: float, fee: float, decision_count: int) -> dict
         },
         "fills": [{}] * decision_count,
         "execution_decision_diagnostics": {
-            "decision_count": 4,
+            "decision_count": 2,
             "submit_decision_count": decision_count,
             "native_order_count": decision_count,
         },
@@ -164,62 +143,6 @@ def _envelopes(e1_actor_hash: str, prereg_hash: str = "d" * 64) -> dict[str, dic
     }
 
 
-@pytest.mark.parametrize("mode", ["../outside", "..\\outside", "/tmp/outside", "C:\\outside"])
-def test_v2_report_path_rejects_mode_path_escape(tmp_path: Path, mode: str) -> None:
-    with pytest.raises(ValueError, match="single path component"):
-        _stage_report_path(tmp_path / "reports", mode, "E1")
-
-
-def test_v2_report_path_rejects_symlink_escape(tmp_path: Path) -> None:
-    output = tmp_path / "reports"
-    output.mkdir()
-    outside = tmp_path / "outside.json"
-    outside.write_text("{}", encoding="utf-8")
-    link = output / "base_E1.json"
-    try:
-        link.symlink_to(outside)
-    except (OSError, NotImplementedError):
-        pytest.skip("symlink creation is not available in this environment")
-
-    with pytest.raises(ValueError, match="outside the registered report directory"):
-        _stage_report_path(output, "base", "E1")
-
-
-def test_v2_report_path_rejects_resolved_symlink_escape(tmp_path: Path, monkeypatch) -> None:
-    output = tmp_path / "reports"
-    outside = tmp_path / "external" / "base_E1.json"
-    original_resolve = Path.resolve
-
-    def resolve_with_escape(path: Path, *args, **kwargs) -> Path:
-        if path.name == "base_E1.json":
-            return outside
-        return original_resolve(path, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "resolve", resolve_with_escape)
-    with pytest.raises(ValueError, match="outside the registered report directory"):
-        _stage_report_path(output, "base", "E1")
-
-
-def test_v2_bundle_path_rejects_traversal_filename(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="bundle-local filename"):
-        _bundle_child_path(tmp_path / "bundle", "..\\outside.json", "E1 actor artifact")
-
-
-def test_v2_bundle_path_rejects_resolved_symlink_escape(tmp_path: Path, monkeypatch) -> None:
-    root = tmp_path / "bundle"
-    original_resolve = Path.resolve
-    outside = tmp_path / "external" / "E1-selected-actor.json"
-
-    def resolve_with_escape(path: Path, *args, **kwargs) -> Path:
-        if path.name == "E1-selected-actor.json":
-            return outside
-        return original_resolve(path, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "resolve", resolve_with_escape)
-    with pytest.raises(ValueError, match="resolves outside the bundle directory"):
-        _bundle_child_path(root, "E1-selected-actor.json", "E1 actor artifact")
-
-
 def test_v2_analyzer_verifies_e1_artifact_and_recomputes_all_stage_deltas(tmp_path: Path) -> None:
     _, _ = _bundle(tmp_path)
     actor = verify_e1_actor(tmp_path)
@@ -251,14 +174,9 @@ def test_v2_analyzer_rejects_e1_genome_that_does_not_match_artifact_hash(tmp_pat
 @pytest.mark.parametrize("mutation, message", [
     ("timestamp", "timestamps are not strictly paired"),
     ("pairing", "same frozen pairing identity"),
-    ("starting_balance", "starting balance differs from native initial equity"),
     ("actor", "same frozen Actor"),
     ("costs", "native equity cost inclusion is not confirmed"),
-    ("reconciliation_summary", "max_abs_residual does not match event-level rows"),
     ("decisions", "same number of policy decisions"),
-    ("submit_bound", "execution diagnostic counts violate"),
-    ("native_order_bound", "execution diagnostic counts violate"),
-    ("risk_intervention_bound", "invalid risk_hard_interventions"),
 ])
 def test_v2_analyzer_rejects_unpaired_or_unreconciled_stage_report(
     mutation: str, message: str, tmp_path: Path,
@@ -270,39 +188,14 @@ def test_v2_analyzer_rejects_unpaired_or_unreconciled_stage_report(
         envelopes["E2"]["native_report"]["account_rows"][1]["ts_ns"] = 3
     elif mutation == "pairing":
         envelopes["R1"]["pairing_identity"]["seed"] = 32
-    elif mutation == "starting_balance":
-        for envelope in envelopes.values():
-            envelope["pairing_identity"]["starting_balance"] = "9000"
     elif mutation == "actor":
         envelopes["E2"]["actor_sha256"] = "e" * 64
-    elif mutation == "reconciliation_summary":
-        envelopes["R1"]["native_report"]["equity_reconciliation"]["max_abs_residual"] = "0.1"
     elif mutation == "decisions":
         envelopes["E2"]["native_report"]["execution_decision_diagnostics"]["decision_count"] += 1
-    elif mutation == "submit_bound":
-        envelopes["R1"]["native_report"]["execution_decision_diagnostics"]["submit_decision_count"] = 5
-    elif mutation == "native_order_bound":
-        envelopes["R1"]["native_report"]["execution_decision_diagnostics"]["native_order_count"] = 3
-    elif mutation == "risk_intervention_bound":
-        envelopes["R1"]["native_report"]["risk_hard_interventions"] = 5
     else:
         envelopes["R1"]["native_report"]["costs_already_in_native_equity"] = False
 
     with pytest.raises(ValueError, match=message):
-        summarize_stage_chain("base", envelopes, e1_actor_sha256=actor["actor_sha256"],
-                              preregistration_sha256="d" * 64)
-
-
-@pytest.mark.parametrize("bad_count", [True, 1.8, "2", -1, None])
-def test_v2_analyzer_rejects_invalid_hard_risk_intervention_count(
-    bad_count: object, tmp_path: Path,
-) -> None:
-    _, _ = _bundle(tmp_path)
-    actor = verify_e1_actor(tmp_path)
-    envelopes = _envelopes(actor["actor_sha256"])
-    envelopes["R1"]["native_report"]["risk_hard_interventions"] = bad_count
-
-    with pytest.raises(ValueError, match="invalid risk_hard_interventions"):
         summarize_stage_chain("base", envelopes, e1_actor_sha256=actor["actor_sha256"],
                               preregistration_sha256="d" * 64)
 

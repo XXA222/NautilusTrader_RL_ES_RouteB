@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-from array import array
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
@@ -25,7 +24,6 @@ from rles_compute_runtime.resources import ResourceQuota
 from rles_data.core import CuratedStore, DataError, MINUTE_NS, digest
 from rles_data.coverage import CoveragePolicy
 from rles_data.features import Scaler
-from rles_data.io import curated_source_identity, read_curated_window
 from rles_es_evotorch.actor import ActorGenomeSpec, act, genome_hash
 from rles_es_evotorch.fitness import (ConstraintPriorityFitnessSpec,
                                       FeasibilityFirstFitnessSpec, FitnessSpec)
@@ -45,7 +43,6 @@ from .research_access import (begin_application_trial, finish_application_trial,
                               read_registered_train_window, record_development, market_key)
 from .rl_stage import RLStageExecutor
 from .workflow import Orchestrator, ProviderBackedStageRunner, Route, RunSpec, STAGES, StageBudget
-from .json_utils import loads_unique_json
 
 
 def _write(path: Path, value: Any) -> None:
@@ -204,10 +201,10 @@ def _persist_e1_stage_actor(path: Path, spec: ActorGenomeSpec, genome: np.ndarra
         "lane_evidence_hash": lane_evidence_hash,
         "genome": vector.tolist(),
     }
-    payload = loads_unique_json(json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False))
+    payload = json.loads(json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False))
     if path.exists():
         try:
-            existing = loads_unique_json(path.read_text(encoding="utf-8"))
+            existing = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise DataError("existing E1 stage actor artifact is unreadable") from exc
         if not isinstance(existing, dict) or existing != payload:
@@ -287,23 +284,23 @@ class _HistoricalRLEnvFactory:
                 or phase not in {"train", "eval"}
                 or self.replay_json and len(self.replay_json) != self.num_envs):
             raise DataError("invalid frozen historical R1 environment request")
-        replay = (EpisodeReplay.from_dict(loads_unique_json(self.replay_json[rank]))
+        replay = (EpisodeReplay.from_dict(json.loads(self.replay_json[rank]))
                   if phase == "train" and self.replay_json else None)
         if (phase == "train" and self.shared_factory is not None and self.num_envs == 1
                 and replay is None):
             return self.shared_factory.make_env(
                 self.transition_hash, episode_rank=rank, episode_count=self.num_envs,
-                episode_steps=self.episode_steps, retain_report_snapshots=False,
+                episode_steps=self.episode_steps,
             )
-        recipe = loads_unique_json(self.recipe_json)
-        scaler_values = loads_unique_json(self.scaler_json)
+        recipe = json.loads(self.recipe_json)
+        scaler_values = json.loads(self.scaler_json)
         if not isinstance(recipe, dict) or not isinstance(scaler_values, dict):
             raise DataError("frozen historical R1 recipe is not a JSON object")
         scaler_values["mean"] = tuple(scaler_values["mean"])
         scaler_values["std"] = tuple(scaler_values["std"])
         prepared_store = None
         if self.train_access_json is not None:
-            access_config = loads_unique_json(self.train_access_json)
+            access_config = json.loads(self.train_access_json)
             if not isinstance(access_config, dict):
                 raise DataError("frozen R1 Train access is not a JSON object")
             prepared_store = _read_registered_train_store(access_config)
@@ -313,20 +310,18 @@ class _HistoricalRLEnvFactory:
         return factory.make_env(
             self.transition_hash, replay=replay, episode_rank=rank,
             episode_count=self.num_envs, episode_steps=self.episode_steps,
-            retain_report_snapshots=False,
         )
 
 
 def load_config(path: str | Path) -> dict:
     source = Path(path).resolve()
-    config = loads_unique_json(source.read_text(encoding="utf-8"))
+    config = json.loads(source.read_text(encoding="utf-8"))
     allowed = {"environment", "evaluation", "route", "algorithm", "steps", "population", "generations",
                "seed", "hidden_layers", "normalize_observation", "hyperparameters", "output", "distillation",
                "checkpoint_interval_steps", "wfo", "resume_checkpoint", "rl_device", "rl_gpu_memory_fraction", "es_input_scaling",
                "enforce_worker_memory_limit", "worker_ram_bytes", "reward_scale",
                "rl_num_envs", "rl_episode_steps", "rl_corpus_episodes", "rl_corpus_episode_steps",
-               "es_fitness", "es_scenario_fold_id", "es_candidate_evidence", "train_data_access",
-               "evaluation_data_access", "wfo_dataset_hash"}
+               "es_fitness", "es_scenario_fold_id", "es_candidate_evidence", "train_data_access"}
     if not isinstance(config, dict) or set(config) - allowed:
         raise DataError("unknown application configuration fields")
     access = config.get("train_data_access")
@@ -345,24 +340,6 @@ def load_config(path: str | Path) -> dict:
                     "row_group_scoped_v1", "whole_snapshot_isolated_v1",
                 }):
             raise DataError("invalid scoped Train data access configuration")
-    evaluation_access = config.get("evaluation_data_access")
-    if "evaluation_data_access" in config:
-        if (not isinstance(evaluation_access, dict)
-                or set(evaluation_access) != {"start_ns", "end_ns", "marker_sha256", "label"}
-                or type(evaluation_access.get("start_ns")) is not int
-                or type(evaluation_access.get("end_ns")) is not int
-                or evaluation_access["start_ns"] >= evaluation_access["end_ns"]
-                or not isinstance(evaluation_access.get("marker_sha256"), str)
-                or not isinstance(evaluation_access.get("label"), str)
-                or not evaluation_access["label"].startswith((
-                    "validation-wfo-", "test-wfo-", "holdout-wfo-",
-                ))):
-            raise DataError("invalid scoped WFO evaluation access configuration")
-    wfo_dataset_hash = config.get("wfo_dataset_hash")
-    if "wfo_dataset_hash" in config and (
-            not isinstance(wfo_dataset_hash, str)
-            or re.fullmatch(r"[0-9a-f]{64}", wfo_dataset_hash) is None):
-        raise DataError("wfo_dataset_hash must be a lowercase SHA-256 identity")
     _es_fitness_spec(config)
     fold_id = config.get("es_scenario_fold_id")
     if (fold_id is not None and (not isinstance(fold_id, str)
@@ -414,15 +391,7 @@ def _training_factory_recipe_hash(config: dict) -> str:
     return digest(recipe)
 
 
-def _factory_dataset_identity(factory: HistoricalEnvironmentFactory) -> str:
-    """Use the frozen complete source identity when the in-memory rows are scoped."""
-    value = getattr(factory, "application_dataset_identity_hash", factory.store.snapshot_hash)
-    if not isinstance(value, str) or len(value) != 64:
-        raise DataError("historical factory lacks a valid dataset identity")
-    return value
-
-
-def _validate_train_data_access(config: dict) -> dict:
+def _read_registered_train_store(config: dict) -> CuratedStore:
     access = config.get("train_data_access")
     if (not isinstance(access, dict)
             or set(access) not in ({"start_ns", "end_ns", "marker_sha256", "label"},
@@ -436,11 +405,6 @@ def _validate_train_data_access(config: dict) -> dict:
                 "row_group_scoped_v1", "whole_snapshot_isolated_v1",
             }):
         raise DataError("invalid scoped Train data access configuration")
-    return access
-
-
-def _read_registered_train_store(config: dict) -> CuratedStore:
-    access = _validate_train_data_access(config)
     market_store = read_registered_train_window(
         config, {"start_ns": access["start_ns"], "end_ns": access["end_ns"]},
         marker_sha256=access["marker_sha256"], label=access["label"],
@@ -461,14 +425,9 @@ def prepare(config: dict, *, fit_scaler: bool = True, scaler: Scaler | None = No
     if "train_data_access" in config and access is None:
         raise DataError("scoped Train data access must be an explicit object")
     prepared_store = None
-    source_identity = None
     if access is None:
         record_development(config, config["environment"], label="train")
     else:
-        access = _validate_train_data_access(config)
-        source_identity = curated_source_identity(config["environment"]["market_path"])
-        if source_identity["marker_sha256"] != access["marker_sha256"]:
-            raise DataError("registered Train market marker differs from the frozen access scope")
         prepared_store = _read_registered_train_store(config)
     factory = HistoricalEnvironmentFactory(**{
         **config["environment"], "split": "train_inner", "fit_scaler": fit_scaler,
@@ -478,8 +437,6 @@ def prepare(config: dict, *, fit_scaler: bool = True, scaler: Scaler | None = No
     factory.application_training_recipe_hash = _training_factory_recipe_hash(config)
     if access is not None:
         setattr(factory, "application_registered_train_access", digest([config["environment"], access]))
-        if "wfo_dataset_hash" in config:
-            setattr(factory, "application_dataset_identity_hash", config["wfo_dataset_hash"])
     return factory
 
 
@@ -584,47 +541,19 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
             episode_count: int = 1, episode_steps: int | None = None,
             reset_options: dict | None = None,
             include_account_rows: bool = True,
-            spool_summary_snapshots: bool = False,
             include_execution_trace: bool = False) -> tuple[dict, np.ndarray]:
     if type(include_execution_trace) is not bool:
         raise DataError("include_execution_trace must be Boolean")
-    if type(spool_summary_snapshots) is not bool:
-        raise DataError("summary snapshot spool flag must be Boolean")
-    if spool_summary_snapshots and (include_account_rows
-                                    or not getattr(factory, "compact_report_snapshots", False)):
-        raise DataError("summary snapshot spooling requires omitted account rows and compact snapshots")
     env_options: dict[str, Any] = {"soft_multipliers": soft_parameters}
     if episode_rank != 0 or episode_count != 1 or episode_steps is not None:
         env_options.update(episode_rank=episode_rank, episode_count=episode_count,
                            episode_steps=episode_steps)
-    if spool_summary_snapshots:
-        env_options["spool_report_snapshots"] = True
-    summary_accumulator = None
-    selected_steps = episode_steps
-    if (selected_steps is None and not include_account_rows
-            and not spool_summary_snapshots):
-        rows = getattr(factory, "rows", None)
-        selected_steps = len(rows) - 3 if rows is not None else None
-    if (not include_account_rows and not spool_summary_snapshots
-            and type(selected_steps) is int and selected_steps >= 1):
-        summary_accumulator = NativeReportAccumulator(
-            sample_interval_ns=MINUTE_NS,
-            max_return_count=selected_steps + 2,
-            allow_price_improvement=factory.execution.fill(factory.mode).data_granularity == "quote",
-            contract_multiplier=factory.contract_multiplier,
-            linear_equity_rounding=Decimal("0.00000001"),
-        )
-        env_options["report_snapshot_sink"] = summary_accumulator.add_snapshot
-    env = factory.make_env(**env_options)
     observations = []
-    requested_actions = array("d")
-    soft_targets = array("d")
-    risk_targets = array("d")
-    rounded_targets = array("d")
-    rounded_target_known = bytearray()
-    executed_actions = array("d")
-    if requested_actions.itemsize != np.dtype(np.float64).itemsize:
-        raise DataError("native rollout action buffer is not binary64")
+    requested_actions = []
+    soft_targets = []
+    risk_targets = []
+    rounded_targets: list[float | None] = []
+    executed_actions = []
     plan_actions: Counter[str] = Counter()
     plan_reasons: Counter[str] = Counter()
     decision_trace: list[dict[str, Any]] = []
@@ -639,7 +568,29 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
     schema_names = tuple(getattr(factory.schema, "names", ()))
     market_indices = tuple(i for i, name in enumerate(schema_names) if name.startswith("market."))
     action_feature_response = _ActionFeatureResponse(tuple(schema_names[i] for i in market_indices))
+    summary_accumulator = None
+    report_snapshot_consumer = None
+    original_compact_report_snapshots = factory.compact_report_snapshots
+    if not include_account_rows:
+        summary_accumulator = NativeReportAccumulator(
+            sample_interval_ns=MINUTE_NS,
+            max_return_count=max(1, len(factory.rows) + 1),
+            contract_multiplier=Decimal(1),
+            linear_equity_rounding=Decimal("0.00000001"),
+            allow_price_improvement=(
+                factory.execution.fill(factory.mode).data_granularity == "quote"
+            ),
+        )
+        report_snapshot_consumer = summary_accumulator.add_snapshot
+        # The compact serializer is behavior preserving and prevents detached
+        # native history rows from being copied before the reducer consumes them.
+        factory.compact_report_snapshots = True
+    env = None
     try:
+        env = factory.make_env(
+            **env_options,
+            report_snapshot_consumer=report_snapshot_consumer,
+        )
         reset_result = (env.reset(seed=seed) if reset_options is None
                         else env.reset(seed=seed, options=reset_options))
         observation, reset_info = reset_result
@@ -677,8 +628,7 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
             rounded_target = info.get("quantity_rounded_target_exposure")
             if rounded_target is not None and not np.isfinite(rounded_target):
                 raise DataError("quantity-rounded target exposure is not finite")
-            rounded_targets.append(0.0 if rounded_target is None else float(rounded_target))
-            rounded_target_known.append(rounded_target is not None)
+            rounded_targets.append(None if rounded_target is None else float(rounded_target))
             executed_actions.append(executed_action)
             plan_action = info.get("execution_plan_action")
             plan_reason = info.get("execution_plan_reason")
@@ -770,19 +720,18 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
             total_adjustment += float(info["risk_guard_intervention"])
             if terminated or truncated:
                 break
-        if summary_accumulator is not None:
-            report = summary_accumulator.finish()
-            final_snapshot = summary_accumulator.final_snapshot
-        else:
+        if summary_accumulator is None:
             report = native_report(
                 factory.snapshots, fill_references=factory.fill_references,
                 sample_interval_ns=MINUTE_NS,
                 allow_price_improvement=factory.execution.fill(factory.mode).data_granularity == "quote",
                 include_account_rows=include_account_rows,
                 linear_equity_rounding=Decimal("0.00000001"),
-                contract_multiplier=factory.contract_multiplier,
             )
-            final_snapshot = factory.snapshots[-1] if factory.snapshots else None
+        else:
+            report = summary_accumulator.finish()
+        native_orders: dict[str, dict] = {}
+        final_snapshot = factory.snapshots[-1] if factory.snapshots else None
         native_orders = _index_native_orders(getattr(final_snapshot, "all_orders", ()))
         fills_by_order: dict[str, list[dict]] = {}
         for fill in report.get("fills", ()):
@@ -870,10 +819,10 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
         report["risk_total_adjustment"] = total_adjustment
         report["risk_intervention_components_known"] = components_known
         if (rounded_targets and len(rounded_targets) == len(requested_actions)
-                and all(rounded_target_known)
+                and all(value is not None for value in rounded_targets)
                 and len(risk_targets) == len(requested_actions)):
-            rounded = np.frombuffer(rounded_targets, dtype=np.float64)
-            risk_values = np.frombuffer(risk_targets, dtype=np.float64)
+            rounded = np.asarray(rounded_targets, dtype=np.float64)
+            risk_values = np.asarray(risk_targets, dtype=np.float64)
             report["quantity_rounding_diagnostics"] = {
                 "components_known": True,
                 "count": int(rounded.size),
@@ -886,10 +835,10 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
         else:
             report["quantity_rounding_diagnostics"] = {
                 "components_known": False,
-                "count": sum(rounded_target_known),
+                "count": sum(value is not None for value in rounded_targets),
             }
-        requested = np.frombuffer(requested_actions, dtype=np.float64)
-        executed = np.frombuffer(executed_actions, dtype=np.float64)
+        requested = np.asarray(requested_actions, dtype=np.float64)
+        executed = np.asarray(executed_actions, dtype=np.float64)
         action_gap = np.abs(requested - executed)
         requested_dynamics = _action_dynamics(requested)
         executed_dynamics = _action_dynamics(executed)
@@ -919,8 +868,8 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
             "executed_direction_flip_fraction": executed_dynamics["direction_flip_fraction"],
         }
         if soft_targets and len(soft_targets) == len(requested) and len(risk_targets) == len(requested):
-            soft = np.frombuffer(soft_targets, dtype=np.float64)
-            risk = np.frombuffer(risk_targets, dtype=np.float64)
+            soft = np.asarray(soft_targets, dtype=np.float64)
+            risk = np.asarray(risk_targets, dtype=np.float64)
             report["risk_target_diagnostics"] = {
                 "components_known": True,
                 "soft_target_abs_mean": float(np.mean(np.abs(soft))),
@@ -946,10 +895,9 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
         return report, (np.stack(observations) if collect_observations
                         else np.empty((0, observation.size), dtype=np.float32))
     finally:
-        env.close()
-        release_snapshots = getattr(factory, "release_spooled_report_snapshots", None)
-        if callable(release_snapshots):
-            release_snapshots()
+        if env is not None:
+            env.close()
+        factory.compact_report_snapshots = original_compact_report_snapshots
 
 
 def _fixed_observation_corpus(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
@@ -996,37 +944,6 @@ def _fixed_observation_corpus(factory: HistoricalEnvironmentFactory, predict, *,
     }
 
 
-def _read_wfo_market_scope(config: dict, *, score_start_ns: int, score_end_ns: int,
-                           label_prefix: str, reserve_development: bool) -> tuple[CuratedStore, dict]:
-    access = config.get("evaluation_data_access")
-    if (not isinstance(access, dict)
-            or set(access) != {"start_ns", "end_ns", "marker_sha256", "label"}
-            or type(access.get("start_ns")) is not int
-            or type(access.get("end_ns")) is not int
-            or access["start_ns"] > score_start_ns
-            or access["end_ns"] != score_end_ns
-            or not isinstance(access.get("marker_sha256"), str)
-            or not isinstance(access.get("label"), str)
-            or not access["label"].startswith(label_prefix)
-            or type(reserve_development) is not bool):
-        raise DataError("WFO market read scope does not match its authorized scoring window")
-    environment = config.get("environment")
-    if not isinstance(environment, dict) or not isinstance(environment.get("market_path"), str):
-        raise DataError("WFO scoped market read requires a curated market path")
-    identity = curated_source_identity(environment["market_path"])
-    if identity["marker_sha256"] != access["marker_sha256"]:
-        raise DataError("WFO market marker differs from the frozen access scope")
-    scope = {"start_ns": access["start_ns"], "end_ns": access["end_ns"]}
-    if reserve_development:
-        record_development(config, scope, label=access["label"], source_identity=identity)
-    market_store = read_curated_window(
-        environment["market_path"], scope["start_ns"], scope["end_ns"],
-        expected_marker_sha256=access["marker_sha256"],
-    )
-    store = CuratedStore((*market_store.events, *load_rules(environment["rules_path"])))
-    return store, identity
-
-
 def _evaluation_factory(config: dict, training: HistoricalEnvironmentFactory) -> HistoricalEnvironmentFactory:
     evaluation = config.get("evaluation")
     if not isinstance(evaluation, dict) or not {"start_ns", "end_ns", "coverage_policy"} <= set(evaluation):
@@ -1037,28 +954,10 @@ def _evaluation_factory(config: dict, training: HistoricalEnvironmentFactory) ->
         raise DataError("training may query only the declared Validation split")
     if evaluation["start_ns"] < training.end_ns:
         raise DataError("evaluation window overlaps training")
-    scoped_access = config.get("evaluation_data_access")
-    prepared_store = None
-    if scoped_access is None:
-        record_development(config, evaluation, label="validation")
-    else:
-        prepared_store, identity = _read_wfo_market_scope(
-            config, score_start_ns=evaluation["start_ns"], score_end_ns=evaluation["end_ns"],
-            label_prefix="validation-wfo-", reserve_development=True,
-        )
-    factory = HistoricalEnvironmentFactory(**{**config["environment"], **evaluation, "split": "validation",
-                                                "fit_scaler": False, "scaler": training.scaler,
-                                                "reward_scale": training.reward_config.reward_scale,
-                                                "prepared_store": prepared_store})
-    if scoped_access is not None:
-        setattr(factory, "application_registered_evaluation_access",
-                digest([config["environment"], scoped_access]))
-        if "wfo_dataset_hash" in config:
-            setattr(factory, "application_dataset_identity_hash", config["wfo_dataset_hash"])
-    elif hasattr(training, "application_dataset_identity_hash"):
-        setattr(factory, "application_dataset_identity_hash",
-                training.application_dataset_identity_hash)
-    return factory
+    record_development(config, evaluation, label="validation")
+    return HistoricalEnvironmentFactory(**{**config["environment"], **evaluation, "split": "validation",
+                                            "fit_scaler": False, "scaler": training.scaler,
+                                            "reward_scale": training.reward_config.reward_scale})
 
 
 def _resolve_rl_device(requested: Any, route: Route) -> Literal["cpu", "cuda"]:
@@ -1080,7 +979,7 @@ def _training_actor_spec(training: HistoricalEnvironmentFactory, hidden: tuple[i
     legacy_resume = False
     manifest_path = Path(config["output"]) / "run.json"
     if config.get("resume_checkpoint") is not None and manifest_path.is_file():
-        saved = loads_unique_json(manifest_path.read_text(encoding="utf-8"))
+        saved = json.loads(manifest_path.read_text(encoding="utf-8"))
         legacy_resume = isinstance(saved, dict) and "actor_spec" not in saved
     scaling = config.get("es_input_scaling", "none" if legacy_resume or "E1" not in STAGES[route]
                          else "account_units")
@@ -1235,11 +1134,8 @@ def _rl_gpu_memory_fraction(value: Any, learner_device: str) -> float | None:
 
 def train(config: dict, *, evaluate: bool = True,
           prepared_training: HistoricalEnvironmentFactory | None = None) -> dict:
-    if ("train_data_access" in config and evaluate
-            and "evaluation_data_access" not in config):
-        raise DataError(
-            "scoped Train data access requires evaluate=False or a scoped Validation reader"
-        )
+    if "train_data_access" in config and evaluate:
+        raise DataError("scoped Train data access requires evaluate=False")
     import torch
 
     torch.set_num_threads(1)
@@ -1274,7 +1170,7 @@ def train(config: dict, *, evaluate: bool = True,
     canonical_ppo_output = actor_spec.version == 2 and algorithm == "PPO" and "E1" in STAGES[route]
     previous_manifest = Path(config["output"]) / "run.json"
     if config.get("resume_checkpoint") is not None and previous_manifest.is_file():
-        previous = loads_unique_json(previous_manifest.read_text(encoding="utf-8"))
+        previous = json.loads(previous_manifest.read_text(encoding="utf-8"))
         canonical_ppo_output = previous.get("canonical_ppo_output", False)
         if type(canonical_ppo_output) is not bool:
             raise DataError("saved PPO output bridge flag must be Boolean")
@@ -1283,7 +1179,7 @@ def train(config: dict, *, evaluate: bool = True,
                                      for name in ("exposure_multiplier", "drawdown_throttle")))
     action_hash = digest({"target_net_exposure": [-1, 1], "shape": [1]})
     fingerprint = TransitionFingerprint(
-        env_contract=digest("NautilusBarrierEnv-v0.4.0"), dataset=_factory_dataset_identity(training),
+        env_contract=digest("NautilusBarrierEnv-v0.4.0"), dataset=training.store.snapshot_hash,
         feature=training.features.hash, feature_scaler=training.scaler.hash, observation=training.schema.hash,
         action=action_hash, action_transform=digest("soft-hard-native-quantity"), execution=training.execution.fingerprint(),
         hard_risk=training.hard.signature(),
@@ -1393,7 +1289,7 @@ def train(config: dict, *, evaluate: bool = True,
                 raise DataError(f"R1 resume checkpoint failed integrity validation: {exc}") from exc
             if rl_manifest.get("num_timesteps") != steps:
                 raise DataError("existing R1 actor can only be reused from a full-budget checkpoint")
-        saved_run = loads_unique_json(run_manifest_path.read_text(encoding="utf-8"))
+        saved_run = json.loads(run_manifest_path.read_text(encoding="utf-8"))
         allowed_manifest_sets = (
                     {"schema", "run_id", "attempt_id", "recipe_hash", "run_fingerprint"},
                     {"schema", "run_id", "attempt_id", "recipe_hash", "run_fingerprint", "actor_spec"},
@@ -1527,7 +1423,7 @@ def train(config: dict, *, evaluate: bool = True,
             "transition_hash": fingerprint.hash,
         }
         if frozen_train_access_json is not None:
-            worker_env_config["registered_train_access"] = loads_unique_json(frozen_train_access_json)
+            worker_env_config["registered_train_access"] = json.loads(frozen_train_access_json)
         worker_config = {
             "candidate_kind": "actor" if stage == "E1" else "soft_risk",
             "env_factory_ref": "rles_orchestrator.native_es_worker:make_registered_historical_es_env",
@@ -1609,7 +1505,7 @@ def train(config: dict, *, evaluate: bool = True,
         executor = RLStageExecutor(
             artifact_id=f"{run_id}-R1", config=rl_config,
             env_factory=rl_env_factory,
-            gate_authorizer=lambda _gates, cfg: cfg.fingerprint.dataset == _factory_dataset_identity(training),
+            gate_authorizer=lambda _gates, cfg: cfg.fingerprint.dataset == training.store.snapshot_hash,
             train_steps=steps, inference_dir=output / "r1", fixed_observations=corpus,
             actor_spec=actor_spec if previous else None, source_genome=source,
             training_observations=corpus if previous else None,
@@ -1674,7 +1570,7 @@ def train(config: dict, *, evaluate: bool = True,
         e1_stage_actor_path = output / "E1-selected-actor.json"
         if e1_stage_actor_path.is_file():
             e1_stage_actor_hash = _verify_file(e1_stage_actor_path)
-            e1_stage_actor = loads_unique_json(e1_stage_actor_path.read_text(encoding="utf-8"))
+            e1_stage_actor = json.loads(e1_stage_actor_path.read_text(encoding="utf-8"))
             e1_lineage = next((artifact for artifact in lineage if artifact.stage == "E1"), None)
             if (not isinstance(e1_stage_actor, dict)
                     or e1_stage_actor.get("schema") != "rles.selected-stage-actor.v1"
@@ -1684,7 +1580,7 @@ def train(config: dict, *, evaluate: bool = True,
                     or e1_stage_actor.get("lane_evidence_hash")
                     != e1_lineage.metadata.get("lane_evidence_hash")
                     or e1_stage_actor.get("actor_spec")
-                    != loads_unique_json(json.dumps(asdict(actor_spec), sort_keys=True,
+                    != json.loads(json.dumps(asdict(actor_spec), sort_keys=True,
                                              separators=(",", ":"), allow_nan=False))):
                 raise DataError("persisted E1 stage actor differs from the attested lineage")
             try:
@@ -1757,27 +1653,9 @@ def backtest(config: dict, bundle_path: str | Path, *, factory: HistoricalEnviro
              evaluation_access: EvaluationAccess | None = None,
              include_execution_trace: bool = False) -> dict:
     if "train_data_access" in config:
-        train_access_identity = digest([config.get("environment"), config["train_data_access"]])
-        validation_access_identity = digest([
-            config.get("environment"), config.get("evaluation_data_access"),
-        ])
-        registered_train = (
-            factory is not None and factory.split == "train_inner"
-            and getattr(factory, "application_registered_train_access", None) == train_access_identity
-        )
-        registered_validation = (
-            factory is not None and factory.split == "validation"
-            and isinstance(config.get("evaluation_data_access"), dict)
-            and getattr(factory, "application_registered_evaluation_access", None)
-            == validation_access_identity
-        )
-        evaluation = config.get("evaluation")
-        registered_formal_scope = (
-            factory is None and isinstance(evaluation, dict)
-            and evaluation.get("split") in {"test", "holdout"}
-            and isinstance(config.get("evaluation_data_access"), dict)
-        )
-        if not (registered_train or registered_validation or registered_formal_scope):
+        access_identity = digest([config.get("environment"), config["train_data_access"]])
+        if (factory is None or factory.split != "train_inner"
+                or getattr(factory, "application_registered_train_access", None) != access_identity):
             raise DataError("scoped Train backtest requires a factory built by the registered Train reader")
     if type(allow_execution_stress) is not bool:
         raise DataError("execution stress authorization must be an explicit boolean")
@@ -1794,7 +1672,7 @@ def backtest(config: dict, bundle_path: str | Path, *, factory: HistoricalEnviro
         raise DataError("unknown evaluation split")
     root = Path(bundle_path).resolve()
     bundle_sha = _verify_file(root / "bundle.json")
-    bundle = loads_unique_json((root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = json.loads((root / "bundle.json").read_text(encoding="utf-8"))
     raw_scaler = dict(bundle["preprocessing"]["scaler"])
     raw_scaler["mean"], raw_scaler["std"] = tuple(raw_scaler["mean"]), tuple(raw_scaler["std"])
     if formal:
@@ -1821,40 +1699,19 @@ def backtest(config: dict, bundle_path: str | Path, *, factory: HistoricalEnviro
         bundle_reward_scale = bundle.get("reward_scale", 1.0)
         if config.get("reward_scale", bundle_reward_scale) != bundle_reward_scale:
             raise DataError("backtest reward scale differs from the trained bundle")
-        prepared_store = None
-        formal_scope_identity = None
-        if formal:
-            label_prefix = "test-wfo-" if requested == "test" else "holdout-wfo-"
-            prepared_store, formal_scope_identity = _read_wfo_market_scope(
-                config, score_start_ns=config["evaluation"]["start_ns"],
-                score_end_ns=config["evaluation"]["end_ns"], label_prefix=label_prefix,
-                reserve_development=False,
-            )
         if not formal:
             record_development(config, config["evaluation"], label="validation")
-            factory = HistoricalEnvironmentFactory(**{**bundle["environment"], **config["evaluation"],
-                                                       "fit_scaler": False, "split": requested,
-                                                       "scaler": Scaler(**raw_scaler),
-                                                       "reward_scale": bundle_reward_scale})
-        else:
-            factory = HistoricalEnvironmentFactory(**{**bundle["environment"], **config["evaluation"],
-                                                       "fit_scaler": False, "split": requested,
-                                                       "scaler": Scaler(**raw_scaler),
-                                                       "reward_scale": bundle_reward_scale,
-                                                       "prepared_store": prepared_store})
-            assert formal_scope_identity is not None
-            access = config["evaluation_data_access"]
-            setattr(factory, "application_registered_evaluation_access",
-                    digest([config["environment"], access]))
-            if "wfo_dataset_hash" in config:
-                setattr(factory, "application_dataset_identity_hash", config["wfo_dataset_hash"])
+        factory = HistoricalEnvironmentFactory(**{**bundle["environment"], **config["evaluation"],
+                                                   "fit_scaler": False, "split": requested,
+                                                   "scaler": Scaler(**raw_scaler),
+                                                   "reward_scale": bundle_reward_scale})
     identities = bundle["preprocessing"].get("identities")
     if not isinstance(identities, dict) or set(identities) != {
         "dataset", "features", "schema", "scaler", "execution", "hard_risk", "config",
     }:
         raise DataError("bundle lacks complete frozen trading identities")
     actual_identities = {
-        "dataset": _factory_dataset_identity(factory),
+        "dataset": factory.store.snapshot_hash,
         "features": factory.features.hash,
         "schema": factory.schema.hash,
         "scaler": factory.scaler.hash,
@@ -1937,7 +1794,7 @@ def diagnose_train(config: dict, bundle_path: str | Path, *,
         raise DataError("Train diagnostics reject Evaluation configuration")
     root = Path(bundle_path).resolve()
     _verify_file(root / "bundle.json")
-    bundle = loads_unique_json((root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = json.loads((root / "bundle.json").read_text(encoding="utf-8"))
     environment = bundle["environment"]
     if _json_identity(config["environment"]) != _json_identity(environment):
         raise DataError("Train diagnostics may not replace the trained environment recipe")

@@ -69,7 +69,6 @@ def training_runs(fold, scope="routeb-fold-fresh", snapshot="9" * 40):
             "fold_hash": fold.hash,
             "train_scope_id": scope,
             "train_npz_sha256": "1" * 64,
-            "model_config": {"risk_horizons": [1, 5, 15]} if name == "E2" else {},
             "training_config": {"seed": 31, "steps": 100, "batch_size": 4,
                                 "lr": 0.0003, "grad_clip": 100.0,
                                 "report_interval": 10},
@@ -101,16 +100,10 @@ def test_fold_report_generates_e0_and_scores_e1_e2_on_same_future_labels():
         "E1": candidate_paths(replay, anchors, bias=0.0),
         "E2": candidate_paths(replay, anchors, bias=0.00002),
     }
-    risk_distribution={
-        "risk_mean":np.zeros((len(anchors),3,4),dtype=np.float64),
-        "risk_scale":np.ones((len(anchors),3,4),dtype=np.float64)*0.01,
-        "barrier_logits":np.zeros((len(anchors),3,2),dtype=np.float64),
-    }
     report = build_fold_predictive_report(
         replay, fold, forecasts,
         candidate_training_runs=training_runs(fold),
         candidate_anchor_timestamps_ns={"E1": anchors, "E2": anchors},
-        candidate_risk_distribution=risk_distribution,
         train_scope_id="routeb-fold-fresh",
         snapshot_sha256="9" * 40, forecast_seed=31,
         horizons=(1, 5, 15), anchor_interval_minutes=15,
@@ -126,16 +119,6 @@ def test_fold_report_generates_e0_and_scores_e1_e2_on_same_future_labels():
     assert report["metadata"]["fold_identity"] == fold.hash
     assert report["overall"]["E2"][-1]["horizon"] == 15
     assert report["overall"]["E2"][-1]["samples"] == len(anchors)
-    assert report["native_risk_scores"]["score_capability"]=="REGISTERED_VALIDATION"
-    assert len(report["native_risk_comparison"]["pairwise_paired_block_bootstrap"])==7
-    assert {item["target"] for item in
-            report["native_risk_comparison"]["pairwise_paired_block_bootstrap"]}=={
-                "return","log_realized_volatility","path_log_realized_volatility"}
-    path_primary=report["path_log_realized_volatility_comparison"]
-    assert path_primary["score_capability"]=="REGISTERED_VALIDATION"
-    assert path_primary["paired_block_bootstrap"]["baseline"]==(
-        path_primary["baseline_selected_by_validation_crps"])
-    assert "holm_p_value" in path_primary["paired_block_bootstrap"]
     assert verify_predictive_report_digest(report)
 
 
@@ -160,41 +143,10 @@ def test_prepare_fold_forecast_batch_exports_only_causal_common_anchor_contexts(
         assert contexts["anchor_timestamps_ns"][0] == 149 * MINUTE_NS
         assert contexts["anchor_timestamps_ns"][-1] == 284 * MINUTE_NS
         assert contexts["close_timestamps"][:, -1].tolist() == contexts["anchor_timestamps_ns"].tolist()
-        assert np.all(contexts["available_timestamps"] <= contexts["decision_timestamps_ns"][:, None])
-        assert np.all(contexts["decision_timestamps_ns"] >= contexts["anchor_timestamps_ns"])
+        assert np.all(contexts["available_timestamps"] <= contexts["anchor_timestamps_ns"][:, None])
     request = json.loads((tmp_path / "request.json").read_text())
     assert request["schema"] == "routeb.forecast-batch-request.v1"
     assert report["anchors"] == 10
-    assert report["test_payload_decoded"] is False
-
-
-def test_prepare_fold_forecast_batch_accepts_explicit_validation_anchor_grid(tmp_path):
-    fold, replay = make_fold_replay()
-    train_frames = tuple(frame for frame in replay.frames
-                         if frame.ts_close_ns < fold.train.score_end_ns)
-    train_candles = tuple(Candle(
-        frame.ts_close_ns, frame.available_at_ns, frame.instrument, frame.open,
-        frame.high, frame.low, frame.close, frame.volume) for frame in train_frames)
-    scaler = TrainOnlyStandardizer.fit(
-        OHLCVCodec.encode(train_candles[1:], previous_close=train_candles[0].close),
-        dataset_id=fold.dataset_hash, scope="train")
-    report = prepare_fold_forecast_batch(
-        fold_replay=replay, fold=fold, frozen_scaler=scaler,
-        train_scope_id="routeb-fold-explicit-anchor", train_npz_sha256="2" * 64,
-        output_context_npz=tmp_path / "explicit-contexts.npz",
-        output_request_json=tmp_path / "explicit-request.json", horizon=15,
-        n_paths=8, seed=31, anchor_interval_minutes=15, context_lookback=32,
-        anchor_start_ns=fold.validation.score_start_ns)
-    expected = np.arange(fold.validation.score_start_ns,
-                         fold.validation.score_end_ns - 15 * MINUTE_NS + 1,
-                         15 * MINUTE_NS, dtype=np.int64)
-    with np.load(tmp_path / "explicit-contexts.npz", allow_pickle=False) as contexts:
-        np.testing.assert_array_equal(contexts["anchor_timestamps_ns"], expected)
-        assert contexts["anchor_timestamps_ns"][0] == fold.validation.score_start_ns
-        assert contexts["anchor_timestamps_ns"][-1] == 285 * MINUTE_NS
-    request = json.loads((tmp_path / "explicit-request.json").read_text())
-    assert request["anchor_timestamps_ns"] == expected.tolist()
-    assert report["anchors"] == len(expected)
     assert report["test_payload_decoded"] is False
 
 
@@ -230,26 +182,7 @@ def test_run_fold_experiment_uses_one_replay_for_train_and_validation(tmp_path):
                     "kind": "E1_BATCH_PRIOR_PATHS" if candidate == "E1" else "F1_BATCH_PRIOR_PATHS",
                     "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
                     "anchors": len(anchors), "paths": payload["n_paths"],
-                    "horizon": payload["horizon"],
-                    "sampled_paths_per_anchor": payload["n_paths"] * 4,
-                    "rejected_paths": 0,
-                    "rejected_paths_by_anchor": [0] * len(anchors)}
-
-        def forecast_risk_distribution_batch(self, *, request, output,
-                                             risk_horizons, **kwargs):
-            payload = json.loads(request.read_text())
-            anchors = len(payload["anchor_timestamps_ns"])
-            horizons = len(risk_horizons)
-            np.savez_compressed(
-                output,
-                risk_mean=np.zeros((anchors,horizons,4),dtype=np.float32),
-                risk_scale=np.ones((anchors,horizons,4),dtype=np.float32),
-                barrier_logits=np.zeros((anchors,horizons,2),dtype=np.float32),
-                risk_horizons=np.asarray(risk_horizons,dtype=np.int64))
-            import hashlib
-            return {"status":"COMPLETED","kind":"E2_RISK_DISTRIBUTION_BATCH",
-                    "sha256":hashlib.sha256(output.read_bytes()).hexdigest(),
-                    "anchors":anchors,"economic_certification":False}
+                    "horizon": payload["horizon"]}
 
     training = {"seed": 31, "steps": 2, "batch_size": 1, "lr": 0.001,
                 "grad_clip": 10.0, "report_interval": 1}
@@ -270,8 +203,6 @@ def test_run_fold_experiment_uses_one_replay_for_train_and_validation(tmp_path):
     assert report["predictive_comparison"]["metadata"]["fold_identity"] == fold.hash
     assert set(report["forecast_artifacts"]) == {"E1", "E2"}
     assert len(report["forecast_artifacts"]["E1"]["artifact_sha256"]) == 64
-    assert report["prior_risk_forecast_artifact"]["score_status"] == "EXPORTED_PENDING_NATIVE_RISK_SCORING"
-    assert (tmp_path/"e2_validation_risk_forecasts.npz").is_file()
     assert report["forecast_context"]["request_sha256"]
     assert verify_fold_experiment_report_digest(report)
     tampered = {**report, "marker_sha256": "0" * 64}

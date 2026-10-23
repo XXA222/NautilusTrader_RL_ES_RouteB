@@ -5,6 +5,7 @@ This package deliberately contains no NautilusTrader imports and no L1 DTO clone
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, is_dataclass
+from functools import cached_property
 from datetime import datetime, timezone
 from enum import StrEnum
 from bisect import bisect_left, bisect_right
@@ -12,7 +13,7 @@ from hashlib import sha256
 import json
 import math
 import re
-from typing import Any, ClassVar, Iterable, Mapping, TYPE_CHECKING, cast
+from typing import Any, Iterable, Mapping, TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from .coverage import CoveragePolicy
@@ -21,7 +22,7 @@ MINUTE_NS = 60_000_000_000
 DAY_NS = 1_440 * MINUTE_NS
 MAX_NS = 2**63 - 1
 CORE_KINDS = frozenset({"ohlcv_1m", "mark", "index", "funding_update", "funding_settlement", "instrument_rule"})
-KINDS = CORE_KINDS | {"best_quote", "trade_flow_1s", "coverage_marker"}
+KINDS = CORE_KINDS | {"best_quote", "trade_flow_1s"}
 HASH_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 
@@ -106,7 +107,7 @@ def require_ns(value: int) -> int:
 def parse_ns(value: str) -> int:
     """Explicit UTC ISO-8601 only, preserving up to nine fractional digits."""
     if not isinstance(value, str) or re.fullmatch(
-        r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z", value
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z", value
     ) is None:
         raise DataError("expected explicit UTC ISO-8601 timestamp ending in Z")
     main, _, tail = value[:-1].partition(".")
@@ -171,9 +172,6 @@ class Event:
     payload: Mapping[str, Any]
     provenance: str
 
-    if TYPE_CHECKING:
-        _bound_hash: ClassVar[str]
-
     def __post_init__(self) -> None:
         require_ns(self.ts_event_ns)
         require_ns(self.ts_init_ns)
@@ -194,25 +192,13 @@ class Event:
         from .schemas import validate_payload
         validate_payload(self.kind, dict(self.payload), self.ts_event_ns)
         canonical_bytes(self.payload)
-        object.__setattr__(self, "_bound_hash", digest(self))
 
     def visible(self, decision_ns: int) -> bool:
         return self.available_at_ns is not None and self.available_at_ns <= require_ns(decision_ns)
 
-    @property
+    @cached_property
     def hash(self) -> str:
-        current = digest(self)
-        if current != self._bound_hash:
-            raise DataError("event mutated after construction")
-        return self._bound_hash
-
-
-def _event_available_key(event: Event) -> int:
-    return cast(int, event.available_at_ns)
-
-
-def _event_time_key(event: Event) -> int:
-    return event.ts_event_ns
+        return digest(self)
 
 
 @dataclass(frozen=True)
@@ -350,22 +336,15 @@ class FeatureSpec:
     schema_version: str
     fields: tuple[FeatureField, ...]
 
-    if TYPE_CHECKING:
-        _bound_hash: ClassVar[str]
-
     def __post_init__(self) -> None:
         if (self.schema_version != "0.4.0" or type(self.fields) is not tuple or not self.fields or
                 any(not isinstance(field, FeatureField) for field in self.fields) or
                 len({f.name for f in self.fields}) != len(self.fields)):
             raise DataError("duplicate/empty feature schema")
-        object.__setattr__(self, "_bound_hash", digest(self))
 
-    @property
+    @cached_property
     def hash(self) -> str:
-        current = digest(self)
-        if current != self._bound_hash:
-            raise DataError("feature spec mutated after construction")
-        return self._bound_hash
+        return digest(self)
 
     @property
     def max_lookback_ns(self) -> int:
@@ -488,34 +467,30 @@ class CuratedStore:
         self.instruments = frozenset(cast(str, event.payload["instrument"])
                                      for event in self.events
                                      if isinstance(event.payload.get("instrument"), str))
-        visible_count = 0
-        for event in self.events:
-            if event.available_at_ns is None:
-                break
-            visible_count += 1
-        self._visible_events = (self.events if visible_count == len(self.events)
-                                else self.events[:visible_count])
+        visible_events = tuple(event for event in self.events if event.available_at_ns is not None)
+        self._visible_events = visible_events
+        self._visible_times = tuple(cast(int, event.available_at_ns) for event in visible_events)
         visible_by_kind: dict[str, list[Event]] = {}
-        for event in self._visible_events:
+        for event in visible_events:
             visible_by_kind.setdefault(event.kind, []).append(event)
         self._visible_by_kind = {kind: tuple(events) for kind, events in visible_by_kind.items()}
-        visible_by_event_time: dict[str, tuple[Event, ...]] = {}
-        for kind, events in visible_by_kind.items():
-            # The availability index is already in event-time order for the
-            # common case where facts arrive in chronological order. Reuse
-            # its tuple to avoid a second N-reference index. Late-arriving
-            # facts still receive their own event-time-sorted index.
-            if all((left.ts_event_ns, cast(int, left.available_at_ns), left.event_id)
-                   <= (right.ts_event_ns, cast(int, right.available_at_ns), right.event_id)
-                   for left, right in zip(events, events[1:])):
-                visible_by_event_time[kind] = self._visible_by_kind[kind]
-            else:
-                visible_by_event_time[kind] = tuple(sorted(
-                    events, key=lambda event: (event.ts_event_ns,
-                                               cast(int, event.available_at_ns),
-                                               event.event_id),
-                ))
-        self._visible_by_event_time = visible_by_event_time
+        self._visible_times_by_kind = {
+            kind: tuple(cast(int, event.available_at_ns) for event in events)
+            for kind, events in self._visible_by_kind.items()
+        }
+        visible_by_event_time: dict[str, list[Event]] = {}
+        for event in visible_events:
+            visible_by_event_time.setdefault(event.kind, []).append(event)
+        self._visible_by_event_time = {
+            kind: tuple(sorted(events, key=lambda event: (event.ts_event_ns,
+                                                           cast(int, event.available_at_ns),
+                                                           event.event_id)))
+            for kind, events in visible_by_event_time.items()
+        }
+        self._visible_event_times_by_kind = {
+            kind: tuple(event.ts_event_ns for event in events)
+            for kind, events in self._visible_by_event_time.items()
+        }
         # Derived feature indexes are lazy and excluded from snapshot identity.
         self._feature_cache: dict[tuple[Any, ...], Any] = {}
         rules_by_instrument: dict[str, list[Event]] = {}
@@ -597,9 +572,12 @@ class CuratedStore:
 
     def visible(self, decision_ns: int, kind: str | None = None) -> tuple[Event, ...]:
         require_ns(decision_ns)
-        events = (self._visible_events if kind is None
-                  else self._visible_by_kind.get(kind, ()))
-        return events[:bisect_right(events, decision_ns, key=_event_available_key)]
+        if kind is None:
+            events, times = self._visible_events, self._visible_times
+        else:
+            events = self._visible_by_kind.get(kind, ())
+            times = self._visible_times_by_kind.get(kind, ())
+        return events[:bisect_right(times, decision_ns)]
 
     def visible_event_window(self, decision_ns: int, start_event_ns: int,
                              kind: str) -> tuple[Event, ...]:
@@ -609,8 +587,9 @@ class CuratedStore:
         if type(kind) is not str or not kind or start_event_ns > decision_ns:
             raise DataError("invalid visible event-time window")
         events = self._visible_by_event_time.get(kind, ())
-        first = bisect_left(events, start_event_ns, key=_event_time_key)
-        last = bisect_right(events, decision_ns, key=_event_time_key)
+        times = self._visible_event_times_by_kind.get(kind, ())
+        first = bisect_left(times, start_event_ns)
+        last = bisect_right(times, decision_ns)
         return tuple(event for event in events[first:last]
                      if event.available_at_ns is not None
                      and event.available_at_ns <= decision_ns)
@@ -623,13 +602,14 @@ class CuratedStore:
         if start_available_ns > end_available_ns:
             raise DataError("invalid availability-time window")
         if kind is None:
-            events = self._visible_events
+            events, times = self._visible_events, self._visible_times
         else:
             if type(kind) is not str or kind not in KINDS:
                 raise DataError("unknown availability-time event kind")
             events = self._visible_by_kind.get(kind, ())
-        first = bisect_left(events, start_available_ns, key=_event_available_key)
-        last = bisect_right(events, end_available_ns, key=_event_available_key)
+            times = self._visible_times_by_kind.get(kind, ())
+        first = bisect_left(times, start_available_ns)
+        last = bisect_right(times, end_available_ns)
         return events[first:last]
 
     def latest_rule(self, decision_ns: int, instrument: str) -> Event:
@@ -831,4 +811,3 @@ class CuratedStore:
                            start, end, len(self.events), report.hash, feature_hash,
                            tuple(sorted({e.source_hash for e in self.events})),
                            report.missing_minutes, report.grade)
-

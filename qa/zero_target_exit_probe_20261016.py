@@ -11,26 +11,14 @@ import numpy as np
 
 from rles_data.core import CuratedStore, DataError
 from rles_data.io import read_curated
-from rles_data.json_utils import loads_unique_json
 from rles_gym_bridge.historical import HistoricalEnvironmentFactory, load_rules
 from rles_orchestrator.application import _file_hash, _verify_file, _write_verified
+from rles_orchestrator.workspace import require_workspace_paths
 from rles_orchestrator.research_access import record_development
 from rles_orchestrator.wfo_application import _scaler
 from rles_research.native_metrics import native_report
 
-from profile_native_history_growth_20261016 import (
-    _routeb_path, available_memory, coverage_for_window,
-)
-
-
-def _load_json_object(path: Path) -> dict:
-    try:
-        value = loads_unique_json(path.read_bytes())
-    except (OSError, UnicodeError, ValueError) as exc:
-        raise DataError(f"cannot read unambiguous zero-target JSON: {path}") from exc
-    if not isinstance(value, dict):
-        raise DataError(f"zero-target JSON root must be an object: {path}")
-    return value
+from profile_native_history_growth_20261016 import available_memory, coverage_for_window
 
 
 def target_at(step: int, action_path: dict) -> float:
@@ -98,7 +86,6 @@ def one_run(plan: dict, store: CuratedStore, bundle: dict, scaler, *, policy: st
             factory.snapshots, fill_references=factory.fill_references,
             sample_interval_ns=60_000_000_000,
             allow_price_improvement=False, include_account_rows=False,
-            contract_multiplier=factory.contract_multiplier,
         )
         step21 = next((row for row in trajectory if row["step"] == 21), None)
         step22 = next((row for row in trajectory if row["step"] == 22), None)
@@ -121,41 +108,35 @@ def one_run(plan: dict, store: CuratedStore, bundle: dict, scaler, *, policy: st
 
 
 def run(plan_path: Path, output: Path) -> dict:
-    plan_path = _routeb_path(plan_path, "zero-target plan", must_exist=True)
-    output = _routeb_path(output, "zero-target output", must_exist=False)
-    if output.exists() or not output.parent.is_dir():
-        raise DataError("zero-target output must be new and its parent must exist")
-    plan = _load_json_object(plan_path)
-    if plan.get("split") != "train_inner":
+    workspace = Path(__file__).resolve().parents[1]
+    paths = require_workspace_paths(workspace, {"plan": plan_path, "output": output})
+    plan_path, output = paths["plan"], paths["output"]
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    if plan.get("split") != "train_inner" or output.exists():
         raise DataError("Train-inner preregistration and a new output directory are required")
+    source = plan["source"]
+    require_workspace_paths(workspace, {
+        "bundle": plan["bundle"], "market": source["market_path"],
+        "rules": source["rules_path"],
+    })
     marker = plan_path.with_name(plan_path.name + ".sha256")
     if not marker.is_file() or marker.read_text(encoding="ascii").strip() != _file_hash(plan_path):
         raise DataError("zero-target probe plan checksum mismatch")
-    bundle_root = _routeb_path(plan["bundle"], "zero-target bundle", must_exist=True)
+    bundle_root = Path(plan["bundle"])
     if _verify_file(bundle_root / "bundle.json") != plan["bundle_sha256"]:
         raise DataError("frozen bundle checksum changed")
-    bundle = _load_json_object(bundle_root / "bundle.json")
+    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
     if plan["window"]["end_ns"] > bundle["training_end_ns"] or available_memory() < 10 * 1024**3:
         raise MemoryError("probe exceeds frozen Train or start memory boundary")
-    source = plan["source"]
-    source_paths = {
-        name: _routeb_path(source[name + "_path"], f"{name} source", must_exist=True)
-        for name in ("market", "rules")
-    }
     for name in ("market", "rules"):
-        environment_path = _routeb_path(
-            bundle["environment"][name + "_path"], f"bundle {name} source", must_exist=True,
-        )
-        if environment_path != source_paths[name]:
-            raise DataError(f"bundle {name} source differs from the zero-target plan")
-        if _file_hash(source_paths[name]) != source[name + "_sha256"]:
+        if _file_hash(Path(source[name + "_path"])) != source[name + "_sha256"]:
             raise DataError(f"frozen {name} source checksum changed")
     output.mkdir(parents=True)
     _write_verified(output / "preregistration.json", {
         "plan_path": str(plan_path.resolve()), "plan_sha256": _file_hash(plan_path), "plan": plan})
     try:
-        rules = load_rules(source_paths["rules"])
-        store = CuratedStore((*read_curated(source_paths["market"]).events, *rules))
+        rules = load_rules(source["rules_path"])
+        store = CuratedStore((*read_curated(source["market_path"]).events, *rules))
         if store.snapshot_hash != plan["dataset_sha256"]:
             raise DataError("source snapshot does not match frozen bundle")
         record_development({"environment": bundle["environment"], "output": str(output), "seed": 0},

@@ -8,7 +8,6 @@ from __future__ import annotations
 import math
 import hashlib
 from dataclasses import dataclass
-from typing import Callable, Sequence
 import numpy as np
 from .market import Candle, MINUTE_NS
 
@@ -66,33 +65,6 @@ class TrainOnlyStandardizer:
         return {"scaler_mean":self.mean,"scaler_std":self.std}
 
 
-def select_decodable_paths(paths: Sequence[np.ndarray], *, decoder: Callable[[np.ndarray], tuple[Candle, ...]],
-                           required: int) -> tuple[list[tuple[Candle, ...]], int, int]:
-    """Reject unsafe model paths and keep the required number of valid samples.
-
-    Invalid paths are never clipped. The caller records candidate and rejection
-    counts so forecast coverage remains visible in experiment reports.
-    """
-    if type(required) is not int or required < 1 or len(paths) < required:
-        raise ValueError("valid required path count and sufficient candidates are required")
-    accepted: list[tuple[Candle, ...]] = []
-    rejected = 0
-    for path in paths:
-        try:
-            decoded = decoder(np.asarray(path))
-        except ValueError:
-            rejected += 1
-        else:
-            if len(accepted) < required:
-                accepted.append(decoded)
-    if len(accepted) < required:
-        raise ValueError(
-            f"insufficient safe forecast paths: accepted={len(accepted)}, "
-            f"rejected={rejected}, candidates={len(paths)}, required={required}"
-        )
-    return accepted, rejected, len(paths)
-
-
 class OHLCVCodec:
     EPS = 1e-6
 
@@ -114,7 +86,7 @@ class OHLCVCodec:
     @staticmethod
     def decode(y: np.ndarray, *, previous_close: float, start_close_ns: int,
                instrument: str, availability_lag_ns: int = 0,
-               max_abs_log: float = 18., max_log_volume: float = 40.) -> tuple[Candle,...]:
+               max_abs_log: float = 18.) -> tuple[Candle,...]:
         if type(start_close_ns) is not int or start_close_ns<=0 or start_close_ns%MINUTE_NS:
             raise ValueError("forecast timestamp must be UTC minute close aligned")
         vals=np.asarray(y,dtype=np.float64)
@@ -124,20 +96,8 @@ class OHLCVCodec:
             raise ValueError("invalid price anchor")
         if availability_lag_ns<0 or type(availability_lag_ns) is not int:
             raise ValueError("invalid availability lag")
-        unsafe=[]
-        for index,name in enumerate(("log_open_gap","log_close_body",
-                                     "log_upper_wick","log_lower_wick")):
-            peak=float(np.max(vals[:,index]))
-            if not math.isfinite(max_abs_log) or max_abs_log<=0 or peak>max_abs_log:
-                unsafe.append(f"{name}:max={peak:.6g}")
-        volume_peak=float(np.max(vals[:,4]))
-        volume_floor=float(np.min(vals[:,4]))
-        if (not math.isfinite(max_log_volume) or max_log_volume<=0
-                or volume_floor<0 or volume_peak>max_log_volume):
-            unsafe.append(f"log1p_volume:min={volume_floor:.6g},max={volume_peak:.6g}")
-        if unsafe:
-            raise ValueError("unsafe extrapolated feature(s) "+", ".join(unsafe)+
-                             "; reject path instead of clipping")
+        if np.any(np.abs(vals)>max_abs_log):
+            raise ValueError("unsafe extrapolated feature; reject path instead of clipping")
         out=[]
         last=previous_close
         for i,(gap,body,upper,lower,logv) in enumerate(vals):

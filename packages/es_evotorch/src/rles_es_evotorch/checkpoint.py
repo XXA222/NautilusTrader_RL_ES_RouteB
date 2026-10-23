@@ -17,8 +17,6 @@ import tempfile
 from typing import Mapping
 from types import MappingProxyType
 
-from .json_utils import loads_unique_json
-
 _ALLOWED_COMPONENTS = frozenset({"distribution", "optimizer", "population",
                                  "rng_torch", "rng_numpy", "rng_python", "rng_evotorch",
                                  "batch_evaluator", "provider"})
@@ -126,10 +124,7 @@ class ESCheckpointStore:
         data = manifest.read_bytes()
         if marker.read_text(encoding="ascii") != sha256(data).hexdigest():
             raise RuntimeError("checkpoint metadata integrity violation")
-        try:
-            payload = loads_unique_json(data)
-        except ValueError as exc:
-            raise RuntimeError("checkpoint manifest contains invalid or ambiguous JSON") from exc
+        payload = json.loads(data)
         expected_headers = {"version", "algorithm", "attempt_id", "actor_signature", "dataset_hash",
                             "config_hash", "generation", "evaluations", "data_cursor", "native_codec_id",
                             "components"}

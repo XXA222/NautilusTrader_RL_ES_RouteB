@@ -13,7 +13,6 @@ from typing import Any
 
 from rles_es_evotorch.evaluation import scenario_seed
 from rles_orchestrator.application import backtest, prepare, train
-from rles_data.json_utils import loads_unique_json
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,33 +28,16 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _parse_json_object(raw: str | bytes, label: str) -> dict[str, Any]:
-    try:
-        value = loads_unique_json(raw)
-    except (UnicodeError, ValueError) as exc:
-        raise ValueError(f"invalid unambiguous A02 JSON in {label}") from exc
-    if not isinstance(value, dict):
-        raise ValueError(f"A02 JSON root must be an object: {label}")
-    return value
-
-
-def _read_json_object(path: Path) -> dict[str, Any]:
-    try:
-        return _parse_json_object(path.read_bytes(), str(path))
-    except OSError as exc:
-        raise ValueError(f"cannot read A02 JSON input: {path}") from exc
-
-
 def _base_config(output: Path, fitness: dict[str, object]) -> tuple[dict[str, Any], dict[str, object]]:
     fixture = FIXTURES / "real_ethusdt_20240104"
-    manifest = _read_json_object(fixture / "import.json")
+    manifest = json.loads((fixture / "import.json").read_text(encoding="utf-8"))
     if manifest.get("schema") not in {"rles.binance-archive.v1", "rles.binance-archive-range.v1"}:
         raise ValueError("archive fixture manifest schema is unsupported")
     for source in manifest["sources"]:
         if _sha(fixture / source["path"]) != source["sha256"]:
             raise ValueError(f"archive fixture checksum mismatch: {source['path']}")
 
-    base = _read_json_object(ROOT / "configs" / "ethusdt_20240101_real.json")
+    base = json.loads((ROOT / "configs" / "ethusdt_20240101_real.json").read_text(encoding="utf-8"))
     day_start = BASE_NS + 3 * DAY_NS
     environment = base["environment"]
     environment["market_path"] = str(fixture / "market.parquet")
@@ -109,8 +91,8 @@ def run(output_root: Path, *, replay_only: bool = False) -> dict[str, object]:
         if (train_report["evaluation_scope"]["split"] != "train_inner"
                 or train_report["evaluation_scope"]["formal"] is not False):
             raise RuntimeError("economic replay escaped the Train-inner development scope")
-        bundle = _read_json_object(run_root / "bundle.json")
-        run_manifest = _read_json_object(run_root / "run.json")
+        bundle = json.loads((run_root / "bundle.json").read_text(encoding="utf-8"))
+        run_manifest = json.loads((run_root / "run.json").read_text(encoding="utf-8"))
         if bundle["es_scenario_fold_id"] != FOLD_ID or run_manifest["es_scenario_fold_id"] != FOLD_ID:
             raise RuntimeError("application did not preserve the common ES scenario fold")
         if bundle["es_candidate_evidence"] is not True:
@@ -124,7 +106,7 @@ def run(output_root: Path, *, replay_only: bool = False) -> dict[str, object]:
         metadata = e2["metadata"]
         if metadata["scenario_fold_id"] != FOLD_ID:
             raise RuntimeError("E2 stage metadata lost the CRN fold id")
-        candidate_rows = loads_unique_json(metadata["constraint_evidence_json"])
+        candidate_rows = json.loads(metadata["constraint_evidence_json"])
         if len(candidate_rows) != 2 or any(len(generation["candidates"]) != 5
                                            for generation in candidate_rows):
             raise RuntimeError("E2 candidate evidence differs from the frozen population/neutral budget")
@@ -132,7 +114,7 @@ def run(output_root: Path, *, replay_only: bool = False) -> dict[str, object]:
             "arm": arm_name,
             "fitness_config": fitness,
             "fitness_protocol": metadata["fitness_protocol"],
-            "fitness_spec": _parse_json_object(metadata["fitness_spec_json"], "E2 fitness spec"),
+            "fitness_spec": json.loads(metadata["fitness_spec_json"]),
             "run_id": run_manifest["run_id"],
             "run_recipe_hash": run_manifest["recipe_hash"],
             "actor_hash": actor_hash,

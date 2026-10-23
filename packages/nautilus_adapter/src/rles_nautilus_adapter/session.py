@@ -320,7 +320,9 @@ class EngineSession:
                  facts_reader: NativeFactsReader,
                  contract_snapshot_factory: Callable[..., Any],
                  certified_barrier_protocol: str,
-                 prepare_submit: Callable[[Any, Any, int], None] | None = None) -> None:
+                 prepare_submit: Callable[[Any, Any, int], None] | None = None,
+                 submit_limit_intent: Callable[[Any, Any, int], None] | None = None,
+                 cancel_limit_orders: Callable[[Any, tuple[str, ...]], bool] | None = None) -> None:
         if certified_barrier_protocol != self.BARRIER_PROTOCOL:
             raise EngineBoundaryError("native barrier protocol not approved")
         for callback in (build_native, submit_plan, decode_event, contract_snapshot_factory):
@@ -330,13 +332,20 @@ class EngineSession:
             raise TypeError("native facts reader required")
         if prepare_submit is not None and not callable(prepare_submit):
             raise TypeError("optional native submit preparation callback must be callable")
+        if submit_limit_intent is not None and not callable(submit_limit_intent):
+            raise TypeError("optional native LIMIT intent callback must be callable")
+        if cancel_limit_orders is not None and not callable(cancel_limit_orders):
+            raise TypeError("optional native terminal LIMIT cancellation callback must be callable")
         self._build, self._submit, self._decode = build_native, submit_plan, decode_event
         self._read, self._make_snapshot = facts_reader, contract_snapshot_factory
         self._prepare_submit = prepare_submit
+        self._submit_limit_intent = submit_limit_intent
+        self._cancel_limit_orders = cancel_limit_orders
         self._engine: Any | None = None
         self._state = "CREATED"
         self._last_ts = 0
         self._action_ids: set[str] = set()
+        self._limit_intent_ids: set[str] = set()
         self._event_ids: set[str] = set()
         self._fingerprint: str | None = None
 
@@ -526,6 +535,47 @@ class EngineSession:
             self.close()
             raise
 
+    def advance_limit(self, intent: Any, *, batches: Iterable[VisibleBatch],
+                      next_decision_ts_ns: int) -> Any:
+        """Advance one opt-in 0.5.0 intent through the native decision barrier.
+
+        LIMIT remains separate from the 0.4.0 ExecutionPlan protocol. Native
+        intent application occurs before replay, and no intervening batch may
+        precede its frozen effective timestamp.
+        """
+        if self._state != "RUNNING":
+            raise EngineBoundaryError("LIMIT advance requires RUNNING state")
+        try:
+            from rles_contracts.limit_execution import LimitOrderIntent, OrderIntentKind
+
+            if self._submit_limit_intent is None:
+                raise EngineBoundaryError("native LIMIT intent callback is not configured")
+            if type(intent) is not LimitOrderIntent:
+                raise EngineBoundaryError("native LIMIT advance requires frozen 0.5.0 intent")
+            if intent.intent_id in self._limit_intent_ids:
+                raise EngineBoundaryError("duplicate native LIMIT intent identity")
+            if intent.decision_ts_ns != self._last_ts:
+                raise EngineBoundaryError("LIMIT intent decision timestamp differs from session barrier")
+            if intent.effective_ts_ns > next_decision_ts_ns:
+                raise EngineBoundaryError("LIMIT intent is not effective by the next decision barrier")
+            prepared = self._preflight(batches, end_ts_ns=next_decision_ts_ns)
+            if (intent.kind is OrderIntentKind.LIMIT
+                    and any(batch.timestamp_ns < intent.effective_ts_ns for batch, _ in prepared)):
+                raise EngineBoundaryError("visible native batch precedes LIMIT intent effectiveness")
+            if (intent.kind is OrderIntentKind.CANCEL
+                    and intent.effective_ts_ns not in {batch.timestamp_ns for batch, _ in prepared}):
+                raise EngineBoundaryError("native cancel effectiveness must align with a replay batch")
+            live = self._native_facts().orders
+            if intent.kind is OrderIntentKind.LIMIT and live:
+                raise EngineBoundaryError("native pending orders must resolve before new LIMIT submit")
+            self._limit_intent_ids.add(intent.intent_id)  # reserve before native side effects
+            self._submit_limit_intent(self._engine, intent, self._last_ts)
+            self._replay(prepared)
+            return self.snapshot()
+        except BaseException:
+            self.close()
+            raise
+
     def snapshot(self) -> Any:
         if self._state not in {"RUNNING", "DRAINING"}:
             raise EngineBoundaryError("native snapshot only at stable decision barrier")
@@ -554,7 +604,17 @@ class EngineSession:
                     raise EngineBoundaryError("terminal pending orders require CANCEL or existing ACK wait")
                 self._action_ids.add(cancel_plan.idempotency_key)
                 if cancellation == "CANCEL":
-                    self._submit(self._engine, cancel_plan)
+                    handled = False
+                    if self._cancel_limit_orders is not None:
+                        handled = self._cancel_limit_orders(
+                            self._engine, tuple(cancel_plan.cancel_order_ids),
+                        )
+                        if type(handled) is not bool:
+                            raise EngineBoundaryError(
+                                "native terminal LIMIT cancellation callback must return bool",
+                            )
+                    if not handled:
+                        self._submit(self._engine, cancel_plan)
                 self._replay(prepared_cancel)
                 if self._native_facts().orders:
                     raise EngineBoundaryError("terminal cancellation not acknowledged")
@@ -608,7 +668,7 @@ def _create_engine(settings: Mapping[str, object]) -> EngineSession:
         "build_native", "submit_plan", "decode_event", "facts_reader",
         "contract_snapshot_factory", "certified_barrier_protocol",
     }
-    optional = {"prepare_submit"}
+    optional = {"prepare_submit", "submit_limit_intent", "cancel_limit_orders"}
     if not required <= set(settings) or set(settings) - required - optional:
         raise ValueError("engine provider settings must match the frozen constructor fields")
     return EngineSession(**settings)  # type: ignore[arg-type]

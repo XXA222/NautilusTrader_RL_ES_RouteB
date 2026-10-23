@@ -18,20 +18,6 @@ class ArtifactError(RuntimeError):
     pass
 
 
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f'duplicate JSON object key: {key}')
-        result[key] = value
-    return result
-
-
-
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f'non-standard JSON constant: {value}')
-
-
 def _canonical(data: object) -> bytes:
     return json.dumps(data,sort_keys=True,separators=(',',':'),allow_nan=False,ensure_ascii=False).encode('utf-8')
 
@@ -161,11 +147,8 @@ class ArtifactStore:
             raise ArtifactError('attempt is not committed')
         try:
             index_data=(directory/'integrity.json').read_bytes()
-            record=json.loads(index_data, object_pairs_hook=_unique_json_object,
-                              parse_constant=_reject_json_constant)
-            marker=json.loads((directory/'COMPLETED').read_bytes(),
-                               object_pairs_hook=_unique_json_object,
-                               parse_constant=_reject_json_constant)
+            record=json.loads(index_data)
+            marker=json.loads((directory/'COMPLETED').read_bytes())
         except (OSError,ValueError) as exc:
             raise ArtifactError('invalid marker/index') from exc
         if marker!={'integrity_sha256':_digest(index_data),'state':'COMPLETED'}:
@@ -208,9 +191,7 @@ class ArtifactStore:
         if record.get('manifest_sha256')!=files['manifest.json']:
             raise ArtifactError('L1 manifest digest mismatch')
         try:
-            manifest=json.loads((directory/'manifest.json').read_bytes(),
-                                object_pairs_hook=_unique_json_object,
-                                parse_constant=_reject_json_constant)
+            manifest=json.loads((directory/'manifest.json').read_bytes())
         except (OSError,ValueError) as exc:
             raise ArtifactError('unreadable L1 experiment manifest') from exc
         if not isinstance(manifest,dict) or not _HASH_FIELDS.issubset(manifest) or any(

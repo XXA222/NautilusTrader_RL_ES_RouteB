@@ -5,6 +5,7 @@ Dependency-free import surface: no NautilusTrader, SB3, EvoTorch or torch import
 
 from .schema import CONTRACT_VERSION, PROTOCOL_VERSION
 from .registry import ProviderDescriptor, ProviderRegistry
+from .limit_execution import LimitInstrumentRules, LimitOrderIntent, OrderIntentKind
 
 __version__ = "0.4.0"
 __all__ = [
@@ -13,4 +14,7 @@ __all__ = [
     "PROTOCOL_VERSION",
     "ProviderDescriptor",
     "ProviderRegistry",
+    "LimitInstrumentRules",
+    "LimitOrderIntent",
+    "OrderIntentKind",
 ]

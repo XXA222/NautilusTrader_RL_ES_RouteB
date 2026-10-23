@@ -13,18 +13,15 @@ import shutil
 import subprocess
 import tempfile
 import time
-from collections.abc import Iterator
-from contextlib import contextmanager
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 from uuid import uuid4
-from zipfile import BadZipFile, LargeZipFile, ZipFile
+from zipfile import ZipFile
 
 from .core import Availability, CuratedStore, DataError, Event, MINUTE_NS
 from .io import write_curated, write_fact_json
-from .json_utils import loads_unique_json
 
 BASE = "https://data.binance.vision/data/futures/um/"
 
@@ -49,84 +46,6 @@ def _read_with_curl(url: str, *, limit: int, temp_parent: Path | None = None) ->
         if len(content) > limit:
             raise DataError("archive exceeds bounded download size")
         return content
-
-
-@contextmanager
-def _open_archive(content: bytes) -> Iterator[ZipFile]:
-    """Normalize malformed or unreadable ZIP containers at the data boundary."""
-    try:
-        with ZipFile(io.BytesIO(content)) as archive:
-            yield archive
-    except (BadZipFile, LargeZipFile, OSError, EOFError, RuntimeError,
-            NotImplementedError) as exc:
-        raise DataError("invalid or unreadable Binance archive ZIP") from exc
-
-
-def _archive_csv_rows(source: Any, *, stream: str) -> Iterator[list[str]]:
-    """Decode archive CSV strictly and normalize decoder/CSV parser failures."""
-    try:
-        yield from csv.reader(io.TextIOWrapper(source, encoding="utf-8"))
-    except (UnicodeError, csv.Error) as exc:
-        raise DataError(f"invalid {stream} archive CSV encoding or syntax") from exc
-
-
-def _archive_day(value: object, *, field: str) -> date:
-    """Parse one canonical UTC archive date at the public API boundary."""
-    if type(value) is not str:
-        raise DataError(f"{field} must be YYYY-MM-DD")
-    try:
-        parsed = date.fromisoformat(value)
-    except ValueError as exc:
-        raise DataError(f"{field} must be YYYY-MM-DD") from exc
-    if parsed.isoformat() != value:
-        raise DataError(f"{field} must be YYYY-MM-DD")
-    return parsed
-
-
-def _archive_delay(value: object) -> int:
-    """Validate the explicit market-data availability delay at ingress."""
-    if type(value) is not int or value <= 0:
-        raise DataError("archive ingress requires an explicit positive availability delay")
-    return value
-
-
-def _archive_symbol(value: object) -> str:
-    """Validate a Binance symbol before constructing archive URLs."""
-    if type(value) is not str or re.fullmatch(r"[A-Z0-9]{3,24}", value) is None:
-        raise DataError("invalid Binance symbol")
-    return value
-
-
-def _archive_instrument(value: object) -> str | None:
-    """Validate the optional canonical instrument argument before fetching."""
-    if value is not None and (type(value) is not str or not value
-                              or value != value.strip()):
-        raise DataError("instrument must be a nonempty trimmed string when provided")
-    return value
-
-
-def _archive_int(value: str, *, field: str) -> int:
-    """Parse the unsigned ASCII integer form used by archive fields."""
-    if not isinstance(value, str) or re.fullmatch(r"[0-9]+", value) is None:
-        raise DataError(f"invalid {field} ASCII integer field")
-    try:
-        return int(value)
-    except (TypeError, ValueError) as exc:
-        raise DataError(f"invalid {field} ASCII integer field") from exc
-
-
-def _archive_decimal(value: str, *, field: str, signed: bool = False) -> Decimal:
-    """Parse the ASCII fixed-point form used by USD-M archive numeric fields."""
-    pattern = r"-?[0-9]+(?:\.[0-9]+)?" if signed else r"[0-9]+(?:\.[0-9]+)?"
-    if not isinstance(value, str) or re.fullmatch(pattern, value) is None:
-        raise DataError(f"invalid {field} ASCII decimal field")
-    try:
-        parsed = Decimal(value)
-    except InvalidOperation as exc:
-        raise DataError(f"invalid {field} ASCII decimal field") from exc
-    if not parsed.is_finite():
-        raise DataError(f"invalid {field} ASCII decimal field")
-    return parsed
 
 
 def _read_remote(url: str, *, limit: int, temp_parent: Path | None = None) -> bytes:
@@ -155,28 +74,8 @@ def _read_remote(url: str, *, limit: int, temp_parent: Path | None = None) -> by
     raise DataError("archive download retry loop ended unexpectedly")
 
 
-def _archive_size_limit(relative_url: str) -> int:
-    """Return the bounded uncompressed download size for a supported archive."""
-    return (128 * 1024 * 1024 if any(stream in relative_url
-                                     for stream in ("/bookTicker/", "/aggTrades/"))
-            else 64 * 1024 * 1024)
-
-
-def _archive_relative_url(value: object) -> str:
-    """Reject URL syntax and traversal before composing the fixed Binance origin."""
-    if (type(value) is not str or not value
-            or re.fullmatch(r"[A-Za-z0-9._/-]+", value) is None):
-        raise DataError("archive path must be a safe relative URL path")
-    parts = value.split("/")
-    if (parts[0] not in {"daily", "monthly"}
-            or any(part in {"", ".", ".."} for part in parts)):
-        raise DataError("archive path must be a safe relative URL path")
-    return value
-
-
 def fetch_archive(relative_url: str, destination: Path) -> dict:
     """Cache source bytes only after validating the exchange-published checksum."""
-    relative_url = _archive_relative_url(relative_url)
     destination.parent.mkdir(parents=True, exist_ok=True)
     url = BASE + relative_url
     source_receipt = destination.with_suffix(destination.suffix + ".source.json")
@@ -186,8 +85,8 @@ def fetch_archive(relative_url: str, destination: Path) -> dict:
         if not destination.is_file() or not source_receipt.is_file():
             raise DataError("cached archive source receipt has no regular archive file")
         try:
-            saved = loads_unique_json(source_receipt.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, ValueError, TypeError) as exc:
+            saved = json.loads(source_receipt.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise DataError("cached archive source receipt is unreadable") from exc
         if (not isinstance(saved, dict) or set(saved) != {"schema", "url", "sha256"}
                 or saved["schema"] != "rles.binance-archive-source.v1"
@@ -195,7 +94,9 @@ def fetch_archive(relative_url: str, destination: Path) -> dict:
                 or not isinstance(saved["sha256"], str)
                 or re.fullmatch(r"[0-9a-f]{64}", saved["sha256"]) is None):
             raise DataError("cached archive source receipt identity is invalid")
-        size_limit = _archive_size_limit(relative_url)
+        size_limit = (128 * 1024 * 1024 if any(stream in relative_url
+                                               for stream in ("/bookTicker/", "/aggTrades/"))
+                      else 64 * 1024 * 1024)
         if destination.stat().st_size > size_limit:
             raise DataError("cached archive exceeds bounded importer size")
         content_hash = sha256(destination.read_bytes()).hexdigest()
@@ -203,20 +104,16 @@ def fetch_archive(relative_url: str, destination: Path) -> dict:
             raise DataError("cached archive differs from its verified source receipt")
         return {"path": str(destination.resolve()), "url": url, "sha256": content_hash}
 
-    checksum_bytes = _read_remote(url + ".CHECKSUM", limit=1024,
-                                  temp_parent=destination.parent)
-    try:
-        checksum = checksum_bytes.decode("ascii").split()
-    except UnicodeDecodeError as exc:
-        raise DataError("Binance archive checksum is not valid ASCII") from exc
+    checksum = _read_remote(url + ".CHECKSUM", limit=1024,
+                            temp_parent=destination.parent).decode("ascii").split()
     if len(checksum) != 2 or re.fullmatch(r"[0-9a-f]{64}", checksum[0]) is None:
         raise DataError("invalid Binance archive checksum")
     if checksum[1].lstrip("*") != relative_url.rsplit("/", 1)[-1]:
         raise DataError("Binance checksum names a different archive")
-    size_limit = _archive_size_limit(relative_url)
+    size_limit = (128 * 1024 * 1024 if any(stream in relative_url
+                                           for stream in ("/bookTicker/", "/aggTrades/"))
+                  else 64 * 1024 * 1024)
     if destination.exists():
-        if destination.stat().st_size > size_limit:
-            raise DataError("cached archive exceeds bounded importer size")
         content = destination.read_bytes()
     else:
         content = _read_remote(url, limit=size_limit, temp_parent=destination.parent)
@@ -255,33 +152,15 @@ def _raw_cache_only(target: Path) -> bool:
 
 
 def archive_events(path: Path, *, stream: str, instrument: str, source_url: str,
-                   expected_sha256: str, delay_ns: int,
-                   market_payload_cutoff_ns: int | None = None,
-                   market_event_end_ns: int | None = None) -> tuple[Event, ...]:
+                   expected_sha256: str, delay_ns: int) -> tuple[Event, ...]:
     """Use closed bars, and realized funding only after its source timestamp.
 
     Archives do not contain historical receipt/publication clocks. A positive
     declared delay is therefore marked DERIVED, never NATIVE. The funding
     feature is the last *settled* rate; it is not a future funding forecast.
     """
-    delay_ns = _archive_delay(delay_ns)
-    sealed = market_payload_cutoff_ns is not None or market_event_end_ns is not None
-    payload_cutoff_ns: int | None
-    event_end_ns: int | None
-    if sealed:
-        if (stream != "klines"
-                or type(market_payload_cutoff_ns) is not int
-                or type(market_event_end_ns) is not int):
-            raise DataError(
-                "sealed market import requires aligned kline cutoff and event-end timestamps")
-        payload_cutoff_ns = market_payload_cutoff_ns
-        event_end_ns = market_event_end_ns
-        if (payload_cutoff_ns < 0 or event_end_ns < payload_cutoff_ns
-                or payload_cutoff_ns % MINUTE_NS or event_end_ns % MINUTE_NS):
-            raise DataError(
-                "sealed market import requires aligned kline cutoff and event-end timestamps")
-    else:
-        payload_cutoff_ns = event_end_ns = None
+    if type(delay_ns) is not int or delay_ns <= 0:
+        raise DataError("archive ingress requires an explicit positive availability delay")
     if stream not in {"klines", "markPriceKlines", "indexPriceKlines", "fundingRate",
                       "bookTicker", "aggTrades"}:
         raise DataError("unsupported Binance USD-M stream")
@@ -289,7 +168,7 @@ def archive_events(path: Path, *, stream: str, instrument: str, source_url: str,
     if sha256(content).hexdigest() != expected_sha256:
         raise DataError("archive changed after verification")
     result = []
-    with _open_archive(content) as archive:
+    with ZipFile(io.BytesIO(content)) as archive:
         members = archive.infolist()
         member_limit = 1024 * 1024 * 1024 if stream in {"bookTicker", "aggTrades"} else 128 * 1024 * 1024
         if len(members) != 1 or not members[0].filename.endswith(".csv") or members[0].file_size > member_limit:
@@ -307,14 +186,8 @@ def archive_events(path: Path, *, stream: str, instrument: str, source_url: str,
                 def emit_quote(row: list[str], row_number: int) -> Event:
                     if len(row) != 7:
                         raise DataError("unexpected bookTicker archive columns")
-                    for value, field in ((row[1], "bookTicker bid price"),
-                                         (row[2], "bookTicker bid quantity"),
-                                         (row[3], "bookTicker ask price"),
-                                         (row[4], "bookTicker ask quantity")):
-                        _archive_decimal(value, field=field)
-                    update_id = _archive_int(row[0], field="bookTicker update ID")
-                    transaction_ms = _archive_int(row[5], field="bookTicker transaction time")
-                    event_ms = _archive_int(row[6], field="bookTicker event time")
+                    update_id = int(row[0])
+                    transaction_ms, event_ms = int(row[5]), int(row[6])
                     if update_id < 0 or transaction_ms < 0 or event_ms < 0:
                         raise DataError("invalid bookTicker identity or timestamp")
                     ts = event_ms * 1_000_000
@@ -327,12 +200,12 @@ def archive_events(path: Path, *, stream: str, instrument: str, source_url: str,
                         source_url + "#last-event-time-quote-per-second",
                     )
 
-                for number, row in enumerate(_archive_csv_rows(source, stream=stream)):
+                for number, row in enumerate(csv.reader(io.TextIOWrapper(source, encoding="utf-8"))):
                     if number == 0 and row and row[0] == "update_id":
                         continue
                     if len(row) != 7:
                         raise DataError("unexpected bookTicker archive columns")
-                    event_ms = _archive_int(row[6], field="bookTicker event time")
+                    event_ms = int(row[6])
                     if event_ms < previous_event_ms:
                         raise DataError("bookTicker event timestamps are not ordered")
                     previous_event_ms = event_ms
@@ -379,21 +252,19 @@ def archive_events(path: Path, *, stream: str, instrument: str, source_url: str,
                         source_url + "#one-second-aggressor-flow",
                     )
 
-                for number, row in enumerate(_archive_csv_rows(source, stream=stream)):
+                for number, row in enumerate(csv.reader(io.TextIOWrapper(source, encoding="utf-8"))):
                     if number == 0 and row and row[0] == "agg_trade_id":
                         continue
                     if len(row) != 7:
                         raise DataError("unexpected USD-M aggTrades archive columns")
-                    trade_id = _archive_int(row[0], field="aggTrades trade ID")
-                    first_id = _archive_int(row[3], field="aggTrades first trade ID")
-                    last_id = _archive_int(row[4], field="aggTrades last trade ID")
-                    event_ms = _archive_int(row[5], field="aggTrades event time")
-                    price = _archive_decimal(row[1], field="aggTrades price")
-                    quantity = _archive_decimal(row[2], field="aggTrades quantity")
+                    try:
+                        trade_id, price, quantity = int(row[0]), Decimal(row[1]), Decimal(row[2])
+                        first_id, last_id, event_ms = int(row[3]), int(row[4]), int(row[5])
+                    except (ValueError, InvalidOperation) as exc:
+                        raise DataError("invalid USD-M aggTrades identity, price, or quantity") from exc
                     maker_flag = row[6].strip().lower()
                     if (maker_flag not in {"true", "false"} or trade_id < 0 or first_id < 0
-                            or last_id < first_id or not price.is_finite()
-                            or not quantity.is_finite() or price <= 0 or quantity <= 0
+                            or last_id < first_id or price <= 0 or quantity <= 0
                             or event_ms < previous_event_ms or trade_id <= previous_trade_id):
                         raise DataError("USD-M aggTrades identity, order, or value is invalid")
                     previous_event_ms, previous_trade_id = event_ms, trade_id
@@ -423,17 +294,16 @@ def archive_events(path: Path, *, stream: str, instrument: str, source_url: str,
                 if current_bucket is not None and aggregate is not None:
                     result.append(emit_flow(current_bucket, aggregate))
                 return tuple(result)
-            for number, row in enumerate(_archive_csv_rows(source, stream=stream)):
+            for number, row in enumerate(csv.reader(io.TextIOWrapper(source, encoding="utf-8"))):
                 if number == 0 and row and row[0] in {"open_time", "calc_time"}:
                     continue
                 if stream == "fundingRate":
                     if len(row) != 3:
                         raise DataError("unexpected funding archive columns")
-                    ts = _archive_int(row[0], field="funding timestamp") * 1_000_000
-                    interval = _archive_int(row[1], field="funding interval") * 60
+                    ts = int(row[0]) * 1_000_000
+                    interval = int(row[1]) * 60
                     if interval <= 0:
                         raise DataError("invalid funding interval")
-                    _archive_decimal(row[2], field="funding rate", signed=True)
                     payloads: dict[str, dict[str, Any]] = {
                         "funding_settlement": {"rate": row[2], "settlement_ns": ts, "interval_minutes": interval},
                         "funding_update": {"rate": row[2], "rate_semantics": "last_settled_rate"},
@@ -441,26 +311,12 @@ def archive_events(path: Path, *, stream: str, instrument: str, source_url: str,
                 else:
                     if len(row) != 12:
                         raise DataError("unexpected kline archive columns")
-                    opened = _archive_int(row[0], field="kline open time") * 1_000_000
+                    opened = int(row[0]) * 1_000_000
                     ts = opened + MINUTE_NS
-                    close_time = _archive_int(row[6], field="kline close time") * 1_000_000
-                    if opened % MINUTE_NS or close_time != ts - 1_000_000:
+                    if opened % MINUTE_NS or int(row[6]) * 1_000_000 != ts - 1_000_000:
                         raise DataError("archive is not an aligned one-minute closed candle")
                     if stream == "klines":
-                        for value, field in zip(
-                                row[1:6], ("open", "high", "low", "close", "volume")):
-                            _archive_decimal(value, field=f"kline {field}")
-                    else:
-                        _archive_decimal(row[4], field=f"{stream} price")
-                    if stream == "klines":
-                        if event_end_ns is not None and ts > event_end_ns:
-                            continue
-                        if payload_cutoff_ns is not None and ts >= payload_cutoff_ns:
-                            # Keep timestamp-only footer coverage; never publish sealed OHLCV values.
-                            payloads = {"coverage_marker": {
-                                "coverage_of": "ohlcv_1m", "market_payload_decoded": False}}
-                        else:
-                            payloads = {"ohlcv_1m": dict(zip(("open", "high", "low", "close", "volume"), row[1:6]))}
+                        payloads = {"ohlcv_1m": dict(zip(("open", "high", "low", "close", "volume"), row[1:6]))}
                     else:
                         payloads = {"mark" if stream == "markPriceKlines" else "index": {"price": row[4]}}
                 for kind, payload in payloads.items():
@@ -486,8 +342,8 @@ def funding_api_events(content: bytes, *, symbol: str, instrument: str, source_u
     if sha256(content).hexdigest() != expected_sha256:
         raise DataError("funding API response changed after capture")
     try:
-        rows = loads_unique_json(content)
-    except (UnicodeError, ValueError, TypeError) as exc:
+        rows = json.loads(content)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise DataError("funding API response is not valid JSON") from exc
     if not isinstance(rows, list) or not rows:
         raise DataError("funding API response must contain at least one settlement")
@@ -540,8 +396,8 @@ def fetch_funding_api(symbol: str, month: date, end_day: date, raw: Path) -> tup
         if not destination.is_file() or not receipt_path.is_file():
             raise DataError("cached funding API source receipt has no response file")
         try:
-            receipt = loads_unique_json(receipt_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, ValueError, TypeError) as exc:
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise DataError("cached funding API source receipt is unreadable") from exc
         content = destination.read_bytes()
         digest = sha256(content).hexdigest()
@@ -567,10 +423,11 @@ def fetch_funding_api(symbol: str, month: date, end_day: date, raw: Path) -> tup
 def import_day(*, symbol: str, day: str, output: str | Path, delay_ns: int,
                instrument: str | None = None, include_bookticker: bool = False,
                include_agg_trades: bool = False) -> dict:
-    symbol = _archive_symbol(symbol)
-    instrument = _archive_instrument(instrument)
-    _archive_day(day, field="day")
-    delay_ns = _archive_delay(delay_ns)
+    if re.fullmatch(r"[A-Z0-9]{3,24}", symbol) is None:
+        raise DataError("invalid Binance symbol")
+    parsed_day = date.fromisoformat(day)
+    if parsed_day.isoformat() != day:
+        raise DataError("day must be YYYY-MM-DD")
     if type(include_bookticker) is not bool:
         raise DataError("include_bookticker must be an explicit boolean")
     if type(include_agg_trades) is not bool:
@@ -643,13 +500,11 @@ def import_range(*, symbol: str, start_day: str, end_day: str,
     files are fetched once per month and clipped to the imported bars. No
     instrument rules are inferred or inserted.
     """
-    symbol = _archive_symbol(symbol)
-    instrument = _archive_instrument(instrument)
-    first = _archive_day(start_day, field="start_day")
-    last = _archive_day(end_day, field="end_day")
-    if last < first:
+    if re.fullmatch(r"[A-Z0-9]{3,24}", symbol) is None:
+        raise DataError("invalid Binance symbol")
+    first, last = date.fromisoformat(start_day), date.fromisoformat(end_day)
+    if first.isoformat() != start_day or last.isoformat() != end_day or last < first:
         raise DataError("range must use ordered YYYY-MM-DD start/end dates")
-    delay_ns = _archive_delay(delay_ns)
     if type(include_bookticker) is not bool:
         raise DataError("include_bookticker must be an explicit boolean")
     if type(include_agg_trades) is not bool:

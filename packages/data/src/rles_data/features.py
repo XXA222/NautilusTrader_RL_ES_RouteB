@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cached_property
 from itertools import groupby
 from bisect import bisect_left, bisect_right
 import math
 import struct
-from typing import TYPE_CHECKING, ClassVar, Iterable, cast
+from typing import Iterable, cast
 
 from .core import (CuratedStore, DataError, FeatureField, FeatureSpec,
                    MAX_NS, MINUTE_NS, Window, digest, require_ns)
@@ -219,17 +220,11 @@ def _assert_contiguous(bars: tuple[dict, ...] | list[dict], timeframe: int) -> N
 
 @dataclass(frozen=True)
 class FeatureRow:
-    __slots__ = ("schema_hash", "decision_ts_ns", "available_at_ns", "instrument",
-                 "values", "_bound_hash")
-
     schema_hash: str
     decision_ts_ns: int
     available_at_ns: int
     instrument: str
     values: tuple[float, ...]
-
-    if TYPE_CHECKING:
-        _bound_hash: ClassVar[str]
 
     def __post_init__(self) -> None:
         from .core import require_hash
@@ -241,23 +236,10 @@ class FeatureRow:
                 any(type(value) not in (float, int) or not math.isfinite(value) for value in self.values) or
                 self.available_at_ns > self.decision_ts_ns):
             raise DataError("future or non-finite feature observation")
-        object.__setattr__(self, "_bound_hash", digest(self))
 
-    def __getstate__(self) -> dict[str, object]:
-        return {name: getattr(self, name) for name in self.__slots__}
-
-    def __setstate__(self, state: dict[str, object]) -> None:
-        if not isinstance(state, dict) or set(state) != set(self.__slots__):
-            raise DataError("invalid serialized feature row state")
-        for name, value in state.items():
-            object.__setattr__(self, name, value)
-
-    @property
+    @cached_property
     def hash(self) -> str:
-        current = digest(self)
-        if current != self._bound_hash:
-            raise DataError("feature row mutated after construction")
-        return self._bound_hash
+        return digest(self)
 
 
 def make_feature_row(store: CuratedStore, spec: FeatureSpec, decision_ns: int,
@@ -451,4 +433,3 @@ def fit_train(spec: FeatureSpec, window: Window,
     stds = tuple(max(math.sqrt(math.fsum((x - m)**2 for x in col) / len(col)), 1e-12)
                  for col, m in zip(cols, means))
     return Scaler(spec.hash, means, stds, digest(window), len(rows))
-

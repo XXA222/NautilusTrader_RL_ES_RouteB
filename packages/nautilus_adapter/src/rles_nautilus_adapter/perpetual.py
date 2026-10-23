@@ -76,7 +76,8 @@ def _effective_fee_rates(rule: Mapping[str, Any], execution: Any, mode: str) -> 
 
 
 def make_perpetual_session(*, rule: Mapping[str, Any], execution: Any, mode: str,
-                           starting_balance: Decimal,
+                           starting_balance: Decimal, base_currency: str = "ETH",
+                           quote_currency: str = "USDT",
                            record_snapshot: Callable[[Any], None] | None = None,
                            record_fill_reference: Callable | None = None,
                            compact_native_history: bool = False) -> EngineSession:
@@ -93,13 +94,6 @@ def make_perpetual_session(*, rule: Mapping[str, Any], execution: Any, mode: str
     if not isinstance(price_exponent, int) or not isinstance(size_exponent, int):
         raise ValueError("finite decimal increments required")
     instrument_id = InstrumentId.from_str(rule["instrument"])
-    base_currency = rule["base_currency"]
-    quote_currency = rule["quote_currency"]
-    if rule.get("quantity_unit") != base_currency:
-        raise EngineBoundaryError("linear perpetual quantity unit differs from its base currency")
-    expected_symbol = f"{base_currency}{quote_currency}-PERP"
-    if instrument_id.symbol.value != expected_symbol:
-        raise EngineBoundaryError("native perpetual symbol conflicts with frozen base/quote currencies")
     quote = Currency.from_str(quote_currency)
     if str(instrument_id.venue) != "SIM" or starting_balance <= 0:
         raise ValueError("offline perpetual replay requires SIM venue and positive capital")
@@ -110,7 +104,6 @@ def make_perpetual_session(*, rule: Mapping[str, Any], execution: Any, mode: str
         price_precision=max(0, -price_exponent),
         size_precision=max(0, -size_exponent),
         price_increment=Price.from_str(str(price_tick)), size_increment=Quantity.from_str(str(size_step)),
-        multiplier=Quantity.from_str(str(rule["contract_multiplier"])),
         min_quantity=Quantity.from_str(str(rule["min_qty"])),
         min_notional=Money.from_str(f"{rule['min_notional']} {quote_currency}"),
         margin_init=Decimal(rule["initial_margin_rate"]), margin_maint=Decimal(rule["maintenance_margin_rate"]),

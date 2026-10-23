@@ -12,8 +12,7 @@ import tempfile
 import numpy as np
 from .market import MarketSequence,Candle,MINUTE_NS
 from .codec import OHLCVCodec,TrainOnlyStandardizer
-from .sequences import (RISK_BARRIER_VOLATILITY_QUANTILE,make_windows,
-                        export_train_sequences)
+from .sequences import make_windows,export_train_sequences
 from ..contracts import MarketReplay
 from .jax_model import PINNED_UPSTREAM
 from .jax_train import SNAPSHOT_SHA
@@ -79,9 +78,6 @@ def prepare_fold_train_sequences(*,fold_replay:MarketReplay,fold,
         "train_score_bars":int(train_score_mask.sum()),
         "loss_target_count":int(batch.masks.sum()),
         "train_windows":len(batch.features),"window_length":length,
-        "risk_horizons":list(batch.risk_horizons),
-        "risk_barrier_fractions":batch.risk_barrier_fractions.tolist(),
-        "risk_barrier_volatility_quantile":RISK_BARRIER_VOLATILITY_QUANTILE,
         "burn_in":burn_in,"validation_payload_in_worker":False,
         "test_payload_in_worker":False,
     }
@@ -180,8 +176,7 @@ def prepare_forecast_context(*,visible_history:tuple[Candle,...],
 def prepare_fold_forecast_batch(*,fold_replay:MarketReplay,fold,
         frozen_scaler:TrainOnlyStandardizer,train_scope_id:str,train_npz_sha256:str,
         output_context_npz:Path,output_request_json:Path,horizon:int,n_paths:int,
-        seed:int,anchor_interval_minutes:int=15,context_lookback:int=128,
-        anchor_start_ns:int|None=None)->dict:
+        seed:int,anchor_interval_minutes:int=15,context_lookback:int=128)->dict:
     """Materialize one causal, ordered Validation-anchor batch for the JAX worker.
 
     ``fold_replay`` must come from the registered Fold reader and end at
@@ -208,9 +203,7 @@ def prepare_fold_forecast_batch(*,fold_replay:MarketReplay,fold,
             or type(n_paths) is not int or not 2<=n_paths<=1024
             or type(seed) is not int or seed<0
             or type(anchor_interval_minutes) is not int or anchor_interval_minutes<1
-            or type(context_lookback) is not int or context_lookback<3
-            or (anchor_start_ns is not None and
-                (type(anchor_start_ns) is not int or anchor_start_ns%MINUTE_NS))):
+            or type(context_lookback) is not int or context_lookback<3):
         raise ValueError("forecast batch size or Validation protocol is outside supported bounds")
     output_context_npz=Path(output_context_npz).resolve()
     output_request_json=Path(output_request_json).resolve()
@@ -222,28 +215,19 @@ def prepare_fold_forecast_batch(*,fold_replay:MarketReplay,fold,
     times=np.asarray([frame.ts_close_ns for frame in frames],dtype=np.int64)
     by_time={int(timestamp):index for index,timestamp in enumerate(times)}
     max_horizon=horizon
-    first_anchor=(fold.validation.score_start_ns-MINUTE_NS
-                  if anchor_start_ns is None else anchor_start_ns)
+    first_anchor=fold.validation.score_start_ns-MINUTE_NS
     last_anchor=fold.validation.score_end_ns-max_horizon*MINUTE_NS
-    if anchor_start_ns is not None and first_anchor<fold.validation.score_start_ns:
-        raise ValueError("explicit anchor grid cannot precede the Validation scoring interval")
     stride=anchor_interval_minutes*MINUTE_NS
     anchors=np.arange(first_anchor,last_anchor+1,stride,dtype=np.int64)
     if anchors.size<1:
         raise ValueError("Validation interval has no complete forecast anchors")
-    contexts=[]; close_times=[]; availability=[]; anchor_closes=[]; decision_times=[]
+    contexts=[]; close_times=[]; availability=[]; anchor_closes=[]
     for anchor in anchors:
         anchor_index=by_time.get(int(anchor))
         if anchor_index is None or anchor_index+1<context_lookback:
             raise ValueError("authorized replay lacks complete causal lookback at a Validation anchor")
-        anchor_frame=frames[anchor_index]
-        first_future=frames[anchor_index+1]
-        decision_ns=anchor_frame.available_at_ns
-        if (anchor_frame.ts_close_ns!=int(anchor) or decision_ns<int(anchor)
-                or decision_ns>=first_future.available_at_ns):
-            raise ValueError("anchor decision clock must follow availability and precede the first target")
         selected=frames[anchor_index-context_lookback+1:anchor_index+1]
-        if any(frame.available_at_ns>decision_ns or frame.ts_close_ns>int(anchor)
+        if any(frame.available_at_ns>int(anchor) or frame.ts_close_ns>int(anchor)
                for frame in selected):
             raise ValueError("future or unavailable Validation candle entered a forecast context")
         candles=tuple(Candle(frame.ts_close_ns,frame.available_at_ns,frame.instrument,
@@ -254,16 +238,13 @@ def prepare_fold_forecast_batch(*,fold_replay:MarketReplay,fold,
         close_times.append([bar.ts_close_ns for bar in candles[1:]])
         availability.append([bar.available_at_ns for bar in candles[1:]])
         anchor_closes.append(candles[-1].close)
-        decision_times.append(decision_ns)
     histories=np.asarray(contexts,dtype=np.float32)
     context_closes=np.asarray(close_times,dtype=np.int64)
     context_availability=np.asarray(availability,dtype=np.int64)
-    context_decisions=np.asarray(decision_times,dtype=np.int64)
     with tempfile.NamedTemporaryFile(dir=output_context_npz.parent,suffix=".npz",delete=False) as temp:
         tmp_context=Path(temp.name)
         np.savez_compressed(temp,histories=histories,scaler_mean=frozen_scaler.mean,
             scaler_std=frozen_scaler.std,anchor_timestamps_ns=anchors,
-            decision_timestamps_ns=context_decisions,
             close_timestamps=context_closes,available_timestamps=context_availability,
             anchor_closes=np.asarray(anchor_closes,dtype=np.float64))
     try:
@@ -276,8 +257,7 @@ def prepare_fold_forecast_batch(*,fold_replay:MarketReplay,fold,
         "context_sha256":context_sha256,"scaler_sha256":frozen_scaler.fingerprint,
         "horizon":horizon,"n_paths":n_paths,"seed":seed,
         "train_npz_sha256":train_npz_sha256,"instrument":frames[0].instrument,
-        "anchor_timestamps_ns":[int(value) for value in anchors],
-        "decision_timestamps_ns":[int(value) for value in context_decisions]}
+        "anchor_timestamps_ns":[int(value) for value in anchors]}
     tmp_request=output_request_json.with_suffix(".json.partial")
     tmp_request.write_text(json.dumps(request,sort_keys=True),encoding="utf-8")
     os.replace(tmp_request,output_request_json)

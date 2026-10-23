@@ -6,6 +6,7 @@ from hashlib import sha256
 from pathlib import Path
 from collections.abc import Mapping
 from typing import Any, cast
+import json
 import math
 import os
 import shutil
@@ -16,7 +17,6 @@ import torch
 from torch import nn
 
 from .config import RLConfig, canonical_json, digest
-from .json_utils import loads_unique_json
 from .errors import ActorActionParityMismatch, ArtifactError, ContractError, TransferBlocked
 from .normalize import export_stats
 
@@ -352,16 +352,10 @@ class InferenceActor:
                 raise ArtifactError("Malformed L0 artifact")
             if (root / "COMPLETED").read_text("ascii") != _sha(root / "integrity.json"):
                 raise ArtifactError("L0 integrity marker mismatch")
-            try:
-                ledger = loads_unique_json((root / "integrity.json").read_bytes())
-            except (OSError, UnicodeError, ValueError) as exc:
-                raise ArtifactError("L0 integrity JSON is invalid or ambiguous") from exc
+            ledger = json.loads((root / "integrity.json").read_bytes())
             if ledger != {p: _sha(root / p) for p in ("weights.npz", "actor.json")}:
                 raise ArtifactError("L0 file digests mismatch")
-        try:
-            data = loads_unique_json((root / "actor.json").read_bytes())
-        except (OSError, UnicodeError, ValueError) as exc:
-            raise ArtifactError("L0 actor JSON is invalid or ambiguous") from exc
+        data = json.loads((root / "actor.json").read_bytes())
         if data.get("schema") != "rles.l4.inference.v1" or data.get("mapping", {}).get("schema") != "rles.l4.actor.mapping.v1":
             raise ArtifactError("Unknown L0 schema")
         signature = data["mapping"].pop("actor_signature")
