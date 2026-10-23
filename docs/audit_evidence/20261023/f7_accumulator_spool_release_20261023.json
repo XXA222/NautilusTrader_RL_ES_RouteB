@@ -1,0 +1,18 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "F7 / close online Native metric return spool after finalization",
+  "finding": "When exact tail selection required a disk-backed return sequence, the finalized Native accumulator retained the temporary file handle for as long as its caller retained the accumulator.",
+  "change": "Add an explicit release lifecycle for streaming metric storage. After a Native report is fully assembled, release the bounded tail heap or close the disk-backed return spool and drop the prior normalized account row. Released account accumulators reject subsequent updates or result calls.",
+  "verification": {
+    "source_selector": "tests/test_native_report_accumulator_parity.py tests/test_research_metrics.py: 132 passed",
+    "ruff": "passed for metrics.py, native_metrics.py, and test_native_report_accumulator_parity.py",
+    "mypy": "passed for metrics.py and native_metrics.py",
+    "spool_lifecycle_regression": "A 200,000-return declared-capacity Native accumulator used a live disk spool before finish; successful finish returned the expected two-observation metrics and closed the spool file."
+  },
+  "source_sha256": {
+    "packages/research/src/rles_research/metrics.py": "144B1C8E111955E78B2F972A7C8BD121A70110176DFF3EC413DEAD393E452383",
+    "packages/research/src/rles_research/native_metrics.py": "CD8BD9F4B7C198504F28A2569EEC9BCD22A5238F0F11BF1E707BC07A410817A7",
+    "tests/test_native_report_accumulator_parity.py": "886A3D07CD12ED83A2BA2F639FCFD45B51AFE195E92744DF91CA15EB91714FD6"
+  },
+  "boundary": "This verifies the temporary-file lifecycle under a synthetic report. It does not measure full-history process RSS or change the O(n) report facts required by the output contract."
+}

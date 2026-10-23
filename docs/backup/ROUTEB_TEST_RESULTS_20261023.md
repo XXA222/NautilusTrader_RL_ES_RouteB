@@ -14,6 +14,9 @@ is stored under `docs/audit_evidence/20261023/`.
 - After adding post-finalization index release, the Native accumulator parity
   and research metric selector passed **131 tests**; Ruff and MyPy passed for
   the changed source and test files.
+- After adding disk-backed return spool cleanup, the Native accumulator parity
+  and research metric selector passed **132 tests**; Ruff and MyPy passed for
+  both changed research modules.
 - Ruff on changed source and test files: **passed**.
 - MyPy on the changed Native metrics module: **passed**. The changed data,
   Native metrics and historical modules also passed together with package
@@ -45,3 +48,5 @@ files for the complete measurements and source hashes.
 The post-finalization release regression and 10,000-cashflow structural
 measurement are recorded in
 `f7_accumulator_finalize_index_release_20261023.json`.
+The return-spool lifecycle regression is recorded in
+`f7_accumulator_spool_release_20261023.json`.

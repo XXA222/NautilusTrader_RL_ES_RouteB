@@ -2114,3 +2114,13 @@ Evidence: `docs/audit_evidence/20261023/f7_current_source_native_growth_20261023
 **Verification:** Native accumulator parity plus research metric source selector: **131 passed**; Ruff and targeted MyPy pass. In a synthetic 10,000-cashflow run, the timestamp-alignment dict went from 10,000 entries / 294,992 shallow bytes before `finish()` to zero entries / 64 shallow bytes after `finish()`, while all 10,000 output facts remained in the report. Evidence: `docs/audit_evidence/20261023/f7_accumulator_finalize_index_release_20261023.json`.
 
 **Boundary / next cursor:** structural dictionary size is not process RSS; required report facts remain O(n), and the full-history Native RSS/trajectory profile plus real-history Train authorization remain open. Continue the dependency-satisfied A01–A14 source audit.
+
+## 2026-10-23 — F7 release Native metric spool after report finalization
+
+**Finding:** exact online VaR/CVaR may use a temporary disk spool when the declared tail exceeds the bounded heap limit. The finalized report no longer needs that sequence, but a retained Native accumulator kept the temporary handle open.
+
+**Fix:** added a release lifecycle to the streaming metric accumulator. Native report finalization now closes the return spool (or clears the bounded heap) and drops the prior normalized row only after metrics and the complete report have been assembled. Released account accumulators reject later updates or result calls.
+
+**Verification:** Native accumulator parity and research metrics selector: **132 passed**; Ruff and MyPy for both research modules passed. Regression forces the disk-backed path with a declared 200,000-return capacity, verifies the spool is open before `finish()`, confirms the returned metrics, then verifies the spool is closed. Evidence: `docs/audit_evidence/20261023/f7_accumulator_spool_release_20261023.json`.
+
+**Boundary / next cursor:** synthetic lifecycle evidence only; it does not establish full-history RSS or remove required O(n) report facts. Continue A01–A14 local source audit and keep data-authentication, independent-validation, scope, and M4.2 gates unchanged.

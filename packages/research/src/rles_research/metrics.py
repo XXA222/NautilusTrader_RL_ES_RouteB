@@ -243,6 +243,15 @@ class _StreamingSeriesMetrics:
         self.drawdown = max(self.drawdown, 1 - self.path / self.peak)
         self.count = index
 
+    def release(self) -> None:
+        """Release bounded heap or disk-backed return storage after use."""
+        if self.returns is not None:
+            self.returns.close()
+            self.returns = None
+        if self.worst_heap is not None:
+            self.worst_heap.clear()
+            self.worst_heap = None
+
     def result(self, *, periods_per_year: float,
                require_exact_count: bool = False) -> dict[str, object]:
         count = self.count
@@ -346,8 +355,11 @@ class AccountFactsAccumulator:
         )
         self.count = 0
         self._failure: Exception | None = None
+        self._released = False
 
     def add(self, fact: Mapping[str, object]) -> None:
+        if self._released:
+            raise MetricsError('cannot update a released account-facts accumulator')
         if self._failure is not None:
             raise MetricsError("cannot continue after a failed account fact") from self._failure
         try:
@@ -402,6 +414,8 @@ class AccountFactsAccumulator:
 
     def result(self, *, periods_per_year: float,
                realized_trade_pnls: Sequence[float] | None = None) -> dict:
+        if self._released:
+            raise MetricsError('cannot report from a released account-facts accumulator')
         if self._failure is not None:
             raise MetricsError("cannot report after a failed account fact") from self._failure
         if self.count < 3:
@@ -437,6 +451,17 @@ class AccountFactsAccumulator:
             result['trade_profit_factor'] = profit_factor
             result['closed_trade_count'] = len(pnl)
         return result
+
+    def release(self) -> None:
+        """Release retained return storage after its result has been captured."""
+        if self._released:
+            return
+        self._released = True
+        if self._return_metrics is not None:
+            self._return_metrics.release()
+            self._return_metrics = None
+        self.returns = None
+        self.previous = None
 
 
 def from_account_facts(facts: Iterable[Mapping[str, object]], *,

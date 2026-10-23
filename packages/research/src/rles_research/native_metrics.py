@@ -1124,4 +1124,5 @@ class NativeReportAccumulator:
         self._liquidation_facts.clear()
         self._liquidation_filled.clear()
         self._cashflows_by_time.clear()
+        self._metrics.release()
         return report

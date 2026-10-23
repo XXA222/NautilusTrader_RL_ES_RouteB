@@ -284,6 +284,27 @@ def test_native_report_accumulator_releases_alignment_indexes_after_finish():
     assert accumulator.final_snapshot is not None
 
 
+def test_native_report_accumulator_closes_disk_return_spool_after_finish():
+    accumulator = NativeReportAccumulator(
+        sample_interval_ns=10, max_return_count=200_000,
+        contract_multiplier=Decimal(1),
+    )
+    snapshots = (_snapshot(1, "1000"), _snapshot(11, "1010"), _snapshot(21, "1020"))
+    for snapshot in snapshots:
+        accumulator.add_snapshot(snapshot, {})
+
+    return_spool = accumulator._metrics._return_metrics.returns
+    assert return_spool is not None
+    spool_file = return_spool._file
+    assert not spool_file.closed
+
+    report = accumulator.finish()
+
+    assert report["metrics"]["observations"] == 2
+    assert spool_file.closed
+    assert accumulator._metrics._released
+
+
 def test_batch_native_report_detaches_cashflow_facts_without_a_staging_copy():
     cashflow = _flow("batch-detached-deposit", 11, "DEPOSIT", "100")
     snapshots = (_snapshot(1, "1000"), _snapshot(11, "1100"), _snapshot(21, "1200"))
