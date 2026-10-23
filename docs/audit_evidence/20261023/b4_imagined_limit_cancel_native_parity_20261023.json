@@ -1,0 +1,16 @@
+{
+  "schema": "rles.audit-evidence.v1",
+  "task": "B4 imagined/native unfilled limit cancellation parity",
+  "status": "LOCAL_PASS_HOSTED_CONFIRMATION_PENDING",
+  "finding": "ImaginedAccount cancellation had unit coverage, and the native submitter had native cancellation coverage, but there was no differential showing that an unfilled limit order remains pending and then cancels without changing account economics.",
+  "change": "Add a long/short parameterized Native-versus-ImaginedAccount scenario. Each submits a non-marketable limit order, advances one bar without a fill, cancels the order, and compares terminal order state, positions, fills, and equity.",
+  "verification": {
+    "focused_pytest": "2 passed",
+    "adapter_suite": "64 passed",
+    "ruff": "All checks passed for tests/test_nautilus_adapter_smoke.py",
+    "source_manifest": "606 files; identity 916c92fc521dd8f931b9f1581fe9e7254c1d945cc48bd21a69b0b66406538596",
+    "hosted_ci": "Full Hosted run 39926884607 passed Linux CPU, Windows CPU, and isolated JAX CPU for the preceding QA JSON reader commit; this B4 test commit still requires a fresh Hosted run."
+  },
+  "scope": "Synthetic BTC/USD.SIM bars and USD account only. The limit remains well outside the observed OHLC range, so this checks pending/cancel lifecycle and not limit price-time priority or exchange queue behavior.",
+  "next": "Continue B4 order-lifecycle parity with locally reproducible cancellation, expiry and multiple-fill boundaries. OHLC-only data cannot establish intrabar fill sequencing or exchange queue priority."
+}

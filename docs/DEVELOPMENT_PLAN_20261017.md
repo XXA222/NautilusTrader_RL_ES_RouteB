@@ -2333,3 +2333,11 @@ The direct QA JSON audit extended the shared nesting guard to source manifests, 
 **Verification:** reader selector **96 passed, 1 environment-dependent symlink skip**, with one expected duplicate-ZIP warning; MyPy **227 files**, Ruff pass; source manifest verifies 606 files at `c5d261fa08c2940c83476dcd8df19a69c5c7d0b195284d3a25388e01d00a87a8`. Hosted run `39924080730` on the preceding reconciler fix passed Linux, Windows, and JAX CPU.
 
 **Next:** publish these expanded QA boundary changes to the RouteB snapshot and await a fresh hosted run.
+
+## 2026-10-23 B4 Native cancellation parity
+
+Added long and short Native-versus-Imagined cases for a non-marketable limit order. Both keep it pending through an OHLC bar without a fill, then cancel. Native confirms the cancellation status; the imagined account clears its pending order; both remain flat with unchanged equity.
+
+**Verification:** focused selector **2 passed**; adapter smoke file **64 passed**; Ruff passes; manifest: 606 files, identity `916c92fc521dd8f931b9f1581fe9e7254c1d945cc48bd21a69b0b66406538596`. Evidence: `docs/audit_evidence/20261023/b4_imagined_limit_cancel_native_parity_20261023.json`.
+
+**Next:** continue B4 lifecycle checks that are observable from supported synthetic inputs. Hosted CI for this commit remains pending; this case does not validate exchange queue or intrabar sequence behavior.

@@ -663,3 +663,9 @@ Next: publish the repair to the RouteB snapshot branch and verify a fresh full H
 A further audit found that `qa/source_manifest.py`, `qa/wheel_manifest.py`, installed-wheel provenance parsing, and both M13 report analyzers only translated `RecursionError`; on Linux they could continue into generic schema checks. These readers now call the shared 512-level scanner before `json.loads`. The preceding reconciler repair has fresh Hosted confirmation: run `39924080730` passed Linux CPU, Windows CPU, and isolated JAX CPU. Expanded QA reader selector: **96 passed, 1 symlink-capability skip**, plus one expected duplicate-ZIP fixture warning. MyPy (227 files), Ruff, and the updated 606-file manifest pass; identity `c5d261fa08c2940c83476dcd8df19a69c5c7d0b195284d3a25388e01d00a87a8`.
 
 Next: commit and push the expanded QA guard to the RouteB-only snapshot, then verify its Hosted Linux/Windows/JAX CPU run.
+
+### 2026-10-23 B4 Native/Imagined pending-limit cancellation parity
+
+Added a long/short native differential with a non-marketable limit order. Both paths retain the order without a fill for one bar; after cancellation, Native reports `CANCELED`, `ImaginedAccount` has no pending order, and both remain flat at unchanged equity. Focused case: **2 passed**; complete adapter smoke file: **64 passed**; Ruff pass. Updated 606-file manifest: `916c92fc521dd8f931b9f1581fe9e7254c1d945cc48bd21a69b0b66406538596`. Evidence: `docs/audit_evidence/20261023/b4_imagined_limit_cancel_native_parity_20261023.json`. Expanded QA JSON guard CI previously passed all hosted Linux/Windows/JAX CPU jobs in run `39926884607`; this B4 commit needs a fresh run.
+
+Next: continue locally testable B4 lifecycle parity. OHLC-only inputs cannot establish exchange queue priority or exact intrabar sequencing.
