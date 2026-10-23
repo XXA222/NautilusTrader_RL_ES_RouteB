@@ -5,10 +5,10 @@
   "checkout": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
   "instrument": "BTC/USD.SIM synthetic CurrencyPair fixture; NETTING; 1 unit",
   "scenarios": [
-    "long entry at 100, flat exit at 110",
-    "short entry at 100, flat exit at 110"
+    "long entry at 100 after prior close 95, flat exit at 110",
+    "short entry at 100 after prior close 95, flat exit at 110"
   ],
-  "costs": "Native and imagined fee rates both 0.1 percent taker; bar-only OHLC scenario.",
+  "costs": "Native and imagined fee rates both 0.1 percent taker; flat synthetic OHLC bars isolate market-open fills and fee/PnL parity across opening gaps.",
   "assertions": [
     "Native and imagined entry equity match after the entry fee.",
     "Native and imagined terminal equity match after realized PnL and both fees.",
@@ -17,19 +17,19 @@
   "verification": [
     {
       "command": "RouteB .venv-win-app: pytest tests/test_nautilus_adapter_smoke.py::test_b4_imagined_market_round_trip_matches_native_account",
-      "result": "2 passed in 2.60s"
+      "result": "2 passed in 2.63s"
     },
     {
       "command": "RouteB .venv-win-app: pytest tests/test_nautilus_adapter_smoke.py",
-      "result": "38 passed in 3.24s"
+      "result": "38 passed in 3.39s"
     },
     {
       "command": "python -m ruff check tests/test_nautilus_adapter_smoke.py",
       "result": "passed"
     },
     {
-      "command": "python qa/source_manifest.py --output qa/reports/source_manifest_current.json --verify",
-      "result": "verified 605 files; identity ba7f46696b03e7ce62a7d889a94aec65dddae547fb39aa567e7778cd3f919e28"
+      "command": "RouteB .venv-win-app: python qa/source_manifest.py --output qa/reports/source_manifest_current.json",
+      "result": "generated 605 files; identity 990714a64eb4e7afc10c456f2c1a6a372375eebe4a4063aae26b017652469681"
     }
   ],
   "data_access": "Synthetic deterministic bars only; no market, account, Train, Validation, Test, or Holdout data accessed.",

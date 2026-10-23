@@ -221,13 +221,16 @@ def _native_order_session(submitter: NativePlanSubmitter) -> EngineSession:
     return session
 
 
-def _order_batch(number: int, price: str = "100") -> VisibleBatch:
+def _order_batch(number: int, price: str = "100", *, high: str | None = None, low: str | None = None, close: str | None = None) -> VisibleBatch:
     instrument = _instrument()
     timestamp = number * 60_000_000_000
     native_price = instrument.make_price(float(price))
+    native_high = instrument.make_price(float(high if high is not None else price))
+    native_low = instrument.make_price(float(low if low is not None else price))
+    native_close = instrument.make_price(float(close if close is not None else price))
     bar = Bar(
         bar_type=BarType.from_str(f"{instrument.id}-1-MINUTE-LAST-EXTERNAL"),
-        open=native_price, high=native_price, low=native_price, close=native_price,
+        open=native_price, high=native_high, low=native_low, close=native_close,
         volume=instrument.make_qty(100), ts_event=timestamp, ts_init=timestamp,
     )
     return VisibleBatch(timestamp, (SimpleNamespace(
@@ -352,35 +355,36 @@ def test_b4_imagined_market_round_trip_matches_native_account(entry_qty: str) ->
     session = _native_order_session(_submitter())
     imagined = ImaginedAccount(initial_equity=100_000, fee_maker=.001, fee_taker=.001)
 
-    def candle(number: int, price: float) -> Candle:
+    def candle(number: int, open_price: float, high: float, low: float, close: float) -> Candle:
         close_ns = number * MINUTE_NS
         return Candle(
             ts_close_ns=close_ns, available_at_ns=close_ns,
-            instrument=str(_instrument().id), open=price, high=price, low=price,
-            close=price, volume=100,
+            instrument=str(_instrument().id), open=open_price, high=high, low=low,
+            close=close, volume=100,
         )
 
     try:
-        initial = session.bootstrap((_order_batch(1),), decision_ts_ns=MINUTE_NS)
-        imagined.on_bar(candle(1, 100))
+        initial = session.bootstrap((_order_batch(1, "95"),), decision_ts_ns=MINUTE_NS)
+        imagined.on_bar(candle(1, 95, 95, 95, 95))
         imagined.submit(target_qty=float(entry_qty), decision_ns=MINUTE_NS)
         native_entry = session.advance(
-            _order_plan("b4-entry", entry_qty), batches=(_order_batch(2),),
+            _order_plan("b4-entry", entry_qty),
+            batches=(_order_batch(2, "100", high="100", low="100", close="100"),),
             next_decision_ts_ns=2 * MINUTE_NS,
         )
-        imagined_entry = imagined.on_bar(candle(2, 100))
+        imagined_entry = imagined.on_bar(candle(2, 100, 100, 100, 100))
         assert imagined_entry is not None
         assert len(native_entry.fills) == 1
-        assert native_entry.equity == initial.equity - Decimal("0.10")
+        assert native_entry.equity == initial.equity + (Decimal("-0.10"))
         assert imagined.equity == pytest.approx(float(native_entry.equity))
 
         imagined.submit(target_qty=0, decision_ns=2 * MINUTE_NS)
-        imagined_exit = imagined.on_bar(candle(3, 110))
+        imagined_exit = imagined.on_bar(candle(3, 110, 110, 110, 110))
         assert imagined_exit is not None
         exit_qty = "-1.0000" if float(entry_qty) > 0 else "1.0000"
         native_terminal = session.drain_and_close(
             "force_flatten_with_cost", flatten_plan=_order_plan("b4-exit", exit_qty),
-            drain_batches=(_order_batch(3, "110"),), terminal_ts_ns=3 * MINUTE_NS,
+            drain_batches=(_order_batch(3, "110", high="110", low="110", close="110"),), terminal_ts_ns=3 * MINUTE_NS,
         )
         assert native_terminal.positions == native_terminal.orders == ()
         assert len(native_terminal.fills) == 2
