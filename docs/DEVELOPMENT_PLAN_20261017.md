@@ -2301,3 +2301,11 @@ Added long and short native differential cases with entry at 100, half reduction
 The source audit found that `MarketSequence` rejects mixed instruments but direct `ImaginedAccount.on_bar()` did not. This could execute a pending order against a different instrument's candle and corrupt its mark-to-market ledger. `ImaginedAccount` now binds to its first accepted candle instrument and rejects a later mismatch before changing clock, order, position, fills or equity state. Regression: **1 passed**; adapter + WorldModel selectors: **127 passed, 5 JAX-only skipped**; Ruff/MyPy pass (226 files). Manifest: 605 files, `d4f99c1e0c86cc4578f4a7b582c7e3ff5df6b045925360decffcb0e009dee143`. Evidence: `docs/audit_evidence/20261023/b4_imagined_account_single_instrument_20261023.json`.
 
 **Boundary / next cursor:** this enforces the existing single-instrument account model; it does not introduce multi-asset positions or cross-currency accounting. Continue local A01–A14 audit and B4 order-lifecycle parity.
+
+### A10 cross-runtime JSON nesting limit — 2026-10-23
+
+Hosted Linux PR run `39909996795` failed five malformed deep-JSON cases. The readers depended on CPython `json.loads()` raising `RecursionError`; this varied across supported runtimes, so the same 20,000-level input sometimes surfaced as a generic row/schema error or was accepted by the research registry parser. Added `rles_contracts.json_utils.ensure_json_nesting_depth()` with an explicit 512-container maximum and string-aware bracket scanning. Integrated it into all seven package strict readers, Binance transfer imports, `rles-data validate --manifest-json`, and the orchestrator's legacy inventory reader.
+
+Focused reader selector: **197 passed**; exact PR selector locally: **903 passed, 4 skipped, 644 deselected**; Ruff passes; MyPy passes **227 files**. The 606-file source manifest verifies as `95d8113385895d4e5dc5100f63958e645e2493e55a98d22b897f03bf9729bcb5`. Evidence: `docs/audit_evidence/20261023/a10_cross_version_json_nesting_guard_20261023.json`.
+
+**Next cursor:** push to RouteB-only backup and require a fresh Hosted Linux/Windows/JAX CPU run. Continue remaining JSON/serialization source audit. Do not infer that parser safety alone closes provenance or research-access gates.

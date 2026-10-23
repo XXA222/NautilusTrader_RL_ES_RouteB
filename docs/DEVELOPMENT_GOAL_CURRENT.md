@@ -637,3 +637,11 @@ Next: continue auditing B4 supported account paths for multiple fills within one
 **Verification:** regression **1 passed**; adapter + WorldModel selectors **127 passed, 5 JAX-only skipped**; Ruff and MyPy (226 files) pass; 605-file source manifest self-verifies as `d4f99c1e0c86cc4578f4a7b582c7e3ff5df6b045925360decffcb0e009dee143`. Evidence: `docs/audit_evidence/20261023/b4_imagined_account_single_instrument_20261023.json`.
 
 **Boundary:** multi-asset account economics remain out of scope until there is an explicit multi-position and currency ledger.
+
+### A10 continuation — cross-version JSON nesting guard — 2026-10-23
+
+Hosted Linux PR run `39909996795` exposed five deep-JSON failures in Binance single/page imports, the data manifest CLI, and research inventory/registry readers. They relied on `json.loads()` raising `RecursionError`, but parser behavior varied by Python runtime and some inputs reached a generic schema path. Added a shared 512-level structural scanner in `rles_contracts.json_utils`; it respects quoted/escaped strings and runs before parsing in all seven package strict readers plus the four affected reader boundaries.
+
+**Verification:** affected reader files **197 passed**; the full PR selector **903 passed, 4 skipped, 644 deselected**; MyPy passes **227 files**; Ruff passes; the 606-file source identity verifies as `95d8113385895d4e5dc5100f63958e645e2493e55a98d22b897f03bf9729bcb5`. Machine evidence: `docs/audit_evidence/20261023/a10_cross_version_json_nesting_guard_20261023.json`.
+
+**Next:** push the fix to the RouteB-only snapshot and verify fresh Hosted Linux, Windows and JAX CPU jobs. Continue auditing the remaining serialization/reader boundaries; external research gates remain independent.

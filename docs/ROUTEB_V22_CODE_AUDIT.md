@@ -553,6 +553,16 @@ Hosted run `39906921812` on commit `19f633038b06b9bd3ed17e33a0fabca0d7f45213` co
 **Evidence:** focused test **1 passed**; combined adapter/WorldModel selector **127 passed, 5 JAX-only skipped**; Ruff/MyPy pass; source manifest identity `d4f99c1e0c86cc4578f4a7b582c7e3ff5df6b045925360decffcb0e009dee143` over 605 files. Machine evidence: `docs/audit_evidence/20261023/b4_imagined_account_single_instrument_20261023.json`.
 
 **Boundary:** this constrains the single-instrument account API; multi-asset accounting remains unimplemented.
+
+### A10 cross-version JSON nesting — 2026-10-23
+
+**Audit finding:** Hosted Linux job `120270568289` (run `39909996795`) failed five tests because deep JSON handling depended on Python's decoder recursion limit. Binance imports returned the row-shape error, the Data CLI returned a generic manifest schema error, the inventory parser reported unsupported schema, and the registry parser did not reject the same over-deep string.
+
+**Fix:** add a common structural preflight scanner with a fixed 512-container limit. Quotes and escaped quotes are handled so delimiters inside JSON string values do not count. Apply before `json.loads()` in seven package strict readers and the four failing boundary readers.
+
+**Verification:** all affected reader tests **197 passed**; full CI PR selection **903 passed, 4 skipped, 644 deselected**; MyPy **227 files** and Ruff pass. Manifest: 606 files, identity `95d8113385895d4e5dc5100f63958e645e2493e55a98d22b897f03bf9729bcb5`. See `docs/audit_evidence/20261023/a10_cross_version_json_nesting_guard_20261023.json`.
+
+**Status:** local implementation and full PR selector pass. Fresh Hosted Linux, Windows and JAX CPU confirmation is pending on the new revision.
 ### B4 native market-position reversal — 2026-10-23
 
 Added a second long/short native differential: after opening one unit, a two-unit opposing market order reverses the NETTING position, then a final market order flattens it. At each stage, `ImaginedAccount` and Nautilus match on net quantity and equity after realized PnL and 0.1% taker fees; the terminal native snapshot is flat. The test accounts for the adapter returning cumulative fill history and asserts the latest reversal fill side and quantity. The reversal selector passes **2 tests**; full adapter suite passes **42 tests**; adapter + WorldModel source selectors pass **106 tests with 5 JAX-only skips**. MyPy passes 226 files, Ruff passes, and the current 605-file source identity is `b7323e51f4c30d82c3c4c2f937c2070bae884b8c1490f7c6356a21b3e042ff64`. Evidence remains in `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.

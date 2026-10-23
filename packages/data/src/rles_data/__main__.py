@@ -8,6 +8,8 @@ from pathlib import Path
 import sys
 from typing import NoReturn
 
+from rles_contracts.json_utils import ensure_json_nesting_depth
+
 from .core import CuratedStore, DataError
 from .coverage import CoveragePolicy
 from .folds import build_folds
@@ -65,9 +67,14 @@ def _unique_json_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
 
 def _validate(args: argparse.Namespace) -> tuple[dict, int]:
     if args.manifest_json:
+        manifest_bytes = Path(args.manifest_json).read_bytes()
+        try:
+            ensure_json_nesting_depth(manifest_bytes)
+        except ValueError as exc:
+            raise DataError("validation manifest exceeds the supported nesting depth") from exc
         try:
             doc = json.loads(
-                Path(args.manifest_json).read_text(encoding="utf-8"),
+                manifest_bytes,
                 object_pairs_hook=_unique_json_pairs,
                 parse_constant=lambda value: (_ for _ in ()).throw(DataError(f"invalid JSON constant: {value}")),
             )

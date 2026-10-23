@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-23T06:25:55.549019+00:00",
-  "source_identity_sha256": "d4f99c1e0c86cc4578f4a7b582c7e3ff5df6b045925360decffcb0e009dee143",
+  "generated_at_utc": "2026-10-23T07:03:01.678465+00:00",
+  "source_identity_sha256": "95d8113385895d4e5dc5100f63958e645e2493e55a98d22b897f03bf9729bcb5",
   "scope": {
     "included": [
       ".gitattributes",
@@ -923,8 +923,8 @@
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/json_utils.py",
-      "size_bytes": 906,
-      "sha256": "b8a6fa1b931e6f302b388fbbbb110c9c38e81aff5734402aef9ce0085a1a2b7f"
+      "size_bytes": 1007,
+      "sha256": "38d989c9b57c7d06f66e715233ae3e3d689856391d9dd499945cda60931099a4"
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/lanes.py",
@@ -1012,6 +1012,11 @@
       "sha256": "82ed91d749810fa66a0949c13853b900adfb9a0eb9c19e7c5c9987d08da4e7f5"
     },
     {
+      "path": "packages/contracts/src/rles_contracts/json_utils.py",
+      "size_bytes": 1549,
+      "sha256": "6555f1461f56c32b5829359ea3def814e31a1c57a78ea09ef8ee086e4de50c35"
+    },
+    {
       "path": "packages/contracts/src/rles_contracts/manifest.py",
       "size_bytes": 4815,
       "sha256": "de1b7e84be20a3772dfe62dd84c0707a39ab9dcbcbea91f9adad454f8f720576"
@@ -1068,8 +1073,8 @@
     },
     {
       "path": "packages/data/src/rles_data/__main__.py",
-      "size_bytes": 7605,
-      "sha256": "5c14d242abb5ad277691641e92f9b2c08882c51eacc22ded9e03b0e2ec787056"
+      "size_bytes": 7892,
+      "sha256": "aa28a1003c020a56c15e07ecdde38014b248d115a8721c34319bd81de70d19ed"
     },
     {
       "path": "packages/data/src/rles_data/binance_archive.py",
@@ -1108,8 +1113,8 @@
     },
     {
       "path": "packages/data/src/rles_data/json_utils.py",
-      "size_bytes": 1122,
-      "sha256": "c6c76dbbf29bd82a054843f79799af412b894c9062a9b3cc34617c04b0e9c2b2"
+      "size_bytes": 1223,
+      "sha256": "75c4c43a4826c5164c6eef574425ad20c278bee8931ad9859466bd1f65c495ec"
     },
     {
       "path": "packages/data/src/rles_data/quality.py",
@@ -1158,8 +1163,8 @@
     },
     {
       "path": "packages/es_evotorch/src/rles_es_evotorch/json_utils.py",
-      "size_bytes": 902,
-      "sha256": "af26c8cae6c3df76ebbe299abb43d2d9e769b8d2d3614302df11edd9b504ed96"
+      "size_bytes": 1003,
+      "sha256": "1d3b78e05b0c7b116f73bb4e62dcb056a1c246fc4ef04a915e043f020dfc2926"
     },
     {
       "path": "packages/es_evotorch/src/rles_es_evotorch/provider.py",
@@ -1328,8 +1333,8 @@
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/json_utils.py",
-      "size_bytes": 945,
-      "sha256": "52c9cc2b31eed224864f9e95f4c4cd0a2c3afdb9a9c30487cff914b13f13d5a2"
+      "size_bytes": 1046,
+      "sha256": "a81c4fd3e4da805c5987ee12b1c50a73cc66beb5f9ac0445b65cd65e43513e14"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/lineage.py",
@@ -1343,8 +1348,8 @@
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/research_access.py",
-      "size_bytes": 29457,
-      "sha256": "aae0bd632916b79f454efae723f4962d559a11681fc4379981d28e7f8ded3acf"
+      "size_bytes": 29707,
+      "sha256": "17450ca52ca6dc92153b722e2726bbb368e50763af623f5f38db9ecc24864f9d"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/rl_stage.py",
@@ -1393,13 +1398,13 @@
     },
     {
       "path": "packages/research/src/rles_research/binance_cashflows.py",
-      "size_bytes": 13628,
-      "sha256": "9e31f6d1fe219a37006820245b7e22f52507c1a0302980d3de6dcce612f22a3a"
+      "size_bytes": 14043,
+      "sha256": "98ab9a662dc0cad0eeb0d3c17c3640755cbe62f785e6c23ecd872f44912617e0"
     },
     {
       "path": "packages/research/src/rles_research/json_utils.py",
-      "size_bytes": 912,
-      "sha256": "7f9be86d5ea103d0420f678fb0c38744716fc639b539e2121f55535158608738"
+      "size_bytes": 1013,
+      "sha256": "ccbab29da566e09bb85b73897803152e4192488ec32093ecad610b7920f05f70"
     },
     {
       "path": "packages/research/src/rles_research/ledger.py",
@@ -1493,8 +1498,8 @@
     },
     {
       "path": "packages/rl_sb3/src/rles_rl_sb3/json_utils.py",
-      "size_bytes": 937,
-      "sha256": "cd86220801799db2c3aaafd1c1de25661f2dd978aec91995125ff6f4da3ee0d0"
+      "size_bytes": 1038,
+      "sha256": "498f2a4ecba70595f42341fe8e0222a5c53c3a1323e8a16a58fa9c9922439749"
     },
     {
       "path": "packages/rl_sb3/src/rles_rl_sb3/noise.py",
@@ -1603,8 +1608,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/json_utils.py",
-      "size_bytes": 1224,
-      "sha256": "38405ce32a97e59fbf8bb8c3cc9a35edbf47cee08721ee92d4fbd9866a3ed574"
+      "size_bytes": 1325,
+      "sha256": "7a5978581f91adbd620944d563e75d279c0acaf74d9a90935bad27c51f20c4d7"
     },
     {
       "path": "packages/world_model/src/rles_world_model/learner.py",
@@ -2863,8 +2868,8 @@
     },
     {
       "path": "tests/test_strict_json_constants.py",
-      "size_bytes": 1556,
-      "sha256": "c3302160540fde2ca6b19293b476227798307bc9e70ee337c27dd4d47c61e790"
+      "size_bytes": 2242,
+      "sha256": "cc01335d43208f4c2b524042a7b14eb82a30615b165e47efbd1df43a171666f6"
     },
     {
       "path": "tests/test_train_signal_baseline_json_integrity.py",

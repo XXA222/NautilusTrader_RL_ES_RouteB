@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from rles_contracts.json_utils import ensure_json_nesting_depth
+
 from .metrics import MetricsError
 
 
@@ -77,6 +79,10 @@ def import_binance_usdm_transfer_income(
         raw_bytes = payload if isinstance(payload, bytes) else payload.encode("utf-8")
     except UnicodeEncodeError as exc:
         raise MetricsError("Binance transfer payload string is not valid UTF-8 text") from exc
+    try:
+        ensure_json_nesting_depth(raw_bytes)
+    except ValueError as exc:
+        raise MetricsError("invalid Binance income-history JSON payload") from exc
     try:
         document = json.loads(raw_bytes, object_pairs_hook=_unique_json_object,
                                 parse_constant=_reject_json_constant)
@@ -207,6 +213,10 @@ def import_binance_usdm_transfer_income_pages(
             raise MetricsError("income page limit must be between 1 and Binance's maximum of 1000")
         if not isinstance(page.payload, bytes):
             raise MetricsError("income page must preserve exact response bytes")
+        try:
+            ensure_json_nesting_depth(page.payload)
+        except ValueError as exc:
+            raise MetricsError("invalid Binance income-history page JSON") from exc
         try:
             page_rows = json.loads(page.payload, object_pairs_hook=_unique_json_object,
                                     parse_constant=_reject_json_constant)

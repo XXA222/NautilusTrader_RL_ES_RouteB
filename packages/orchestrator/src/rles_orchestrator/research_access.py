@@ -7,6 +7,8 @@ from time import time_ns
 from typing import Any, Callable
 import uuid
 
+from rles_contracts.json_utils import ensure_json_nesting_depth
+
 from rles_data.core import (CuratedStore, DataError, FoldManifest, MINUTE_NS, digest,
                             require_hash, require_ns)
 from rles_data.io import curated_event_time_bounds, curated_source_identity, read_curated_window
@@ -31,6 +33,10 @@ def _reject_json_constant(value: str) -> None:
 
 
 def _strict_inventory_json(content: bytes) -> dict[str, Any]:
+    try:
+        ensure_json_nesting_depth(content)
+    except ValueError as exc:
+        raise DataError("legacy research inventory JSON exceeds the supported nesting depth") from exc
     try:
         inventory = json.loads(content, object_pairs_hook=_json_object_without_duplicate_keys,
                                parse_constant=_reject_json_constant)

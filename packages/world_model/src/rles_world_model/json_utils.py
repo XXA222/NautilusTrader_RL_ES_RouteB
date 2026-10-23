@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from rles_contracts.json_utils import ensure_json_nesting_depth
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -26,6 +27,7 @@ def loads_unique_json(value: str | bytes | bytearray, *,
     opts in so it can produce a more specific field-validation error.
     """
     parse_constant = float if allow_nonstandard_constants else _reject_json_constant
+    ensure_json_nesting_depth(value)
     try:
         return json.loads(value, object_pairs_hook=_unique_object,
                           parse_constant=parse_constant)
