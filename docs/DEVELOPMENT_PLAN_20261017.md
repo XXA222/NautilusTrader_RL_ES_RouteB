@@ -2325,3 +2325,11 @@ Hosted run `39920709883` passed Windows CPU and isolated JAX CPU, and the Linux 
 **Repair verification:** reconciler regression + strict JSON selector **32 passed**; complete PR selector **903 passed, 4 skipped, 644 deselected**; WorldModel **234 passed, 14 JAX-only skipped**; MyPy **227 files**, Ruff pass. Source manifest verifies 606 files at `2a62c2b1df6ff198bcd2283fddd5d488fb04882a359771ec2c3cef86a95e3313`.
 
 **Next:** push the correction to the RouteB-only snapshot and require a fresh Hosted Linux/Windows/JAX CPU result.
+
+## 2026-10-23 A10 remaining QA manifest/report reader depth consistency
+
+The direct QA JSON audit extended the shared nesting guard to source manifests, wheel-source manifests, installed-wheel `direct_url.json`, and M13 stage report analyzers. Prior code normalized decoder recursion but still depended on that exception occurring; Linux can instead reach a later schema error.
+
+**Verification:** reader selector **96 passed, 1 environment-dependent symlink skip**, with one expected duplicate-ZIP warning; MyPy **227 files**, Ruff pass; source manifest verifies 606 files at `c5d261fa08c2940c83476dcd8df19a69c5c7d0b195284d3a25388e01d00a87a8`. Hosted run `39924080730` on the preceding reconciler fix passed Linux, Windows, and JAX CPU.
+
+**Next:** publish these expanded QA boundary changes to the RouteB snapshot and await a fresh hosted run.

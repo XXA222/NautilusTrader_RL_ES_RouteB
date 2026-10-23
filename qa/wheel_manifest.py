@@ -14,6 +14,8 @@ from email.policy import default
 from pathlib import Path
 from typing import Any
 
+from rles_contracts.json_utils import ensure_json_nesting_depth
+
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -43,12 +45,13 @@ def _read_source_manifest(path: Path) -> dict[str, Any]:
     if path.is_symlink():
         raise ValueError(f"source manifest must not be a symlink: {path}")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"),
-                            object_pairs_hook=_unique_json_object,
+        content = path.read_text(encoding="utf-8")
+        ensure_json_nesting_depth(content)
+        value = json.loads(content, object_pairs_hook=_unique_json_object,
                             parse_constant=_reject_json_constant)
     except _DuplicateManifestKey as exc:
         raise ValueError(f"duplicate JSON manifest key in {path}: {exc}") from exc
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+    except (OSError, UnicodeDecodeError, ValueError, RecursionError) as exc:
         raise ValueError(f"cannot read source manifest: {path}") from exc
     if not isinstance(value, dict):
         raise ValueError(f"expected source manifest object: {path}")

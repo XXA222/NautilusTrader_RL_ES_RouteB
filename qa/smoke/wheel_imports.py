@@ -10,6 +10,8 @@ import sys
 import tomllib
 from typing import Any
 
+from rles_contracts.json_utils import ensure_json_nesting_depth
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -29,6 +31,7 @@ def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 def _parse_wheel_origin(content: str, package_name: str) -> dict[str, Any]:
     try:
+        ensure_json_nesting_depth(content)
         origin = json.loads(content, object_pairs_hook=_unique_json_object,
                              parse_constant=lambda value: (_ for _ in ()).throw(
                                  ValueError(f"non-standard JSON constant: {value}")))

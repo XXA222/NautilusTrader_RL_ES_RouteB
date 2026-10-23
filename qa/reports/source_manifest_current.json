@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-23T08:11:01.036134+00:00",
-  "source_identity_sha256": "2a62c2b1df6ff198bcd2283fddd5d488fb04882a359771ec2c3cef86a95e3313",
+  "generated_at_utc": "2026-10-23T08:27:42.498181+00:00",
+  "source_identity_sha256": "c5d261fa08c2940c83476dcd8df19a69c5c7d0b195284d3a25388e01d00a87a8",
   "scope": {
     "included": [
       ".gitattributes",
@@ -1803,13 +1803,13 @@
     },
     {
       "path": "qa/analyze_m13_stage_contribution.py",
-      "size_bytes": 14368,
-      "sha256": "c6cd1d85db5e496f06e646c31e0059e99817853456b261844daa80512cfebdac"
+      "size_bytes": 14502,
+      "sha256": "f0536815dfd80a5c3ef604fc739dcfceabac22e565e4c0d8458a057b59f76771"
     },
     {
       "path": "qa/analyze_m13_stage_contribution_v2.py",
-      "size_bytes": 26267,
-      "sha256": "1aa3db1e9696881e92ccdc69488ebcd6412110a5125be0c0aa139080524bc723"
+      "size_bytes": 26401,
+      "sha256": "66bacd8b58565a1a1df49c6c0ddb500dc8d4c07592d2c2012255eafcfa74fb7d"
     },
     {
       "path": "qa/analyze_m33_action_value.py",
@@ -1973,13 +1973,13 @@
     },
     {
       "path": "qa/smoke/wheel_imports.py",
-      "size_bytes": 5130,
-      "sha256": "323fbd0cfe5052b6b1af0272ed9d04d2341ff27a4b38420840fad448e8cc7033"
+      "size_bytes": 5238,
+      "sha256": "f449ad6e1f35f0811b98114af0666f4b037da92d83322dfb539b0b0a40128480"
     },
     {
       "path": "qa/source_manifest.py",
-      "size_bytes": 8688,
-      "sha256": "e30749f1f85d788ea4b7259c9546e80e99952532b7c6be6b4d31764efb280574"
+      "size_bytes": 8784,
+      "sha256": "023b46a4cec02004de83aa6cdb9c3a302f1847985079b851c19f1137000f48dc"
     },
     {
       "path": "qa/train_signal_baselines.py",
@@ -1988,8 +1988,8 @@
     },
     {
       "path": "qa/wheel_manifest.py",
-      "size_bytes": 9382,
-      "sha256": "fbf0deb5f9db0f1edd35a4283d8109f39b7f3701e557679c07e9c2ef862693bc"
+      "size_bytes": 9478,
+      "sha256": "8ed45fa0df268b941af224d2b0d3dc6112b93d27d67f6b5d40eb4ace635227f8"
     },
     {
       "path": "qa/world_model/b1_cpu_smoke.py",

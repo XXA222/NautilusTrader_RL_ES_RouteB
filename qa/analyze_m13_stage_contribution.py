@@ -6,6 +6,8 @@ from hashlib import sha256
 import json
 import math
 from pathlib import Path
+
+from rles_contracts.json_utils import ensure_json_nesting_depth
 from typing import Any, cast
 
 
@@ -52,8 +54,10 @@ def _reject_json_constant(value: str) -> None:
 
 def _load_json(path: Path) -> dict[str, Any]:
     try:
+        content = path.read_text(encoding="utf-8")
+        ensure_json_nesting_depth(content)
         value = json.loads(
-            path.read_text(encoding="utf-8"),
+            content,
             object_pairs_hook=_unique_json_object,
             parse_constant=_reject_json_constant,
         )

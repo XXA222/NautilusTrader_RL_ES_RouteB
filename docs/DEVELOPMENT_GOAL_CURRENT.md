@@ -657,3 +657,9 @@ Next: publish this follow-on source to the RouteB-only snapshot branch, inspect 
 Fresh run `39920709883` confirmed Linux PR tests **896 passed, 11 skipped**; Windows CPU and isolated JAX CPU jobs passed. Linux WorldModel then exposed one additional deep-JSON difference in `qa/world_model/reconcile_routeb_research_ledger.py`: Python continued to object validation rather than raising `RecursionError`. The reconciler now uses the shared depth preflight before decoding canonical reports. After the fix: focused selector **32 passed**, full PR selector **903 passed, 4 skipped, 644 deselected**, WorldModel suite **234 passed, 14 JAX-only skipped**, MyPy **227 files**, Ruff pass. Updated 606-file source identity: `2a62c2b1df6ff198bcd2283fddd5d488fb04882a359771ec2c3cef86a95e3313`. Evidence file contains both the hosted finding and local repair verification.
 
 Next: publish the repair to the RouteB snapshot branch and verify a fresh full Hosted run.
+
+### 2026-10-23 A10 follow-on — QA manifest and report readers
+
+A further audit found that `qa/source_manifest.py`, `qa/wheel_manifest.py`, installed-wheel provenance parsing, and both M13 report analyzers only translated `RecursionError`; on Linux they could continue into generic schema checks. These readers now call the shared 512-level scanner before `json.loads`. The preceding reconciler repair has fresh Hosted confirmation: run `39924080730` passed Linux CPU, Windows CPU, and isolated JAX CPU. Expanded QA reader selector: **96 passed, 1 symlink-capability skip**, plus one expected duplicate-ZIP fixture warning. MyPy (227 files), Ruff, and the updated 606-file manifest pass; identity `c5d261fa08c2940c83476dcd8df19a69c5c7d0b195284d3a25388e01d00a87a8`.
+
+Next: commit and push the expanded QA guard to the RouteB-only snapshot, then verify its Hosted Linux/Windows/JAX CPU run.
