@@ -43,14 +43,15 @@ class Fill:
 class ImaginedAccount:
     """Market events are passed in, never altered by the action."""
     def __init__(self,*,initial_equity:float,fee_maker:float,fee_taker:float,
-                 max_abs_qty:float=1e6):
+                 max_abs_qty:float=1e6,equity_precision:int=8):
         if (initial_equity<=0 or max_abs_qty<=0 or
             not all(math.isfinite(v) for v in (initial_equity,fee_maker,fee_taker,max_abs_qty)) or
-            not -1<fee_maker<1 or not -1<fee_taker<1):
+            not -1<fee_maker<1 or not -1<fee_taker<1 or
+            type(equity_precision) is not int or not 0<=equity_precision<=18):
             raise ValueError("invalid scenario account settings")
         self.cash=float(initial_equity)
         self.qty=0.0;self.entry=0.0;self.pending:Pending|None=None
-        self.fees_paid=0.0;self.max_abs_qty=max_abs_qty
+        self.fees_paid=0.0;self.max_abs_qty=max_abs_qty;self.equity_precision=equity_precision
         self.maker=float(fee_maker);self.taker=float(fee_taker)
         self.last_close:float|None=None
         self.last_bar_ns:int|None=None
@@ -80,7 +81,7 @@ class ImaginedAccount:
     def _apply_fill(self,order:Pending,bar:Candle,price:float,*,maker:bool)->Fill:
         old=self.qty
         delta=order.signed_qty
-        fee=abs(delta*price)*(self.maker if maker else self.taker)
+        fee=round(abs(delta*price)*(self.maker if maker else self.taker),self.equity_precision)
         # Realized PNL on reduction or reversal, never count both realized and MTM.
         if old and old*delta<0:
             closed=min(abs(old),abs(delta))
@@ -134,9 +135,9 @@ class ImaginedAccount:
 
     @property
     def equity(self)->float:
-        return self.cash if self.qty==0 or self.last_close is None else (
+        value = self.cash if self.qty==0 or self.last_close is None else (
             self.cash+self.qty*(self.last_close-self.entry))
-
+        return round(value, self.equity_precision)
     @property
     def economics_eligible(self)->bool:
         # Funding, liquidation, margin tiers, actual historical exchange rules,

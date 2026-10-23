@@ -353,7 +353,7 @@ def test_native_submitter_executes_market_fees_and_terminal_flatten(entry_qty: s
 @pytest.mark.parametrize(("entry_qty", "fee_rate"), [("1.0000", "0.001"), ("-1.0000", "0.001"), ("1.0000", "-0.001"), ("-1.0000", "-0.001")])
 def test_b4_imagined_market_round_trip_matches_native_account(entry_qty: str, fee_rate: str) -> None:
     session = _native_order_session(_submitter(), fee_taker=Decimal(fee_rate))
-    imagined = ImaginedAccount(initial_equity=100_000, fee_maker=.001, fee_taker=float(fee_rate))
+    imagined = ImaginedAccount(initial_equity=100_000, fee_maker=.001, fee_taker=float(fee_rate), equity_precision=2)
 
     def candle(number: int, open_price: float, high: float, low: float, close: float) -> Candle:
         close_ns = number * MINUTE_NS
@@ -376,7 +376,7 @@ def test_b4_imagined_market_round_trip_matches_native_account(entry_qty: str, fe
         assert imagined_entry is not None
         assert len(native_entry.fills) == 1
         assert native_entry.equity == initial.equity - Decimal("100") * Decimal(fee_rate)
-        assert imagined.equity == pytest.approx(float(native_entry.equity))
+        assert imagined.equity == pytest.approx(float(native_entry.equity), rel=0, abs=1e-8)
 
         imagined.submit(target_qty=0, decision_ns=2 * MINUTE_NS)
         imagined_exit = imagined.on_bar(candle(3, 110, 110, 110, 110))
@@ -389,9 +389,49 @@ def test_b4_imagined_market_round_trip_matches_native_account(entry_qty: str, fe
         assert native_terminal.positions == native_terminal.orders == ()
         assert len(native_terminal.fills) == 2
         assert imagined.qty == pytest.approx(0)
-        assert imagined.equity == pytest.approx(float(native_terminal.equity))
+        assert imagined.equity == pytest.approx(float(native_terminal.equity), rel=0, abs=1e-8)
         expected_gross = Decimal("10") if float(entry_qty) > 0 else Decimal("-10")
         assert native_terminal.equity == initial.equity + expected_gross - Decimal("210") * Decimal(fee_rate)
+    finally:
+        session.close()
+
+@pytest.mark.parametrize("sign", [1, -1])
+def test_b4_imagined_small_notional_fee_precision_matches_native(sign: int) -> None:
+    fee = Decimal("0.001")
+    entry_qty = "0.0001" if sign > 0 else "-0.0001"
+    exit_qty = "-0.0001" if sign > 0 else "0.0001"
+    session = _native_order_session(_submitter(), fee_taker=fee)
+    imagined = ImaginedAccount(initial_equity=100_000, fee_maker=.001, fee_taker=float(fee), equity_precision=2)
+
+    def candle(number: int, price: float) -> Candle:
+        close_ns = number * MINUTE_NS
+        return Candle(close_ns, close_ns, str(_instrument().id), price, price, price, price, 100)
+
+    try:
+        initial = session.bootstrap((_order_batch(1, "95"),), decision_ts_ns=MINUTE_NS)
+        imagined.on_bar(candle(1, 95))
+        imagined.submit(target_qty=float(entry_qty), decision_ns=MINUTE_NS)
+        native_entry = session.advance(
+            _order_plan("b4-small-entry", entry_qty), batches=(_order_batch(2, "100"),),
+            next_decision_ts_ns=2 * MINUTE_NS,
+        )
+        assert imagined.on_bar(candle(2, 100)) is not None
+        assert native_entry.equity == initial.equity
+        assert Decimal(native_entry.fills[-1]["commission"].split()[0]) == Decimal("0.00")
+        assert imagined.equity == pytest.approx(float(native_entry.equity), rel=0, abs=1e-8)
+
+        imagined.submit(target_qty=0, decision_ns=2 * MINUTE_NS)
+        assert imagined.on_bar(candle(3, 110)) is not None
+        native_terminal = session.drain_and_close(
+            "force_flatten_with_cost", flatten_plan=_order_plan("b4-small-exit", exit_qty),
+            drain_batches=(_order_batch(3, "110"),), terminal_ts_ns=3 * MINUTE_NS,
+        )
+        expected_gross = Decimal("0.001") * sign
+        assert native_terminal.equity == initial.equity
+        assert sum(Decimal(fill["commission"].split()[0]) for fill in native_terminal.fills) == Decimal("0.00")
+        assert imagined.cash == pytest.approx(100_000 + float(expected_gross), rel=0, abs=1e-8)
+        assert imagined.equity == pytest.approx(float(native_terminal.equity), rel=0, abs=1e-8)
+        assert imagined.qty == pytest.approx(0)
     finally:
         session.close()
 
@@ -399,7 +439,7 @@ def test_b4_imagined_market_round_trip_matches_native_account(entry_qty: str, fe
 def test_b4_imagined_market_reversal_matches_native_account(sign: int) -> None:
     fee = Decimal("0.001")
     session = _native_order_session(_submitter(), fee_taker=fee)
-    imagined = ImaginedAccount(initial_equity=100_000, fee_maker=.001, fee_taker=float(fee))
+    imagined = ImaginedAccount(initial_equity=100_000, fee_maker=.001, fee_taker=float(fee), equity_precision=2)
 
     def candle(number: int, price: float) -> Candle:
         close_ns = number * MINUTE_NS
@@ -415,7 +455,7 @@ def test_b4_imagined_market_reversal_matches_native_account(sign: int) -> None:
         )
         assert imagined.on_bar(candle(2, 100)) is not None
         assert len(native_entry.fills) == 1
-        assert imagined.equity == pytest.approx(float(native_entry.equity))
+        assert imagined.equity == pytest.approx(float(native_entry.equity), rel=0, abs=1e-8)
 
         imagined.submit(target_qty=-sign, decision_ns=2 * MINUTE_NS)
         native_reversal = session.advance(
@@ -429,7 +469,7 @@ def test_b4_imagined_market_reversal_matches_native_account(sign: int) -> None:
         assert native_reversal.fills[-1]["order_side"] == reversal_side
         assert len(native_reversal.positions) == 1
         assert imagined.qty == pytest.approx(-sign)
-        assert imagined.equity == pytest.approx(float(native_reversal.equity))
+        assert imagined.equity == pytest.approx(float(native_reversal.equity), rel=0, abs=1e-8)
         assert native_reversal.equity == initial.equity + Decimal(5 * sign) - Decimal("0.31")
 
         imagined.submit(target_qty=0, decision_ns=3 * MINUTE_NS)
@@ -441,7 +481,7 @@ def test_b4_imagined_market_reversal_matches_native_account(sign: int) -> None:
         assert native_terminal.positions == native_terminal.orders == ()
         assert len(native_terminal.fills) == 3
         assert imagined.qty == pytest.approx(0)
-        assert imagined.equity == pytest.approx(float(native_terminal.equity))
+        assert imagined.equity == pytest.approx(float(native_terminal.equity), rel=0, abs=1e-8)
         assert native_terminal.equity == initial.equity + Decimal(20 * sign) - Decimal("0.40")
     finally:
         session.close()
