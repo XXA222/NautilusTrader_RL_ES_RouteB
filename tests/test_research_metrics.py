@@ -201,6 +201,85 @@ def test_account_return_limit_rejects_before_advancing_accumulator_state() -> No
     assert len(accumulator.returns) == 1
 
 
+@pytest.mark.parametrize("field", ["external_cashflow", "fee"])
+def test_account_aggregate_overflow_rejects_before_advancing_accumulator_state(field) -> None:
+    accumulator = AccountFactsAccumulator(sample_interval_ns=1)
+    first = {"ts_ns": 0, "equity": 1e308, "external_cashflow": 0.0,
+             "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+             "slippage_cost": 0.0}
+    second = {"ts_ns": 1, "equity": 1e308, "external_cashflow": 0.0,
+              "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+              "slippage_cost": 0.0}
+    third = {"ts_ns": 2, "equity": 1e308, "external_cashflow": 0.0,
+             "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+             "slippage_cost": 0.0}
+    second[field] = third[field] = 1e308
+    accumulator.add(first)
+    accumulator.add(second)
+    spool_bytes = len(accumulator.returns) * accumulator.returns._FLOAT_BYTES
+
+    label = field.replace("_", " ")
+    with pytest.raises(MetricsError, match=f"{label} aggregate"):
+        accumulator.add(third)
+
+    assert accumulator.count == 2
+    assert accumulator.last_ts == second["ts_ns"]
+    assert accumulator.external_cashflow == (1e308 if field == "external_cashflow" else 0.0)
+    assert accumulator.totals["fee"] == (1e308 if field == "fee" else 0.0)
+    assert len(accumulator.returns) * accumulator.returns._FLOAT_BYTES == spool_bytes
+
+
+def test_account_turnover_ratio_overflow_is_rejected() -> None:
+    facts = (
+        {"ts_ns": 0, "equity": 1e-308, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+         "slippage_cost": 0.0},
+        {"ts_ns": 1, "equity": 1e-308, "external_cashflow": 0.0,
+         "turnover_notional": 1e308, "fee": 0.0, "funding": 0.0,
+         "slippage_cost": 0.0},
+    )
+
+    with pytest.raises(MetricsError, match="turnover increment"):
+        from_account_facts(facts, periods_per_year=1, sample_interval_ns=1)
+
+
+def test_gross_return_overflow_is_rejected_at_report_boundary() -> None:
+    facts = (
+        {"ts_ns": 0, "equity": 1e-308, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+         "slippage_cost": 0.0},
+        {"ts_ns": 1, "equity": 1e-308, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 1e308, "funding": 0.0,
+         "slippage_cost": 0.0},
+        {"ts_ns": 2, "equity": 1e-308, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+         "slippage_cost": 0.0},
+    )
+
+    with pytest.raises(MetricsError, match="gross return before reported costs"):
+        from_account_facts(facts, periods_per_year=1, sample_interval_ns=1)
+
+
+def test_series_metrics_rejects_nonfinite_risk_adjusted_ratio() -> None:
+    with pytest.raises(MetricsError, match="series metrics produced a nonfinite result"):
+        series_metrics([0.1, 0.2], periods_per_year=1, risk_free_per_period=1e308)
+
+
+def test_trade_profit_factor_rejects_overflowing_pnl_aggregates() -> None:
+    facts = tuple(
+        {"ts_ns": index, "equity": 1_000.0, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+         "slippage_cost": 0.0}
+        for index in range(3)
+    )
+
+    with pytest.raises(MetricsError, match="gross profit aggregate"):
+        from_account_facts(
+            facts, periods_per_year=1, sample_interval_ns=1,
+            realized_trade_pnls=(1e308, 1e308, -1.0),
+        )
+
+
 def test_quote_execution_can_report_realized_price_improvement_as_signed_slippage() -> None:
     facts = (
         {"ts_ns": 1, "equity": 1_000.0, "external_cashflow": 0.0,

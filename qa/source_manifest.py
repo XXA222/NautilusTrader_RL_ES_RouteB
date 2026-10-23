@@ -35,7 +35,11 @@ _ROOT_FILES = (
     "qa/analyze_m13_stage_contribution.py",
     "qa/research_trial_inventory.py",
 )
-_EXCLUDED_PARTS = {"__pycache__", "build", "dist", ".pytest_cache", ".mypy_cache", ".tmp"}
+_EXCLUDED_PARTS = {
+    "__pycache__", "build", "dist", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    ".tmp", ".uv-cache", ".rles-python", ".artifacts", ".codex-remote-attachments",
+    "outputs", "runs", "checkpoints", "models",
+}
 _EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
 
 
@@ -170,3 +174,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

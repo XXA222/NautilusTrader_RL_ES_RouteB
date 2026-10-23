@@ -34,6 +34,14 @@ def test_source_identity_tracks_workspace_inputs_and_ignores_generated_reports(t
     (tmp_path / "packages" / "demo" / ".venv-runtime" / "Scripts" / "python.exe").write_bytes(
         b"generated interpreter placeholder",
     )
+    for generated_dir in (
+        ".uv-cache", ".artifacts", ".ruff_cache", ".rles-python",
+        ".codex-remote-attachments", "__pycache__", "outputs", "runs",
+        "checkpoints", "models",
+    ):
+        generated_file = tmp_path / "packages" / "demo" / generated_dir / "generated.py"
+        generated_file.parent.mkdir()
+        generated_file.write_text("VALUE = 'generated output'\n", encoding="utf-8")
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_demo.py").write_text("def test_demo(): pass\n", encoding="utf-8")
     (tmp_path / "qa" / "reports").mkdir(parents=True)
@@ -97,3 +105,4 @@ def test_source_identity_tracks_workspace_inputs_and_ignores_generated_reports(t
     (tmp_path / "packages" / "demo" / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
     changed = _generate(tmp_path, manifest_path)
     assert changed["source_identity_sha256"] != first["source_identity_sha256"]
+

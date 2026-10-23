@@ -6,6 +6,10 @@ import subprocess
 import sys
 import zipfile
 
+import pytest
+
+pytestmark = pytest.mark.unit
+
 
 _GENERATOR = Path(__file__).resolve().parents[1] / "qa" / "wheel_manifest.py"
 
@@ -54,8 +58,21 @@ def test_wheel_manifest_matches_built_sources_and_detects_drift(tmp_path: Path) 
     assert report["source_matches_all_wheels"] is True
     assert report["wheels"][0]["source_file_count"] == 1
 
+    extra_wheel = wheel_dir / "unowned_pkg-1.0.0-py3-none-any.whl"
+    with zipfile.ZipFile(extra_wheel, "w") as archive:
+        archive.writestr(
+            "unowned_pkg-1.0.0.dist-info/METADATA",
+            "Metadata-Version: 2.1\nName: unowned-pkg\nVersion: 1.0.0\n",
+        )
+    result, report = _run(tmp_path)
+    assert result.returncode == 1
+    assert report["source_matches_all_wheels"] is False
+    assert "expected 1 workspace wheels, found 2" in report["errors"]
+    extra_wheel.unlink()
+
     source.write_text("VALUE = 2\n", encoding="utf-8")
     result, report = _run(tmp_path)
     assert result.returncode == 1
     assert report["source_matches_all_wheels"] is False
     assert report["wheels"][0]["content_mismatch"] == ["demo/__init__.py"]
+
