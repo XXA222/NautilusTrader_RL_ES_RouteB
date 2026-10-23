@@ -4,12 +4,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
-import platform
 import subprocess
 import sys
 from datetime import datetime, timezone
-from importlib.metadata import distributions
 from pathlib import Path
 from typing import Any
 
@@ -93,13 +90,13 @@ def _upstream_identity(root: Path) -> dict[str, Any] | None:
 
     commit = git("rev-parse", "HEAD").decode("ascii").strip()
     status = git("status", "--porcelain", "--untracked-files=all").decode("utf-8").splitlines()
+    tracked_status = [row for row in status if not row.startswith("??")]
     tracked_diff = git("diff", "HEAD", "--binary")
     return {
         "path": "nautilus_trader",
         "commit": commit,
-        "tracked_worktree_clean": not any(not row.startswith("??") for row in status),
+        "tracked_worktree_clean": not tracked_status,
         "tracked_diff_sha256": _sha256(tracked_diff),
-        "status_entries": status,
     }
 
 
@@ -116,25 +113,14 @@ def build_manifest(root: Path, *, generated_at_utc: str | None = None) -> dict[s
     upstream = _upstream_identity(root)
     identity = {"files": files, "upstream_nautilus": upstream}
     identity_sha = _sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode())
-    installed = sorted(
-        ({"name": dist.metadata.get("Name", ""), "version": dist.version} for dist in distributions()),
-        key=lambda item: (item["name"].casefold(), item["version"]),
-    )
     return {
-        "schema": "rles.source-manifest.v1",
+        "schema": "rles.source-manifest.v2",
         "generated_at_utc": generated_at_utc or datetime.now(timezone.utc).isoformat(),
         "source_identity_sha256": identity_sha,
         "scope": {
             "included": [*_ROOT_FILES, *_SOURCE_ROOTS, ".github/workflows",
                          "qa/source_manifest.py", "qa/wheel_manifest.py"],
             "excluded_generated": [".tmp", ".venv*", "data", "dist*", "docs/audit reports", "qa/reports"],
-        },
-        "runtime": {
-            "python": sys.version.split()[0],
-            "platform": platform.platform(),
-            "machine": platform.machine(),
-            "os_name": os.name,
-            "installed_distributions": installed,
         },
         "upstream_nautilus": upstream,
         "files": files,
@@ -156,7 +142,8 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         previous = json.loads(output.read_text(encoding="utf-8"))
         matches = (
-            previous.get("source_identity_sha256") == fresh["source_identity_sha256"]
+            previous.get("schema") == fresh["schema"]
+            and previous.get("source_identity_sha256") == fresh["source_identity_sha256"]
             and previous.get("files") == fresh["files"]
             and previous.get("upstream_nautilus") == fresh["upstream_nautilus"]
         )
@@ -174,3 +161,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
