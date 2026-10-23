@@ -600,4 +600,12 @@ Expanded the shared 512-container guard to `qa/source_manifest.py`, `qa/wheel_ma
 
 Added long/short Native-versus-ImaginedAccount differential cases. A limit order outside the observed bar range remains pending; after cancellation, Native reports `CANCELED`, ImaginedAccount clears its pending order, both remain flat, and equity remains unchanged. Focused selector: **2 passed**; adapter smoke file: **64 passed**; Ruff passes. Manifest: 606 files, `916c92fc521dd8f931b9f1581fe9e7254c1d945cc48bd21a69b0b66406538596`. Evidence: `docs/audit_evidence/20261023/b4_imagined_limit_cancel_native_parity_20261023.json`.
 
-**Boundary:** synthetic BTC/USD.SIM OHLC only. The test proves pending/cancel ledger behavior, not queue priority, partial limit execution, expiry semantics, or intrabar ordering. The expanded QA JSON guard commit's Hosted Linux/Windows/JAX CPU run `39926884607` passed; this new B4 commit needs fresh hosted verification.
+**Boundary:** synthetic BTC/USD.SIM OHLC only. The test proves pending/cancel ledger behavior, not queue priority, partial limit execution, expiry semantics, or intrabar ordering. The expanded QA JSON guard commit's Hosted Linux/Windows/JAX CPU run `39926884607` passed; Hosted run `39928798741` has since passed Linux CPU, Windows CPU, and isolated JAX CPU.
+
+### A10 L6 gate attestation JSON depth boundary — 2026-10-23
+
+The external L6 report loader had duplicate-key and non-finite checks but no cross-version depth preflight for gate reports or the reviewer producer registry. It now calls the shared 512-container guard in its single strict JSON helper. Extending MyPy to `packages ci qa` also exposed an untyped `GateRunner._reports` field; added its explicit mapping annotation.
+
+**Verification:** attestation + adapter smoke selectors **70 passed**; MyPy **235 files** and Ruff pass; source manifest: 606 files, `1e71cd34c7f82a90deb092c86c6fb138b0dac8cb3d557114fcbb85c5f1ef2c8f`. Evidence: `docs/audit_evidence/20261023/a10_l6_attestation_json_depth_20261023.json`. Fresh hosted CI for this change remains pending.
+
+**Hosted B4 status:** run `39928798741` passed Linux CPU, Windows CPU and isolated JAX CPU, including the Native/Imagined pending-limit cancellation case.

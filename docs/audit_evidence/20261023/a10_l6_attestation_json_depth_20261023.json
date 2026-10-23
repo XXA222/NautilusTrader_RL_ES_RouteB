@@ -1,0 +1,16 @@
+{
+  "schema": "rles.audit-evidence.v1",
+  "task": "A10 cross-version JSON depth guard for L6 gate attestation reports",
+  "status": "LOCAL_PASS_HOSTED_CONFIRMATION_PENDING",
+  "finding": "The L6 release attestation loader rejects duplicate keys and non-standard constants but parsed externally supplied gate reports and trusted-producer registries without the shared structural depth preflight. A deeply nested input could leak RecursionError on one runtime or reach a later schema check on another.",
+  "change": "Run rles_contracts.json_utils.ensure_json_nesting_depth before every strict L6 JSON decode. Also add the missing type annotation for GateRunner._reports uncovered by expanding MyPy to include the CI package.",
+  "verification": {
+    "pytest": "L6 attestation integrity + full Native adapter smoke selector: 70 passed",
+    "mypy": "packages ci qa: Success, no issues found in 235 source files",
+    "ruff": "ruff check packages ci qa tests: All checks passed",
+    "source_manifest": "606 files; identity 1e71cd34c7f82a90deb092c86c6fb138b0dac8cb3d557114fcbb85c5f1ef2c8f",
+    "preceding_hosted_ci": "Run 39928798741 passed Linux CPU, Windows CPU, and isolated JAX CPU for the B4 snapshot; this L6 change needs a fresh run."
+  },
+  "data_scope": "Synthetic 20,000-level JSON only; no gate approvals, account, market, Validation, Test, or Holdout reports were opened.",
+  "next": "Push the L6 guard and expanded type-check correction to the RouteB-only snapshot, then confirm fresh Hosted Linux/Windows/JAX CPU results."
+}

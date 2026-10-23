@@ -82,7 +82,7 @@ class GateRunner:
         if not trusted_producers:
             raise ValueError('trusted_producers required')
         self.trusted=frozenset(trusted_producers)
-        self._reports={}
+        self._reports: dict[str, dict[str, object]] = {}
 
     def evaluate(self, gate:str, *, evidence:list[EvidenceRef], checks:Mapping[str,bool], reviewer_approved:bool=False) -> dict:
         if gate not in GATES or gate in self._reports:

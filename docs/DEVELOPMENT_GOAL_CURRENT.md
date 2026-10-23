@@ -669,3 +669,9 @@ Next: commit and push the expanded QA guard to the RouteB-only snapshot, then ve
 Added a long/short native differential with a non-marketable limit order. Both paths retain the order without a fill for one bar; after cancellation, Native reports `CANCELED`, `ImaginedAccount` has no pending order, and both remain flat at unchanged equity. Focused case: **2 passed**; complete adapter smoke file: **64 passed**; Ruff pass. Updated 606-file manifest: `916c92fc521dd8f931b9f1581fe9e7254c1d945cc48bd21a69b0b66406538596`. Evidence: `docs/audit_evidence/20261023/b4_imagined_limit_cancel_native_parity_20261023.json`. Expanded QA JSON guard CI previously passed all hosted Linux/Windows/JAX CPU jobs in run `39926884607`; this B4 commit needs a fresh run.
 
 Next: continue locally testable B4 lifecycle parity. OHLC-only inputs cannot establish exchange queue priority or exact intrabar sequencing.
+
+### 2026-10-23 A10 L6 attestation report depth guard
+
+The L6 release attestation loader strictly rejects duplicate keys and non-standard constants but did not preflight nesting on external gate reports or the trusted-producer registry. It now uses the shared 512-level scanner before decoding. An expanded MyPy check also found an untyped L6 `_reports` state; its dictionary type is now explicit. Joint L6/adapter regression: **70 passed**; MyPy `packages ci qa`: **235 files pass**; Ruff passes; 606-file manifest identity `1e71cd34c7f82a90deb092c86c6fb138b0dac8cb3d557114fcbb85c5f1ef2c8f`. Evidence: `docs/audit_evidence/20261023/a10_l6_attestation_json_depth_20261023.json`.
+
+The preceding B4 cancellation snapshot has full Hosted confirmation: run `39928798741` passed Linux CPU, Windows CPU, and isolated JAX CPU. The L6 guard is the current pending CI change.

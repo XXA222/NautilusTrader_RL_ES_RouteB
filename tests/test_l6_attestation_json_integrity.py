@@ -50,6 +50,15 @@ def test_gate_report_loader_rejects_nested_duplicate_keys(tmp_path: Path) -> Non
         load_gate_reports(tmp_path, trusted_producers=trusted)
 
 
+
+def test_gate_report_loader_normalizes_excessive_json_nesting(tmp_path: Path) -> None:
+    for index in range(10):
+        (tmp_path / f"Q{index}.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "Q0.json").write_text("[" * 20_000 + "0" + "]" * 20_000, encoding="utf-8")
+    with pytest.raises(GateBlocked, match="Q0 report unreadable"):
+        load_gate_reports(tmp_path, trusted_producers={"reviewer"})
+
+
 def test_gate_report_loader_rejects_non_finite_json_constant(tmp_path: Path) -> None:
     for index in range(10):
         (tmp_path / f"Q{index}.json").write_text("{}", encoding="utf-8")
