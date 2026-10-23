@@ -177,7 +177,8 @@ def test_crps_and_forecast_coverage():
 
 
 def test_imagined_account_applies_maker_rebate_on_resting_limit_fill():
-    account = ImaginedAccount(initial_equity=1000, fee_maker=-.001, fee_taker=.001)
+    account = ImaginedAccount(initial_equity=1000, fee_maker=-.001, fee_taker=.001,
+                              limit_fill_policy="ohlc_touch")
     account.on_bar(Candle(MINUTE_NS, MINUTE_NS, "ETHUSDT-PERP.SIM", 100, 100, 100, 100, 1))
     account.submit(target_qty=1, decision_ns=MINUTE_NS, kind="limit", limit_price=99.5)
     fill = account.on_bar(Candle(2 * MINUTE_NS, 2 * MINUTE_NS, "ETHUSDT-PERP.SIM", 100, 100, 99, 100, 1))
@@ -186,6 +187,13 @@ def test_imagined_account_applies_maker_rebate_on_resting_limit_fill():
     assert fill.fee == pytest.approx(-.0995)
     assert account.fees_paid == pytest.approx(-.0995)
     assert account.equity == pytest.approx(1000.5995)
+
+
+@pytest.mark.parametrize("policy", ["unknown", [], None])
+def test_imagined_account_rejects_unknown_limit_fill_policy(policy):
+    with pytest.raises(ValueError, match="scenario account settings"):
+        ImaginedAccount(initial_equity=1000, fee_maker=.001, fee_taker=.001,
+                        limit_fill_policy=policy)
 
 
 def test_imagined_account_fails_closed_on_mixed_market_instruments():

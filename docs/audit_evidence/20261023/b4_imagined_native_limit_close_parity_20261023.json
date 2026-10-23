@@ -1,0 +1,20 @@
+{
+  "schema": "rles.audit-evidence.v1",
+  "task": "B4 Native/ImaginedAccount limit trigger parity",
+  "status": "LOCAL_PASS_HOSTED_PENDING",
+  "finding": "ImaginedAccount defaulted to filling an unmarketable limit when an OHLC bar's intrabar high/low touched the order, even when the bar close remained on the nonmarketable side. The pinned Native bar engine left the same order pending.",
+  "change": "The default limit policy now triggers against bar close, matching the tested Native bar engine. The former OHLC-touch approximation remains available only through the explicit ohlc_touch policy. Added long/short Native differential tests for close-marketable fills and intrabar touch without close crossing.",
+  "verification": {
+    "focused_limit_selectors": "11 passed",
+    "adapter_and_world_model_selectors": "136 passed, 5 skipped because JAX is unavailable in .venv-win-app",
+    "ruff": "All checks passed",
+    "mypy": "Success: no issues found in 235 source files",
+    "py_compile": "passed for all changed Python files",
+    "diff_check": "passed",
+    "source_manifest": "606 files; identity 9d6d7433a98162ae95fcda9d80a680a7a4a3e108b83e984b7ad22c6217527ac3",
+    "hosted_ci": "pending for this revision"
+  },
+  "data_access": "Synthetic BTC/USD.SIM OHLC bars only; no market, account, registry, Train, Validation, Test, or Holdout data accessed.",
+  "remaining": "The differential covers the repository's pinned DefaultFillModel with bar execution. It does not establish queue priority, intrabar sequencing, partial fills, or parity with the custom adverse-price bar fill model. Economic eligibility remains false.",
+  "next": "Continue locally reproducible B4 lifecycle parity, then publish to the RouteB-only snapshot and inspect fresh Hosted Linux, Windows, and JAX CPU results."
+}

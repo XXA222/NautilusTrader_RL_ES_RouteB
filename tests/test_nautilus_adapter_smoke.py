@@ -56,7 +56,8 @@ class _NoopStrategy(Strategy):
         super().__init__(StrategyConfig())
 
 
-def _builder(submitter: NativePlanSubmitter | None = None, *, fee_taker: Decimal = Decimal("0.001")) -> PublicBacktestBuilder:
+def _builder(submitter: NativePlanSubmitter | None = None, *, fee_taker: Decimal = Decimal("0.001"),
+             fill_model=None) -> PublicBacktestBuilder:
     return PublicBacktestBuilder(
         plan_submitter=submitter,
         config=NativeBootConfiguration(
@@ -69,7 +70,7 @@ def _builder(submitter: NativePlanSubmitter | None = None, *, fee_taker: Decimal
                     "base_currency": Currency.from_str("USD"),
                     "margin_model": StandardMarginModel(),
                     "fee_model": MakerTakerFeeModel(Decimal("0.001"), fee_taker),
-                    "fill_model": DefaultFillModel(),
+                    "fill_model": fill_model if fill_model is not None else DefaultFillModel(),
                     "latency_model": StaticLatencyModel(),
                     "bar_execution": True,
                     "liquidation_enabled": False,
@@ -207,9 +208,10 @@ def test_engine_session_rejects_unhashed_transition_identity_before_build() -> N
     assert session.state == "CLOSED"
 
 
-def _native_order_session(submitter: NativePlanSubmitter, *, fee_taker: Decimal = Decimal("0.001")) -> EngineSession:
+def _native_order_session(submitter: NativePlanSubmitter, *, fee_taker: Decimal = Decimal("0.001"),
+                          fill_model=None) -> EngineSession:
     session = EngineSession(
-        build_native=_builder(submitter, fee_taker=fee_taker), submit_plan=submitter,
+        build_native=_builder(submitter, fee_taker=fee_taker, fill_model=fill_model), submit_plan=submitter,
         decode_event=lambda item: item.native_bar,
         facts_reader=NativeFactsReader(account_id=AccountId.from_str("SIM-001"),
                                        instrument_id=_instrument().id, currency="USD"),
@@ -775,6 +777,116 @@ def test_b4_imagined_unfilled_limit_cancel_matches_native_account(sign: int) -> 
         assert acknowledged.orders == acknowledged.positions == acknowledged.fills == ()
         assert acknowledged.all_orders[0]["status"] == "CANCELED"
         assert acknowledged.equity == initial.equity
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("sign", [1, -1])
+def test_b4_imagined_marketable_limit_matches_native_account(sign: int) -> None:
+    from nautilus_trader.model import ClientOrderId, OrderSide
+    from dataclasses import replace
+
+    fee = Decimal("0.001")
+    submitter = _submitter()
+    imagined = ImaginedAccount(initial_equity=100_000, fee_maker=float(fee),
+                               fee_taker=float(fee), equity_precision=2)
+    session = _native_order_session(submitter, fee_taker=fee)
+
+    def candle(number: int, *, open_price: float, high: float, low: float,
+               close: float) -> Candle:
+        close_ns = number * MINUTE_NS
+        return Candle(close_ns, close_ns, str(_instrument().id), open_price,
+                      high, low, close, 100)
+
+    # The limit is marketable at bar close; this tests a deterministic Native fill.
+    limit_price = Decimal("100.50") if sign > 0 else Decimal("99.50")
+    target_qty = sign * 0.5
+    session_id = f"b4-marketable-limit-{sign}"
+    side = OrderSide.BUY if sign > 0 else OrderSide.SELL
+    try:
+        initial = session.bootstrap((_order_batch(1, "100"),), decision_ts_ns=MINUTE_NS)
+        imagined.on_bar(candle(1, open_price=100, high=100, low=100, close=100))
+        imagined.submit(target_qty=target_qty, decision_ns=MINUTE_NS,
+                        kind="limit", limit_price=float(limit_price))
+        native_order = submitter._strategy.order_factory.limit(
+            instrument_id=_instrument().id,
+            order_side=side,
+            quantity=Quantity.from_str("0.5000"),
+            price=Price.from_str(str(limit_price)),
+            client_order_id=ClientOrderId(session_id),
+        )
+        submitter._strategy.submit_order(native_order)
+        wait = replace(_order_plan(f"wait-{session_id}", str(sign)), action="WAIT",
+                       delta_qty=Decimal(0), cancel_policy=PendingOrderPolicy.WAIT)
+        high, low = 101.0, 99.0
+        native = session.advance(
+            wait,
+            batches=(_order_batch(2, "100", high=f"{high:.2f}", low=f"{low:.2f}",
+                                  close="100.25"),),
+            next_decision_ts_ns=2 * MINUTE_NS,
+        )
+        imagined_fill = imagined.on_bar(
+            candle(2, open_price=100, high=high, low=low, close=100.25),
+        )
+
+        assert imagined_fill is not None
+        assert len(native.fills) == 1
+        native_fill = native.fills[-1]
+        assert Decimal(native_fill["last_qty"]) == Decimal("0.5000")
+        assert Decimal(native_fill["last_px"]) == Decimal("100.25")
+        assert Decimal(str(imagined_fill.price)) == Decimal("100.25")
+        assert Decimal(native_fill["commission"].split()[0]) == Decimal(str(imagined_fill.fee))
+        assert len(native.positions) == 1
+        assert imagined.qty == pytest.approx(target_qty, rel=0, abs=1e-12)
+        assert native.equity == initial.equity - Decimal("0.05")
+        assert imagined.equity == pytest.approx(float(native.equity), rel=0, abs=1e-8)
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("sign", [1, -1])
+def test_b4_intrabar_limit_touch_without_close_cross_stays_pending(sign: int) -> None:
+    from dataclasses import replace
+    from nautilus_trader.model import ClientOrderId, OrderSide
+
+    submitter = _submitter()
+    session = _native_order_session(submitter)
+    imagined = ImaginedAccount(initial_equity=100_000, fee_maker=.001,
+                               fee_taker=.001, equity_precision=2)
+    limit_price = Decimal("99.50") if sign > 0 else Decimal("100.50")
+    try:
+        initial = session.bootstrap((_order_batch(1, "100"),), decision_ts_ns=MINUTE_NS)
+        imagined.on_bar(Candle(MINUTE_NS, MINUTE_NS, str(_instrument().id),
+                               100, 100, 100, 100, 100))
+        imagined.submit(target_qty=float(sign), decision_ns=MINUTE_NS,
+                        kind="limit", limit_price=float(limit_price))
+        native_order = submitter._strategy.order_factory.limit(
+            instrument_id=_instrument().id,
+            order_side=OrderSide.BUY if sign > 0 else OrderSide.SELL,
+            quantity=Quantity.from_str("1.0000"),
+            price=Price.from_str(str(limit_price)),
+            client_order_id=ClientOrderId(f"b4-intrabar-touch-{sign}"),
+        )
+        submitter._strategy.submit_order(native_order)
+        wait = replace(_order_plan(f"wait-b4-intrabar-{sign}", str(sign)), action="WAIT",
+                       delta_qty=Decimal(0), cancel_policy=PendingOrderPolicy.WAIT)
+        native = session.advance(
+            wait,
+            batches=(_order_batch(2, "100", high="101", low="99", close="100.25"),),
+            next_decision_ts_ns=2 * MINUTE_NS,
+        )
+        imagined_fill = imagined.on_bar(
+            Candle(2 * MINUTE_NS, 2 * MINUTE_NS, str(_instrument().id),
+                   100, 101, 99, 100.25, 100),
+        )
+
+        assert imagined_fill is None
+        assert imagined.pending is not None
+        assert native.fills == native.positions == ()
+        assert len(native.orders) == 1
+        assert imagined.qty == pytest.approx(0)
+        assert imagined.equity == pytest.approx(float(initial.equity), rel=0, abs=1e-8)
+        assert native.equity == initial.equity
     finally:
         session.close()
 

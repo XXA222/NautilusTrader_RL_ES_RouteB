@@ -1,5 +1,9 @@
 # RouteB 审计整改：当前连续开发目标
 
+## 2026-10-23 最新续做：B4 Native/Imagined 限价触发对齐
+
+多空对照发现，想象账户原先会因 OHLC 盘中高低点触价而成交；固定 Nautilus bar engine 在收盘仍不满足限价条件时保持挂单。现将默认触发改为按 bar close 判断，并保留原 OHLC touch 近似为显式 `limit_fill_policy="ohlc_touch"` 场景。多空限价收盘成交及盘中触价未收盘穿价对照加入回归。聚焦选择器 **11 passed**；适配器与 WorldModel 三文件 **136 passed、5 个 JAX-only 跳过**；Ruff、MyPy 235 文件、语法编译、差异检查通过。source manifest：606 files，identity `9d6d7433a98162ae95fcda9d80a680a7a4a3e108b83e984b7ad22c6217527ac3`。证据：`docs/audit_evidence/20261023/b4_imagined_native_limit_close_parity_20261023.json`。仅使用合成 BTC/USD.SIM OHLC；Hosted 验证待提交后运行，盘中撮合次序、队列位置、部分成交和自定义滑点 fill model 仍未覆盖。继续其它本地可解决审计项。
+
 ## 2026-10-23 最新续做：M0.1 接受 Native maker fee 返佣
 
 审计发现数据规则和原生费用模型已支持负 maker/taker 费率返佣，Native commission 解析也保留有符号金额，但账户指标累加器仍拒绝负手续费，致使返佣在直接、批处理和在线经济报告中报错。现允许有限的有符号手续费；成交额仍非负、权益必须为正，滑点约束不变。新增直接账户事实与 batch/online Native parity 回归。四个源码套件 **216 passed、18 warnings**；RouteB 独立 wheel 两套件 **120 passed**。离线 wheel 已安装到 RouteB app venv，源/安装模块 SHA-256 一致；全仓 Ruff 与 MyPy 225 文件通过；604 文件 source manifest 验证通过。证据：`docs/audit_evidence/20261023/m01_signed_native_fee_rebate_20261023.json`。仅合成费用事实；未访问市场、账户、登记库或正式评价数据。继续剩余可本地实施审计项。
