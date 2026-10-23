@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-23T05:37:24.523983+00:00",
-  "source_identity_sha256": "990714a64eb4e7afc10c456f2c1a6a372375eebe4a4063aae26b017652469681",
+  "generated_at_utc": "2026-10-23T05:43:44.545296+00:00",
+  "source_identity_sha256": "bfcba666b09f2978a607665b82650016e78aa3169cd1cf457b1e0035bedacfc7",
   "scope": {
     "included": [
       ".gitattributes",
@@ -1913,8 +1913,8 @@
     },
     {
       "path": "qa/profile_f7_tail_rss.py",
-      "size_bytes": 6173,
-      "sha256": "2e945ecb6bca9336f9a7ad57daf2357ac904dfab9e0930a9c61e11beccfdd0ac"
+      "size_bytes": 6224,
+      "sha256": "5adf70023a56c116294e50d66d8f035142740c730ce537caac7d1888fa297419"
     },
     {
       "path": "qa/profile_native_history_growth_20261016.py",

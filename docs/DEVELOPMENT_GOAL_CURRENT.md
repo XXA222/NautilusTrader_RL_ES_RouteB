@@ -581,3 +581,10 @@ A deterministic long/short BTC/USD.SIM round trip now compares B4 ImaginedAccoun
 ### 2026-10-23 current continuation cursor — A10 Hosted MyPy repair
 
 Hosted run 39905239046 failed only at workspace MyPy on Linux and Windows because two stale reset profiler scripts read removed factory-cache attributes; JAX CPU passed. Removed those obsolete output fields without changing historical Stage69 evidence. Actual RouteB workspace MyPy now passes 226 source files and Ruff passes. Current source identity: 95c14df7b49ae57d5f953a921f8c083f85c3def5710b473903acfb5604a5eba9 (605 files). Evidence: docs/audit_evidence/20261023/a10_stale_reset_profiler_mypy_fix_20261023.json. Fresh Hosted CI pending; continue local audit work.
+## 2026-10-23 — A10 Linux MyPy ctypes portability
+
+Hosted Linux CI for commit `19f633038b06b9bd3ed17e33a0fabca0d7f45213` found that `qa/profile_f7_tail_rss.py` directly referenced Windows-only `ctypes.WinDLL`, `WinError`, and `get_last_error`, which Linux MyPy stubs do not expose. The profiler now resolves those platform-only attributes with `getattr` after its existing Windows runtime guard, preserving its Windows behavior.
+
+Local RouteB verification: MyPy passes for **226 source files**; Ruff and `py_compile` pass; a 20-observation Windows profiler smoke passes; the 605-file source manifest regenerates and verifies at `bfcba666b09f2978a607665b82650016e78aa3169cd1cf457b1e0035bedacfc7`. Evidence: `docs/audit_evidence/20261023/a10_linux_mypy_ctypes_portability_20261023.json`.
+
+Next: push this fix to the RouteB-only backup and require a fresh Linux/Windows/JAX CI run. Continue the local A01–A14 audit while hosted jobs run; external research authorization/provenance and independent-validation gates remain open.

@@ -1,0 +1,32 @@
+{
+  "schema": "rles.audit-evidence.v1",
+  "task": "A10 Linux MyPy portability for Windows-only ctypes profiler",
+  "status": "LOCAL_FIX_VERIFIED_HOSTED_RERUN_PENDING",
+  "checkout": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
+  "finding": "Hosted Linux CI at commit 19f633038b06b9bd3ed17e33a0fabca0d7f45213 failed workspace MyPy because qa/profile_f7_tail_rss.py directly referenced ctypes.WinDLL, ctypes.WinError, and ctypes.get_last_error, names omitted from Linux ctypes stubs.",
+  "fix": "Resolve the platform-specific WinDLL, WinError, and get_last_error attributes through getattr after the explicit non-Windows runtime guard; preserve the Windows API calls and behavior.",
+  "verification": [
+    {
+      "command": "RouteB .venv-win-app: python -m mypy packages qa",
+      "result": "Success: no issues found in 226 source files"
+    },
+    {
+      "command": "RouteB .venv-win-app: python -m ruff check qa/profile_f7_tail_rss.py",
+      "result": "All checks passed"
+    },
+    {
+      "command": "RouteB .venv-win-app: python -m py_compile qa/profile_f7_tail_rss.py",
+      "result": "passed"
+    },
+    {
+      "command": "RouteB .venv-win-app: python qa/profile_f7_tail_rss.py --worker heap --count 20",
+      "result": "passed on Windows; deterministic synthetic profiler smoke"
+    },
+    {
+      "command": "RouteB .venv-win-app: python qa/source_manifest.py --output qa/reports/source_manifest_current.json --verify",
+      "result": "verified 605 files; identity bfcba666b09f2978a607665b82650016e78aa3169cd1cf457b1e0035bedacfc7"
+    }
+  ],
+  "data_access": "Synthetic 20-sample profiler only; no market/account/research evaluation data accessed.",
+  "remaining": "The current Linux hosted CI run is the authoritative cross-platform confirmation; retry after the RouteB-only fix is pushed."
+}

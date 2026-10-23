@@ -36,9 +36,10 @@ class _ProcessMemoryCounters(ctypes.Structure):
     ]
 
 
-_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+_win_dll = getattr(ctypes, "WinDLL")
+_kernel32 = _win_dll("kernel32", use_last_error=True)
 _kernel32.GetCurrentProcess.restype = ctypes.c_void_p
-_psapi = ctypes.WinDLL("psapi", use_last_error=True)
+_psapi = _win_dll("psapi", use_last_error=True)
 _get_process_memory_info = _psapi.GetProcessMemoryInfo
 _get_process_memory_info.argtypes = [
     ctypes.c_void_p,
@@ -54,7 +55,7 @@ def _rss_bytes() -> int:
     if not _get_process_memory_info(
         _kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb,
     ):
-        raise ctypes.WinError(ctypes.get_last_error())
+        raise getattr(ctypes, "WinError")(getattr(ctypes, "get_last_error")())
     return int(counters.WorkingSetSize)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

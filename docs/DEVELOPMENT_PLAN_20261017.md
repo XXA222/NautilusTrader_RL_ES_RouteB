@@ -2249,3 +2249,10 @@ After the JSON boundary changes, the fresh 605-file source identity is `f1a5ed8b
 **Verification:** Exact local workspace MyPy command, using RouteB .venv-win-app, passes for **226 source files**; focused Ruff passes. Current source manifest verifies **605 files**, identity 95c14df7b49ae57d5f953a921f8c083f85c3def5710b473903acfb5604a5eba9. Evidence: docs/audit_evidence/20261023/a10_stale_reset_profiler_mypy_fix_20261023.json.
 
 **Boundary / next cursor:** No research data accessed. The failed Hosted run is recorded as failed, not retroactively passed; push the current fix to the RouteB-only backup and require a fresh Hosted Linux/Windows/JAX run. Continue the next local A01-A14 item while CI runs.
+## 2026-10-23 — A10 Linux MyPy ctypes portability
+
+Hosted Linux CI for commit `19f633038b06b9bd3ed17e33a0fabca0d7f45213` found that `qa/profile_f7_tail_rss.py` directly referenced Windows-only `ctypes.WinDLL`, `WinError`, and `get_last_error`, which Linux MyPy stubs do not expose. The profiler now resolves those platform-only attributes with `getattr` after its existing Windows runtime guard, preserving its Windows behavior.
+
+Local RouteB verification: MyPy passes for **226 source files**; Ruff and `py_compile` pass; a 20-observation Windows profiler smoke passes; the 605-file source manifest regenerates and verifies at `bfcba666b09f2978a607665b82650016e78aa3169cd1cf457b1e0035bedacfc7`. Evidence: `docs/audit_evidence/20261023/a10_linux_mypy_ctypes_portability_20261023.json`.
+
+Next: push this fix to the RouteB-only backup and require a fresh Linux/Windows/JAX CI run. Continue the local A01–A14 audit while hosted jobs run; external research authorization/provenance and independent-validation gates remain open.
