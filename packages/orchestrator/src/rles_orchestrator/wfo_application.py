@@ -1360,4 +1360,3 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
             failure.write_text(json.dumps({"error": type(exc).__name__, "detail": detail},
                                           ensure_ascii=False), encoding="utf-8")
         raise
-

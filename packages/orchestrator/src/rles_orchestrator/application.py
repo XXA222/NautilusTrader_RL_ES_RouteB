@@ -1912,4 +1912,3 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         print(json.dumps({"status": "BLOCKED", "error": type(exc).__name__, "detail": str(exc)}, ensure_ascii=False), file=sys.stderr)
         return 2
-

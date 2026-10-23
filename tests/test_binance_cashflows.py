@@ -167,4 +167,3 @@ def test_binance_paged_import_rejects_duplicate_json_object_keys() -> None:
             account_scope_id="account", currency="USDT",
             sample_barriers_ns=(10, 20_000_000, 30_000_000),
         )
-

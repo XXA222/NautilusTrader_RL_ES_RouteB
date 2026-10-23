@@ -254,4 +254,3 @@ def import_binance_usdm_transfer_income_pages(
         query_time_range_ms=(query_start_ms, query_end_ms),
         page_sha256=tuple(page_hashes),
     )
-

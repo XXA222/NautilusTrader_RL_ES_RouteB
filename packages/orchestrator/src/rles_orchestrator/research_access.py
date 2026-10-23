@@ -255,4 +255,3 @@ def finish_application_trial(attempt_key: str | None, *, status: str,
         attempt_key, event_key=f"{status}-{time_ns()}-{uuid.uuid4().hex}",
         status=status, detail=detail,
     )
-

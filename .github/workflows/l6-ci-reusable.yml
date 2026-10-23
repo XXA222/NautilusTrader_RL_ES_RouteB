@@ -116,4 +116,3 @@ jobs:
         run: python -m l6_ci_release.attestation --reports artifacts/gates --trusted-producers artifacts/gates/trusted_producers.json
       - name: Source/wheel/lock/SBOM assembly owned by final integrator
         run: echo "READY FOR USER ASSEMBLY; no tag, merge or release is performed"
-

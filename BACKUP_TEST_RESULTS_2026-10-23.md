@@ -18,4 +18,3 @@ The snapshot contains changed RouteB implementation and CI files, their regressi
 ## Evidence limits
 
 Local results do not certify Hosted CI until its jobs finish, or certify authenticated real-account cashflow completeness. No real account credentials or market payloads were used for these checks.
-

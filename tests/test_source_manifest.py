@@ -105,4 +105,3 @@ def test_source_identity_tracks_workspace_inputs_and_ignores_generated_reports(t
     (tmp_path / "packages" / "demo" / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
     changed = _generate(tmp_path, manifest_path)
     assert changed["source_identity_sha256"] != first["source_identity_sha256"]
-

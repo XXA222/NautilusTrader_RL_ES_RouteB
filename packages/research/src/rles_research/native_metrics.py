@@ -1036,4 +1036,3 @@ class NativeReportAccumulator:
         self._finished = True
         self._group.clear()
         return report
-

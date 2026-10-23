@@ -757,4 +757,3 @@ def authorize_evaluation(registry: ProjectResearchRegistry, ledger: ResearchLedg
     token = registry.reserve(key=key, owner=owner, market=market, family=family,
                              start_ns=start_ns, end_ns=end_ns, purpose=split, identity=identity)
     return EvaluationAccess(registry, key, token, json.dumps(identity, sort_keys=True))
-

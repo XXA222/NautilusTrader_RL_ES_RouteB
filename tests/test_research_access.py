@@ -866,4 +866,3 @@ def test_fresh_fold_reader_reads_only_row_groups_after_atomic_scope_record(tmp_p
             fold_sha256="f" * 64, repository_commit="c" * 40,
             source_code_sha256="d" * 64,
         )
-

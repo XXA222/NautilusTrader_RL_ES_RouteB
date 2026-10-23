@@ -75,4 +75,3 @@ def test_wheel_manifest_matches_built_sources_and_detects_drift(tmp_path: Path) 
     assert result.returncode == 1
     assert report["source_matches_all_wheels"] is False
     assert report["wheels"][0]["content_mismatch"] == ["demo/__init__.py"]
-

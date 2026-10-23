@@ -806,4 +806,3 @@ def test_execution_attribution_preserves_partial_risk_coverage():
     unknown = ExecutionAttribution()
     unknown.observe(requested=0, executed=0, soft=None, risk=None, action="NOOP", reason="deadband")
     assert unknown.report()["groups"][0]["risk_targets"]["risk_target_abs_mean"] is None
-
