@@ -5,31 +5,58 @@
   "checkout": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
   "instrument": "BTC/USD.SIM synthetic CurrencyPair fixture; NETTING; 1 unit",
   "scenarios": [
-    "long entry at 100 after prior close 95, flat exit at 110",
-    "short entry at 100 after prior close 95, flat exit at 110"
+    "long and short round-trip at 100 to 110 after prior close 95, with +0.1% taker fee and -0.1% taker rebate cases",
+    "long and short position reversal: enter 1 unit at 100, reverse by 2 units at 105, flatten at 90",
+    "synthetic resting-limit maker rebate: buy limit 99.5 touched intrabar"
   ],
-  "costs": "Native and imagined fee rates both 0.1 percent taker; flat synthetic OHLC bars isolate market-open fills and fee/PnL parity across opening gaps.",
+  "costs": "Native and imagined market paths use matched positive or negative taker fee rates. Reversal compares the cumulative native fill snapshot latest order fill, net position, account equity and terminal flatness. Separate ImaginedAccount maker-touch regression credits the signed maker rebate; no native limit-maker differential is claimed.",
   "assertions": [
-    "Native and imagined entry equity match after the entry fee.",
-    "Native and imagined terminal equity match after realized PnL and both fees.",
-    "Both paths finish flat with two native fills and no open order/position."
+    "Native and imagined entry equity match for long/short and positive/rebate taker rates.",
+    "Native and imagined terminal equity match after realized PnL and both signed taker charges/rebates.",
+    "A two-unit reversing market order produces matching net position and fee-adjusted equity in both paths.",
+    "Both paths flatten with no open order/position after the round trip.",
+    "A resting synthetic limit touch is classified maker and credits the configured maker rebate."
   ],
   "verification": [
     {
       "command": "RouteB .venv-win-app: pytest tests/test_nautilus_adapter_smoke.py::test_b4_imagined_market_round_trip_matches_native_account",
-      "result": "2 passed in 2.63s"
+      "result": "4 passed in 2.56s"
     },
     {
       "command": "RouteB .venv-win-app: pytest tests/test_nautilus_adapter_smoke.py",
-      "result": "38 passed in 3.39s"
+      "result": "42 passed in 3.55s"
     },
     {
       "command": "python -m ruff check tests/test_nautilus_adapter_smoke.py",
       "result": "passed"
     },
     {
-      "command": "RouteB .venv-win-app: python qa/source_manifest.py --output qa/reports/source_manifest_current.json",
-      "result": "generated 605 files; identity 990714a64eb4e7afc10c456f2c1a6a372375eebe4a4063aae26b017652469681"
+      "command": "RouteB .venv-win-app: python qa/source_manifest.py --output qa/reports/source_manifest_current.json --verify",
+      "result": "verified 605 files; identity b7323e51f4c30d82c3c4c2f937c2070bae884b8c1490f7c6356a21b3e042ff64"
+    },
+    {
+      "command": "RouteB .venv-win-app: python -m mypy packages qa",
+      "result": "Success: no issues found in 226 source files"
+    },
+    {
+      "command": "RouteB source PYTHONPATH: pytest tests/test_nautilus_adapter_smoke.py tests/world_model/test_routeb_additive.py tests/world_model/test_routeb_quality_v2.py",
+      "result": "104 passed, 5 JAX-only skipped (JAX unavailable in app venv)"
+    },
+    {
+      "command": "RouteB .venv-win-app: ruff check changed source/test files",
+      "result": "passed"
+    },
+    {
+      "command": "RouteB .venv-win-app source PYTHONPATH: pytest tests/test_nautilus_adapter_smoke.py::test_b4_imagined_market_reversal_matches_native_account",
+      "result": "2 passed in 2.58s"
+    },
+    {
+      "command": "RouteB source PYTHONPATH: pytest tests/test_nautilus_adapter_smoke.py tests/world_model/test_routeb_additive.py tests/world_model/test_routeb_quality_v2.py",
+      "result": "106 passed, 5 JAX-only skipped (JAX not installed in app venv)"
+    },
+    {
+      "command": "RouteB .venv-win-app: python -m mypy packages qa",
+      "result": "Success: no issues found in 226 source files"
     }
   ],
   "data_access": "Synthetic deterministic bars only; no market, account, Train, Validation, Test, or Holdout data accessed.",

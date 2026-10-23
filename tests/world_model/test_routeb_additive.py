@@ -176,6 +176,17 @@ def test_crps_and_forecast_coverage():
     assert len(report)==3 and all(s.crps==0 and s.coverage_80==1 for s in report)
 
 
+def test_imagined_account_applies_maker_rebate_on_resting_limit_fill():
+    account = ImaginedAccount(initial_equity=1000, fee_maker=-.001, fee_taker=.001)
+    account.on_bar(Candle(MINUTE_NS, MINUTE_NS, "ETHUSDT-PERP.SIM", 100, 100, 100, 100, 1))
+    account.submit(target_qty=1, decision_ns=MINUTE_NS, kind="limit", limit_price=99.5)
+    fill = account.on_bar(Candle(2 * MINUTE_NS, 2 * MINUTE_NS, "ETHUSDT-PERP.SIM", 100, 100, 99, 100, 1))
+    assert fill is not None and fill.maker
+    assert fill.price == pytest.approx(99.5)
+    assert fill.fee == pytest.approx(-.0995)
+    assert account.fees_paid == pytest.approx(-.0995)
+    assert account.equity == pytest.approx(1000.5995)
+
 def test_imagined_limit_market_cancellation_and_equity():
     account=ImaginedAccount(initial_equity=1000,fee_maker=0,fee_taker=.001)
     history=bars(5)

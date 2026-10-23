@@ -588,3 +588,17 @@ Hosted Linux CI for commit `19f633038b06b9bd3ed17e33a0fabca0d7f45213` found that
 Local RouteB verification: MyPy passes for **226 source files**; Ruff and `py_compile` pass; a 20-observation Windows profiler smoke passes; the 605-file source manifest regenerates and verifies at `bfcba666b09f2978a607665b82650016e78aa3169cd1cf457b1e0035bedacfc7`. Evidence: `docs/audit_evidence/20261023/a10_linux_mypy_ctypes_portability_20261023.json`.
 
 Next: push this fix to the RouteB-only backup and require a fresh Linux/Windows/JAX CI run. Continue the local A01–A14 audit while hosted jobs run; external research authorization/provenance and independent-validation gates remain open.
+## 2026-10-23 — B4 signed fee and taker rebate parity
+
+**Finding:** instrument-rule and native account paths permit signed maker/taker fees, but `ImaginedAccount` rejected every negative rate. Its simulated economics therefore diverged for exchange fee rebates even on the supported bar market-order path.
+
+**Fix:** accept finite maker/taker rates in `(-1, 1)`. The native Nautilus long/short differential now covers both `+0.1%` taker fees and `-0.1%` taker rebates. A separate synthetic resting-limit regression confirms the maker rebate is credited; no native limit-maker parity is claimed.
+
+**Verification:** B4 differential **4 passed**; full native adapter suite **40 passed**; adapter + WorldModel source selectors **104 passed, 5 JAX-only skipped** (the app venv has no JAX); MyPy passes **226 source files**, Ruff and `py_compile` pass. The 605-file source manifest verifies at `36352e9e5eae6c115465f15a605b530d560068c3eef7a847f924312735be132f`. Evidence: `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.
+
+**Boundary / next cursor:** synthetic BTC/USD.SIM bar fills only. Limit maker behavior is covered only by the simplified ImaginedAccount model; quote/depth, partial fills, funding, margin/leverage, liquidation, fee tiers and intrabar sequencing remain open. Continue B4 native parity and the locally actionable A01–A14 audit; external authorization/provenance and independent Validation gates remain open.
+### B4 native market-position reversal — 2026-10-23
+
+Added a second long/short native differential: after opening one unit, a two-unit opposing market order reverses the NETTING position, then a final market order flattens it. At each stage, `ImaginedAccount` and Nautilus match on net quantity and equity after realized PnL and 0.1% taker fees; the terminal native snapshot is flat. The test accounts for the adapter returning cumulative fill history and asserts the latest reversal fill side and quantity. The reversal selector passes **2 tests**; full adapter suite passes **42 tests**; adapter + WorldModel source selectors pass **106 tests with 5 JAX-only skips**. MyPy passes 226 files, Ruff passes, and the current 605-file source identity is `b7323e51f4c30d82c3c4c2f937c2070bae884b8c1490f7c6356a21b3e042ff64`. Evidence remains in `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.
+
+**Boundary:** synthetic single-instrument bar-market execution only. This does not establish limit-fill, quote/depth, partial-fill, funding, margin/leverage, liquidation, or historical exchange-fee parity.

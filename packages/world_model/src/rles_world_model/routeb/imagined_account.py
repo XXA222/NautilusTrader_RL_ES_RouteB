@@ -46,7 +46,7 @@ class ImaginedAccount:
                  max_abs_qty:float=1e6):
         if (initial_equity<=0 or max_abs_qty<=0 or
             not all(math.isfinite(v) for v in (initial_equity,fee_maker,fee_taker,max_abs_qty)) or
-            not 0<=fee_maker<1 or not 0<=fee_taker<1):
+            not -1<fee_maker<1 or not -1<fee_taker<1):
             raise ValueError("invalid scenario account settings")
         self.cash=float(initial_equity)
         self.qty=0.0;self.entry=0.0;self.pending:Pending|None=None
