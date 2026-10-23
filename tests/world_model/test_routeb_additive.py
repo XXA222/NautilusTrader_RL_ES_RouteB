@@ -248,6 +248,67 @@ def test_bundle_rejects_duplicate_manifest_keys(tmp_path):
                     expected_source_code_sha256="b" * 64)
 
 
+@pytest.mark.parametrize("scaler_manifest", [
+    {1: "coerced-root-key"},
+    {"nested": {1: "int-key", 2: "second-int-key"}},
+])
+def test_bundle_writer_rejects_non_string_scaler_manifest_keys_before_checkpoint(
+        tmp_path, scaler_manifest):
+    from rles_data.core import DataError
+    from rles_world_model.bundle import save_bundle
+
+    with pytest.raises(DataError, match="string keys"):
+        save_bundle(
+            tmp_path / "invalid-bundle", object(),
+            feature_spec_hash="a" * 64,
+            scaler_manifest=scaler_manifest,
+            instrument="BTCUSDT",
+            source_code_sha256="b" * 64,
+        )
+
+
+def test_bundle_writer_rejects_non_string_nested_learner_config_keys(tmp_path):
+    from dataclasses import dataclass
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from rles_data.core import DataError
+    from rles_world_model.bundle import save_bundle
+
+    @dataclass
+    class Config:
+        nested: dict
+
+    def leaves(tree):
+        if isinstance(tree, dict):
+            return [item for value in tree.values() for item in leaves(value)]
+        if isinstance(tree, (tuple, list)):
+            return [item for value in tree for item in leaves(value)]
+        return [tree]
+
+    learner = SimpleNamespace(
+        input_feature_count=1,
+        config=Config({"nested": {1: "key-coercion"}}),
+        jax=SimpleNamespace(tree_util=SimpleNamespace(tree_leaves=leaves)),
+        checkpoint=lambda: {
+            "params": {"weight": np.asarray([1.0])},
+            "optimizer_state": {"count": np.asarray(0)},
+            "step": 0,
+            "seed": 1,
+        },
+    )
+
+    with pytest.raises(DataError, match="learner configuration.*string object keys"):
+        save_bundle(
+            tmp_path / "invalid-config-bundle", learner,
+            feature_spec_hash="a" * 64,
+            scaler_manifest={"scaler": "valid"},
+            instrument="BTCUSDT",
+            source_code_sha256="b" * 64,
+        )
+
+
 def test_checkpoint_forecast_accepts_valid_seed_stream_metadata_but_resume_is_strict(
         tmp_path):
     jax=pytest.importorskip("jax")

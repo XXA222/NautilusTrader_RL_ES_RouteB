@@ -31,9 +31,13 @@ def save_bundle(path: str | Path, learner: Any, *, feature_spec_hash: str,
             or not isinstance(scaler_manifest, dict)):
         raise DataError("bundle requires feature/source hashes, instrument, and scaler manifest")
     try:
+        _require_string_object_keys(scaler_manifest)
         scaler_payload = json.dumps(scaler_manifest, sort_keys=True, allow_nan=False)
+        scaler_data = loads_unique_json(scaler_payload)
+        if not isinstance(scaler_data, dict):
+            raise ValueError("scaler manifest must serialize to a JSON object")
     except (TypeError, ValueError) as exc:
-        raise DataError("scaler manifest must contain JSON-safe values") from exc
+        raise DataError("scaler manifest must contain JSON-safe values with string keys") from exc
     checkpoint = learner.checkpoint()
     if not isinstance(learner.input_feature_count, int) or learner.input_feature_count < 1:
         raise DataError("model bundle requires an initialized feature input shape")
@@ -54,13 +58,17 @@ def save_bundle(path: str | Path, learner: Any, *, feature_spec_hash: str,
         weights_hash = hashlib.sha256(weights_path.read_bytes()).hexdigest()
         config = learner.config
         config_data = _config_dict(config)
+        try:
+            _require_string_object_keys(config_data)
+        except ValueError as exc:
+            raise DataError("learner configuration must contain string object keys") from exc
         manifest = {
             "schema_version": BUNDLE_SCHEMA,
             "upstream_repository": "https://github.com/danijar/dreamerv3.git",
             "upstream_commit": UPSTREAM_COMMIT,
             "adapter_version": "rles-market-rssm-v0",
             "feature_spec_hash": feature_spec_hash,
-            "scaler_manifest": json.loads(scaler_payload),
+            "scaler_manifest": scaler_data,
             "instrument": instrument,
             "feature_count": learner.input_feature_count,
             "forecast_support": FORECAST_SUPPORT,
@@ -149,6 +157,29 @@ def _config_dict(config: Any) -> dict[str, Any]:
         raise DataError("learner configuration must be a dataclass")
     instance = cast(Any, config)
     return {field.name: getattr(instance, field.name) for field in fields(instance)}
+
+
+def _require_string_object_keys(value: Any) -> None:
+    """Reject JSON key coercion recursively before freezing a scaler manifest."""
+    pending = [value]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if isinstance(current, dict):
+            identity = id(current)
+            if identity in visited:
+                continue
+            visited.add(identity)
+            for key, item in current.items():
+                if not isinstance(key, str):
+                    raise ValueError("scaler manifest object keys must be strings")
+                pending.append(item)
+        elif isinstance(current, (list, tuple)):
+            identity = id(current)
+            if identity in visited:
+                continue
+            visited.add(identity)
+            pending.extend(current)
 
 
 def _sha256(value: str) -> bool:

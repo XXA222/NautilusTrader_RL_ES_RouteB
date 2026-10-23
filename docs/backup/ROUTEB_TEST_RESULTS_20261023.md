@@ -23,6 +23,9 @@ is stored under `docs/audit_evidence/20261023/`.
   orchestrator workflow passed **197 tests** with 13 third-party warnings;
   after making final-snapshot release exception-safe, the focused set passed
   **186 tests**. Ruff and MyPy passed for the changed modules.
+- WorldModel additive tests passed **19 with 2 JAX-only skips** in the app
+  environment and **21 tests** in RouteB's isolated JAX CPU environment; Ruff
+  and MyPy passed for the bundle change.
 - Ruff on changed source and test files: **passed**.
 - MyPy on the changed Native metrics module: **passed**. The changed data,
   Native metrics and historical modules also passed together with package
@@ -60,3 +63,5 @@ The terminal failure-path cleanup regression is recorded in
 `f7_accumulator_spool_failure_cleanup_20261023.json`.
 Final-snapshot release and its orchestrator integration results are recorded in
 `f7_final_snapshot_release_20261023.json`.
+WorldModel bundle scaler-manifest validation is recorded in
+`a10_bundle_scaler_string_keys_20261023.json`.

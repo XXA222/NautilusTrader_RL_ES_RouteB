@@ -2138,3 +2138,13 @@ The online orchestrator now copies terminal `all_orders` into its required order
 **Verification:** Native parity, research metrics, CLI, real application flow and orchestrator workflow: **197 passed, 13 third-party warnings** (334.72s). After making release exception-safe, the focused set reran with **186 passed** (5.51s). Ruff and MyPy for the changed sources passed. The long integration selector used the checked-in `real_ethusdt_20240101` archive fixture and a temporary isolated research registry; it did not use the user's project ledger or account data. Evidence: `docs/audit_evidence/20261023/f7_final_snapshot_release_20261023.json`.
 
 **Boundary / next cursor:** this shortens snapshot lifetime after its order facts are copied; required report facts remain O(n). Full-history Native RSS/trajectory and externally gated provenance, independent-validation, market-scope/depth, historical-trial and M4.2 requirements remain open. Continue locally actionable A01–A14 source audit.
+
+## 2026-10-23 — A10 reject scaler-manifest key coercion in WorldModel bundles
+
+**Finding:** `save_bundle()` accepted a Python scaler manifest containing non-string keys. JSON serialization silently coerced integer keys to strings, while mixed key types could trigger a sorting error unrelated to the contract. Nested manifests were affected too.
+
+**Fix:** recursively validate object keys through nested scaler and dataclass configuration dictionaries and lists/tuples, retain `allow_nan=False`, and verify the canonical scaler object with RouteB's duplicate-key rejecting JSON reader before bundle writes.
+
+**Verification:** red tests reproduced root scaler-key coercion and nested learner-config key coercion. Current WorldModel additive selector: **19 passed, 2 JAX-only skipped** in the app venv; RouteB isolated JAX CPU environment passed **21 tests** covering both boundaries. Ruff and MyPy pass. Only synthetic malformed dictionaries were used. Evidence: `docs/audit_evidence/20261023/a10_bundle_scaler_string_keys_20261023.json`.
+
+**Boundary / next cursor:** bundle writer key canonicalization is fixed; this does not certify model outputs or market skill. Continue A01–A14 code-ready audit. External account provenance, historical coverage, independent Validation, authorized market scope/depth, trial coverage, and M4.2 stay open.

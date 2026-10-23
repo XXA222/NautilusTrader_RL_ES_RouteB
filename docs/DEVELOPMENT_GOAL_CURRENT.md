@@ -532,3 +532,7 @@ Extended the exact Decimal fix to representable low-exponent sums and products, 
 继续在 `D:\Program Files\NautilusTrader_RL_ES_RouteB` 的当前源码上工作。已在 Native 报告成功结束时释放去重/现金流对齐索引及精确尾部 heap/spool；快照摄取或报告最终化失败时也立即释放 spool；编排层复制终端 `all_orders` 后释放完整最终快照。测试分别达到 131、132、134 项聚焦通过；跨 Native、CLI、真实应用流程和 orchestrator workflow 的完整选择器 **197 passed / 13 third-party warnings**，异常安全改动后 **186 passed**；Ruff 与 MyPy 通过。合成 10,000 条现金流显示对齐 dict 从 294,992 B 到 64 B；真实应用流程使用仓库内归档 fixture 和临时隔离 registry，不读取用户项目 registry 或账户数据。详见 `docs/audit_evidence/20261023/f7_*release*20261023.json` 与执行计划。
 
 下一步：继续按 `DEVELOPMENT_GOALS_REVIEW_20261017.md` 审核未完成但不依赖外部授权的 A01–A14 源码项；先检查报告/研究访问 reader 与安装分发边界中的新缺口，再做红测、修复及适用的回归。F7 仍未关闭：报告所需唯一 fills/Funding/orders/cashflows 仍按输出合同增长，完整长历史 RSS/轨迹以及获批的真实历史 Train 证据尚缺。真实现金流来源认证、历史访问完整性、独立 Validation、新市场 scope/深度、历史试验覆盖、M4.2 均保持独立门槛，不解封 Test/Holdout。
+
+### A10 当前续做记录 — WorldModel bundle scaler manifest
+
+继续检查发现 `save_bundle()` 会将 scaler manifest 和 learner dataclass 配置中的非字符串 map 键隐式改写。现已递归拒绝此类键，并对 scaler 序列化结果执行重复键严格解析。RouteB 隔离 JAX CPU WorldModel additive **21 passed**；Ruff/MyPy 通过。仅用合成非法输入。证据：`docs/audit_evidence/20261023/a10_bundle_scaler_string_keys_20261023.json`。接续从 A01–A14 当前源代码审计中选取下一个无需外部授权的缺口；F7 长窗 RSS、真实现金流、历史覆盖、独立 Validation、新市场授权/深度、历史有效试验数与 M4.2 仍开放。

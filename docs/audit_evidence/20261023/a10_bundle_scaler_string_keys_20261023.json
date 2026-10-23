@@ -1,0 +1,21 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A10 / recursively reject coerced scaler-manifest object keys",
+  "finding": "`save_bundle()` serialized scaler and dataclass configuration dictionaries with `json.dumps`, which can coerce non-string mapping keys into JSON strings. Nested integer keys therefore changed identity during bundle freezing; mixed key types could also fail through an incidental sorting error instead of a stable validation boundary.",
+  "change": "Recursively require string keys in scaler manifests and learner config dictionaries nested under lists/tuples, serialize with non-finite values disabled, and parse the generated scaler payload with the duplicate-key rejecting RouteB JSON reader before writing the bundle.",
+  "verification": {
+    "red_regressions": [
+      "The root integer-key scaler case reached learner.checkpoint() on the old code instead of rejecting malformed input.",
+      "A nested learner-config integer key could be coerced while the final bundle manifest was written."
+    ],
+    "application_environment": "tests/world_model/test_routeb_additive.py: 19 passed, 2 JAX-only skipped",
+    "isolated_routeb_jax_cpu_environment": "tests/world_model/test_routeb_additive.py: 21 passed after both scaler and learner-config checks",
+    "ruff": "passed for bundle.py and test_routeb_additive.py",
+    "mypy": "passed for bundle.py"
+  },
+  "source_sha256": {
+    "packages/world_model/src/rles_world_model/bundle.py": "F839BEA1E56055F10F88033214B322D9D0F304792B08904BE6FEF2AE08B17D80",
+    "tests/world_model/test_routeb_additive.py": "333D35847F8965FC28AD397F14A5AEAB843E312E18E0089F02A61404733F28D9"
+  },
+  "boundary": "Only synthetic malformed scaler manifests were tested; no model bundle, registry, market data, or formal evaluation data was loaded or written."
+}
