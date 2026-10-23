@@ -16,6 +16,6 @@ The reusable CI workflow now verifies source/wheel payloads before installation 
 
 ## Snapshot scope and limits
 
-The snapshot contains current changed RouteB implementation, package metadata, CI workflow, regression tests, source manifest, and this verification summary. It excludes internal planning/audit documents, temporary test output, local datasets, access inventories, and exploratory scripts.
+The snapshot contains current changed RouteB implementation, package metadata, CI workflow, regression tests, and this verification summary. The detailed source manifest is intentionally omitted because it contains local environment and fixture metadata; its identity hash is recorded above and CI regenerates the manifest from the checkout. Internal planning/audit documents, temporary test output, local datasets, access inventories, and exploratory scripts are also excluded.
 
 All current results above are local Windows checks. Hosted Linux/Windows/JAX CI has not yet run on this updated branch. No authenticated account statement or market, Validation, Test, or Holdout payload was read; these engineering tests do not certify cashflow completeness or trading performance.
