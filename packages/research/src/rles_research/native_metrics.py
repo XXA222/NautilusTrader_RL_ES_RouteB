@@ -263,16 +263,10 @@ def _external_cashflows_by_time(cashflows: Sequence[Mapping[str, Any]],
     allowed_times = set(times)
     first_time = ordered[0].decision_ts_ns
     currency = ordered[0].currency
-    normalized: list[dict] = []
-    for raw in cashflows:
-        if not isinstance(raw, Mapping):
-            raise MetricsError("external cashflow must be an explicitly sourced mapping")
-        normalized.append(dict(raw))
-
     seen: dict[str, dict] = {}
     by_time: dict[int, Decimal] = {}
     unique: list[dict] = []
-    for fact in _new_facts(normalized, seen, "external cashflow"):
+    for fact in _new_facts(cashflows, seen, "external cashflow"):
         timestamp = fact.get("decision_ts_ns")
         source = fact.get("source_id")
         source_hash = fact.get("source_sha256")
@@ -733,7 +727,7 @@ class NativeReportAccumulator:
         self._funding_facts: dict[str, dict] = {}
         self._cashflow_facts: list[dict] = []
         self._cashflows_by_time: dict[int, Decimal] = {}
-        self._cashflow_barrier_counts: dict[int, int] = {}
+        self._matched_cashflow_timestamps = 0
         self._last_snapshot: Any = None
         self._seen = 0
         self._finished = False
@@ -774,8 +768,10 @@ class NativeReportAccumulator:
             self._cashflows_by_time[timestamp] = _add_cashflow(
                 self._cashflows_by_time.get(timestamp, Decimal(0)), signed,
             )
-            self._cashflow_barrier_counts[timestamp] = 0
-            self._cashflow_facts.append(dict(fact))
+            # _new_facts already detached and normalized the input mapping.
+            # Retain that object directly instead of duplicating every cashflow
+            # fact while the temporary identity index is still alive.
+            self._cashflow_facts.append(fact)
 
     def _init_reconciliation(self) -> None:
         self._initial_equity = Decimal(0)
@@ -834,7 +830,15 @@ class NativeReportAccumulator:
         orders = _snapshot_records(snapshot, "orders", "order")
         fill_records = _snapshot_records(snapshot, "fills", "fill")
         funding_records = _snapshot_records(snapshot, "funding", "funding")
-        liquidation_records = _snapshot_records(snapshot, "liquidation_orders", "liquidation order")
+        liquidation_capability = getattr(snapshot, "liquidation_capability", False) is True
+        raw_liquidation_records = getattr(snapshot, "liquidation_orders", None)
+        if (not liquidation_capability or raw_liquidation_records is None):
+            self._liquidations_observed = False
+            liquidation_records: Sequence[Any] = ()
+        else:
+            liquidation_records = _snapshot_records(
+                snapshot, "liquidation_orders", "liquidation order",
+            )
         for position in positions:
             if not isinstance(position, Mapping):
                 raise MetricsError("native position history fact must be a mapping")
@@ -859,10 +863,10 @@ class NativeReportAccumulator:
                 raise MetricsError("linear reconciliation requires positive initial equity")
         elif currency != self._currency:
             raise MetricsError("native snapshots have conflicting currencies")
-        if timestamp in self._cashflow_barrier_counts:
-            self._cashflow_barrier_counts[timestamp] += 1
-            if self._cashflow_barrier_counts[timestamp] > 1:
+        if timestamp in self._cashflows_by_time:
+            if timestamp == self._last_timestamp:
                 raise MetricsError("external cashflow cannot align to duplicate native barriers")
+            self._matched_cashflow_timestamps += 1
         if (timestamp == self._first_timestamp and timestamp in self._cashflows_by_time):
             raise MetricsError("external cashflow must occur after the initial barrier")
 
@@ -916,14 +920,10 @@ class NativeReportAccumulator:
             )
 
         if self._liquidations_observed:
-            if (getattr(snapshot, "liquidation_capability", False) is not True
-                    or getattr(snapshot, "liquidation_orders", None) is None):
-                self._liquidations_observed = False
-            else:
-                for order in liquidation_records:
-                    _update_liquidation_order(
-                        order, self._liquidation_facts, self._liquidation_filled,
-                    )
+            for order in liquidation_records:
+                _update_liquidation_order(
+                    order, self._liquidation_facts, self._liquidation_filled,
+                )
 
         if self.linear_equity_rounding is not None:
             self._reconcile_snapshot(snapshot, positions, orders, new_fills, new_funding)
@@ -940,8 +940,6 @@ class NativeReportAccumulator:
         if timestamp in self._cashflows_by_time:
             if timestamp <= (self._first_timestamp if self._first_timestamp is not None else timestamp):
                 raise MetricsError("external cashflow must align to a sample after the initial barrier")
-            if self._cashflow_barrier_counts.get(timestamp) != 1:
-                raise MetricsError("external cashflow cannot align to duplicate native barriers")
         snapshot = self._group_snapshot
         self._metrics.add({
             "ts_ns": timestamp, "equity": float(snapshot.equity),
@@ -1076,9 +1074,9 @@ class NativeReportAccumulator:
         if self._seen == 0:
             raise MetricsError("native account snapshots required")
         self._flush_account_group()
-        for timestamp, count in self._cashflow_barrier_counts.items():
-            if count != 1:
-                raise MetricsError("external cashflow must align to exactly one native barrier")
+        if self._matched_cashflow_timestamps != len(self._cashflows_by_time):
+            raise MetricsError("external cashflow must align to exactly one native barrier")
+        for timestamp in self._cashflows_by_time:
             if self._first_timestamp is not None and timestamp <= self._first_timestamp:
                 raise MetricsError("external cashflow must align to a sample after the initial barrier")
         self._finished = True

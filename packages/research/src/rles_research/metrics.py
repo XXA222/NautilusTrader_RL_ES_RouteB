@@ -1,15 +1,57 @@
 """Economic-only metrics rebuilt from native account/fill facts; never from shaped reward."""
 from __future__ import annotations
 
+import heapq
 import math
+import numpy as np
 from array import array
-from heapq import heappop, heappush, heapreplace
-from collections.abc import Iterable, Sequence, Mapping
+from collections.abc import Iterable, Iterator, Sequence, Mapping
+import struct
+import tempfile
 from .numeric import finite_real
 
 
 class MetricsError(ValueError):
     pass
+
+
+class _DiskBackedFloatSequence:
+    """Replayable finite-double sequence stored in an automatically deleted temp file."""
+
+    _FLOAT_BYTES = 8
+    _CHUNK_BYTES = 8192
+    _WRITE_BUFFER_BYTES = 64 * 1024
+
+    def __init__(self) -> None:
+        self._file = tempfile.TemporaryFile(mode="w+b")
+        self._write_buffer = bytearray()
+        self._count = 0
+
+    def append(self, value: float) -> None:
+        self._write_buffer.extend(struct.pack("=d", value))
+        self._count += 1
+        if len(self._write_buffer) >= self._WRITE_BUFFER_BYTES:
+            self._flush_pending()
+
+    def _flush_pending(self) -> None:
+        if self._write_buffer:
+            self._file.seek(0, 2)
+            self._file.write(self._write_buffer)
+            self._write_buffer.clear()
+
+    def __len__(self) -> int:
+        return self._count
+
+    def close(self) -> None:
+        self._file.close()
+
+    def __iter__(self) -> Iterator[float]:
+        self._flush_pending()
+        self._file.seek(0)
+        while block := self._file.read(self._CHUNK_BYTES):
+            if len(block) % self._FLOAT_BYTES:
+                raise MetricsError("temporary return spool has a truncated float")
+            yield from (item[0] for item in struct.iter_unpack("=d", block))
 
 
 def _number(v, name: str) -> float:
@@ -33,8 +75,105 @@ def _finite_sum(current: float, increment: float, label: str) -> float:
     return total
 
 
+_TAIL_HEAP_MAX = 8_192
+
+
+_TAIL_RADIX_CHUNK_FLOATS = 65_536
+_UINT64_SIGN_BIT = np.uint64(1 << 63)
+_UINT64_MAX = np.uint64((1 << 64) - 1)
+
+
+def _ordered_float_keys(values: np.ndarray) -> np.ndarray:
+    """Map finite float64 values to unsigned keys in numeric sort order."""
+    bits = values.view(np.uint64)
+    negative = (bits & _UINT64_SIGN_BIT) != 0
+    keys = np.where(negative, bits ^ _UINT64_MAX, bits ^ _UINT64_SIGN_BIT)
+    # Python considers both signed zeros equal. Keep their common stable-input
+    # tie group together so radix selection agrees with the in-memory heap.
+    keys[values == 0.0] = _UINT64_SIGN_BIT
+    return keys
+
+
+def _disk_backed_tail(returns: _DiskBackedFloatSequence,
+                      count: int) -> tuple[float, float]:
+    """Select exact VaR/CVaR with fixed-size radix scans over the disk spool."""
+    if count < 1 or count > len(returns):
+        raise MetricsError("return tail count is outside the available series")
+    returns._flush_pending()
+    returns._file.flush()
+
+    # Eight most-significant-byte passes identify the exact (count - 1)th
+    # ordered float key. Each pass retains only one bounded NumPy chunk and a
+    # 256-entry histogram, rather than mapping/touching the full history in RAM.
+    target_rank = count - 1
+    selected_before = 0
+    prefix = 0
+    prefix_mask = 0
+    for shift in range(56, -1, -8):
+        histogram = np.zeros(256, dtype=np.int64)
+        returns._file.seek(0)
+        remaining = len(returns)
+        while remaining:
+            size = min(_TAIL_RADIX_CHUNK_FLOATS, remaining)
+            values = np.fromfile(returns._file, dtype=np.float64, count=size)
+            if values.size != size:
+                raise MetricsError("temporary return spool has a truncated float")
+            keys = _ordered_float_keys(values)
+            candidates = (keys & np.uint64(prefix_mask)) == np.uint64(prefix)
+            byte = ((keys[candidates] >> np.uint64(shift)) & np.uint64(0xFF)).astype(
+                np.uint8, copy=False,
+            )
+            histogram += np.bincount(byte, minlength=256)
+            remaining -= size
+
+        cumulative = np.cumsum(histogram, dtype=np.int64)
+        bucket = int(np.searchsorted(cumulative, target_rank + 1, side="left"))
+        if bucket >= 256 or histogram[bucket] == 0:
+            raise MetricsError("radix tail selection could not locate its boundary")
+        below = int(cumulative[bucket - 1]) if bucket else 0
+        selected_before += below
+        target_rank -= below
+        prefix |= bucket << shift
+        prefix_mask |= 0xFF << shift
+
+    boundary_key = np.uint64(prefix)
+    remaining_equal = count - selected_before
+    boundary_rank = target_rank
+    threshold: float | None = None
+
+    def selected_values() -> Iterator[float]:
+        nonlocal remaining_equal, boundary_rank, threshold
+        returns._file.seek(0)
+        remaining = len(returns)
+        while remaining:
+            size = min(_TAIL_RADIX_CHUNK_FLOATS, remaining)
+            values = np.fromfile(returns._file, dtype=np.float64, count=size)
+            if values.size != size:
+                raise MetricsError("temporary return spool has a truncated float")
+            keys = _ordered_float_keys(values)
+            lower = keys < boundary_key
+            equal_positions = np.flatnonzero(keys == boundary_key)
+            if threshold is None:
+                if boundary_rank < equal_positions.size:
+                    threshold = float(values[equal_positions[boundary_rank]])
+                else:
+                    boundary_rank -= int(equal_positions.size)
+            take_equal = min(remaining_equal, int(equal_positions.size))
+            selected = lower.copy()
+            if take_equal:
+                selected[equal_positions[:take_equal]] = True
+                remaining_equal -= take_equal
+            yield from (float(value) for value in values[selected])
+            remaining -= size
+
+    tail_mean = math.fsum(selected_values()) / count
+    if remaining_equal or threshold is None:
+        raise MetricsError("radix tail selection produced an incomplete tail")
+    return threshold, tail_mean
+
+
 class _StreamingSeriesMetrics:
-    """Incremental exact economic metrics with a bounded lower-tail heap."""
+    """Incremental economic metrics with a fixed tail-heap cap."""
 
     def __init__(self, *, max_count: int, risk_free_per_period: float,
                  target_per_period: float, tail_quantile: float) -> None:
@@ -49,7 +188,12 @@ class _StreamingSeriesMetrics:
         self.target_per_period = _number(target_per_period, "target return")
         self.tail_quantile = _number(tail_quantile, "tail quantile")
         self.tail_capacity = math.ceil(max_count * self.tail_quantile)
-        self.worst_heap: list[float] = []
+        self.worst_heap: list[float] | None = (
+            None if self.tail_capacity > _TAIL_HEAP_MAX else []
+        )
+        self.returns = (
+            _DiskBackedFloatSequence() if self.worst_heap is None else None
+        )
         self.path = 1.0
         self.peak = 1.0
         self.drawdown = 0.0
@@ -84,10 +228,14 @@ class _StreamingSeriesMetrics:
                 self.downside_scale = downside
             else:
                 self.downside_ssq += (downside / self.downside_scale) ** 2
-        if len(self.worst_heap) < self.tail_capacity:
-            heappush(self.worst_heap, -x)
-        elif self.worst_heap and x < -self.worst_heap[0]:
-            heapreplace(self.worst_heap, -x)
+        if self.returns is not None:
+            self.returns.append(x)
+        else:
+            assert self.worst_heap is not None
+            if len(self.worst_heap) < self.tail_capacity:
+                heapq.heappush(self.worst_heap, -x)
+            elif self.worst_heap and x < -self.worst_heap[0]:
+                heapq.heapreplace(self.worst_heap, -x)
         self.path *= 1 + x
         if not math.isfinite(self.path) or self.path <= 0:
             raise MetricsError("equity compounding overflow/underflow")
@@ -103,14 +251,21 @@ class _StreamingSeriesMetrics:
                 or (require_exact_count and count != self.max_count)):
             raise MetricsError("at least 2 returns and valid frequency/quantile required")
         tail_count = max(1, math.ceil(count * self.tail_quantile))
-        if len(self.worst_heap) < tail_count:
-            raise MetricsError("return tail does not cover the requested quantile")
-        # max_count may exceed completed rows when duplicate barriers collapse
-        # into one sample. Copy before trimming so result() can be called during
-        # accumulation without discarding candidates needed by later samples.
-        tail = list(self.worst_heap)
-        while len(tail) > tail_count:
-            heappop(tail)
+        if self.returns is not None:
+            if len(self.returns) != count:
+                raise MetricsError("return spool count disagrees with streaming metrics")
+            threshold, tail_mean = _disk_backed_tail(self.returns, tail_count)
+            value_at_risk = -threshold
+            conditional_value_at_risk = -tail_mean
+        else:
+            assert self.worst_heap is not None
+            if len(self.worst_heap) < tail_count:
+                raise MetricsError("return tail does not cover the requested quantile")
+            tail = list(self.worst_heap)
+            while len(tail) > tail_count:
+                heapq.heappop(tail)
+            value_at_risk = tail[0]
+            conditional_value_at_risk = math.fsum(tail) / len(tail)
         sd = self.m2_scale * math.sqrt(self.m2_ssq / (count - 1))
         downside_deviation = self.downside_scale * math.sqrt(self.downside_ssq / count)
         if not math.isfinite(sd) or not math.isfinite(downside_deviation):
@@ -130,8 +285,8 @@ class _StreamingSeriesMetrics:
             "std_period_return": sd,
             "undefined_metrics": [metric for metric, val in (("sharpe", sharpe), ("sortino", sortino))
                                   if val is None],
-            "value_at_risk": tail[0],
-            "conditional_value_at_risk": math.fsum(tail) / len(tail),
+            "value_at_risk": value_at_risk,
+            "conditional_value_at_risk": conditional_value_at_risk,
             "observations": count,
         }
 

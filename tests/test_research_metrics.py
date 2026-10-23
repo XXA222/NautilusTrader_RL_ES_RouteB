@@ -64,6 +64,59 @@ def test_series_metrics_preserves_exact_tail_statistics_without_return_copy():
     assert observed["sortino"] == pytest.approx(mean / downside * sqrt(365.25), rel=1e-14)
 
 
+def test_streaming_tail_selection_avoids_fraction_sized_heap(monkeypatch) -> None:
+    from math import ceil, fsum
+
+    import rles_research.metrics as research_metrics
+
+    values = [-0.4, -0.3, -0.0, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    tail_count = ceil(len(values) * 0.3)
+    worst = sorted(values)[:tail_count]
+    expected_var = -worst[-1]
+    expected_cvar = -fsum(worst) / tail_count
+
+    monkeypatch.setattr(research_metrics, "_TAIL_HEAP_MAX", 2)
+    accumulator = research_metrics._StreamingSeriesMetrics(
+        max_count=len(values), risk_free_per_period=0.0,
+        target_per_period=0.0, tail_quantile=0.3,
+    )
+    for value in values:
+        accumulator.add(value)
+
+    assert accumulator.tail_capacity == 3
+    assert accumulator.worst_heap is None
+    assert len(accumulator.returns) == len(values)
+    observed = accumulator.result(periods_per_year=1)
+    assert observed["value_at_risk"] == expected_var
+    assert observed["conditional_value_at_risk"] == expected_cvar
+
+
+@pytest.mark.parametrize("tail_count", [1, 2, 3, 7, 11, 19])
+def test_disk_radix_tail_matches_stable_sorted_reference(tail_count: int) -> None:
+    from math import copysign, fsum
+
+    import rles_research.metrics as research_metrics
+
+    values = [
+        1.7e308, -1.0, 0.0, -0.0, 3.0, -5.0, -1.0, 1.0,
+        -5e307, -1.0e308, 2.0, -0.0, 0.0, 1.7e308, -2.0,
+        7.0, -5.0, 4.0, -0.0, 0.0,
+    ]
+    returns = research_metrics._DiskBackedFloatSequence()
+    try:
+        for value in values:
+            returns.append(value)
+
+        expected = sorted(values)[:tail_count]
+        threshold, tail_mean = research_metrics._disk_backed_tail(returns, tail_count)
+
+        assert threshold == expected[-1]
+        assert copysign(1.0, threshold) == copysign(1.0, expected[-1])
+        assert tail_mean == fsum(expected) / tail_count
+    finally:
+        returns.close()
+
+
 def test_dsr_trial_count_sensitivity_brackets_dependence_without_claiming_correlation() -> None:
     returns = [0.01, -0.004, 0.012, 0.0, -0.003, 0.009, 0.002, -0.006]
     trial_sharpes = [0.2, 0.5, 0.1]
@@ -192,6 +245,7 @@ def test_streaming_account_accumulator_matches_exact_quantiles_without_return_bu
     assert streamed.returns is None
     assert actual == expected
     assert len(streamed._return_metrics.worst_heap) == 5
+    assert streamed._return_metrics.returns is None
 
 
 def test_account_accumulator_fails_closed_after_partially_applied_metric_error() -> None:

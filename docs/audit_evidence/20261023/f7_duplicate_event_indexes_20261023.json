@@ -1,0 +1,42 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "F7 / duplicate retained event references",
+  "finding": "CuratedStore held separate per-kind event tuples for availability-time queries and event-time queries even when both orders were identical. HistoricalEnvironmentFactory also retained an unused Fold-wide tuple of OHLCV Event references. NativeReportAccumulator retained a second timestamp-to-barrier-count dictionary alongside the cashflow-by-timestamp dictionary.",
+  "changes": [
+    "CuratedStore now aliases the per-kind event-time index to the availability index when the existing event order is already event-time sorted; late arrivals still receive a separately sorted tuple.",
+    "Removed HistoricalEnvironmentFactory._bars because the validated CuratedStore is the sole consumer-visible owner of these events and no code read the duplicate tuple.",
+    "Removed the per-cashflow-timestamp barrier-count dictionary. Chronological duplicate barriers are rejected against the previous timestamp, and a scalar matched-timestamp count detects cashflows with no native barrier.",
+    "Batch and online Native cashflow reports now retain the detached normalized dictionary produced by _new_facts instead of staging and copying each fact a second time during preparation."
+  ],
+  "verification": {
+    "source_tests": "160 passed: layer invariants, native report accumulator parity, research metrics, and the historical lazy-frame factory regression. The broader source selector of layer invariants, data event guards, and historical factory passed 148 tests before removal of the unused _bars tuple; the dedicated factory regression passed again in the 160-test run.",
+    "cashflow_fact_detachment_and_report_selector": "130 passed across native report accumulator parity and research metrics after removing the batch staging list and second online cashflow-fact copy.",
+    "ruff": "Changed source and tests passed.",
+    "mypy": "Changed core.py, native_metrics.py, and historical.py passed; all RouteB package src roots were supplied via MYPYPATH.",
+    "synthetic_store": {
+      "event_count": 389258,
+      "visible_event_count": 389258,
+      "shared_index_kinds": {
+        "funding_update": 271,
+        "index": 129662,
+        "instrument_rule": 1,
+        "mark": 129662,
+        "ohlcv_1m": 129662
+      },
+      "shared_tuple_pointer_bytes": 3114064,
+      "unused_fold_bar_tuple_pointer_bytes": 1037296,
+      "measurement": "CPython tuple storage size minus the empty tuple size; structural pointer storage, not process RSS"
+    },
+    "source_sha256": {
+      "packages/data/src/rles_data/core.py": "54a34bc56d579e1664603de02ee7b66b6c0db11a0cb0578f3fbf00c0dbf88170",
+      "packages/gym_bridge/src/rles_gym_bridge/historical.py": "cc562cb332bed0c637d5e604e3b328b870fbba7468f94d428cc77c86fa81087e",
+      "packages/research/src/rles_research/native_metrics.py": "9710c1dc7e9f434cbcd699da1306e8860645bd424d7c6689b09aa4fce7a7efb2",
+      "tests/test_layer_invariants.py": "197103c60b168dcdcb1b65ca0501fa06517c60b7ad74175e252146968ad83d73",
+      "tests/test_historical_factory.py": "5dccb302f4cd0a3b6df5a28078fec8a71857d86402435e7cb53bd2cb6cd88c6d",
+      "tests/test_native_report_accumulator_parity.py": "a5b9a6df5de2d0d799fe985cd203bb7ef39120c59bc913aaabd8249bcf80e2e0"
+    },
+    "scope": "Synthetic source objects and temporary test fixtures only. No project market, account, registry, Validation, Test, or Holdout data was accessed."
+  },
+  "status": "PASS_SOURCE_TESTS_SYNTHETIC_MEMORY_STRUCTURE_ONLY",
+  "remaining": "This structural measurement is not a full-history Native Train RSS/trajectory profile. Unique event facts required by the report contract remain O(n). Authenticated cashflow provenance, historical access completeness, independent Validation, market scope/depth authorization, historic trial coverage, M4.2, and an approved real-history Train profile remain open gates."
+}

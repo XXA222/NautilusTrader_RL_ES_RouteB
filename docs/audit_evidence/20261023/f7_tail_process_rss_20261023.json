@@ -1,0 +1,86 @@
+{
+  "elapsed_ratio_radix_to_heap": 1.1091113474393282,
+  "exact_metrics_match": true,
+  "limitation": "Process RSS sampled every 5ms over deterministic synthetic returns. This is not a full Native historical Train trace and carries no economic or strategy-validation meaning.",
+  "metrics_source_sha256": "f63ce22b1eb0976a74641955085b0c96876dc8963f0591eaddcae479c31e0b95",
+  "platform": "win32",
+  "python": "3.14.7",
+  "rss_delta_reduction_fraction": 0.6033158107561666,
+  "rss_measurement": "Windows process WorkingSetSize sampled every 5ms",
+  "runner_source_sha256": "2e945ecb6bca9336f9a7ad57daf2357ac904dfab9e0930a9c61e11beccfdd0ac",
+  "runs": {
+    "heap": {
+      "baseline_rss_bytes": 37179392,
+      "elapsed_seconds": 5.370473499991931,
+      "metrics": {
+        "conditional_value_at_risk": 4.79703e-08,
+        "max_drawdown": 1.277118788056697e-06,
+        "mean_period_return": -4.800000000002912e-14,
+        "net_return": -2.421195898216766e-07,
+        "observations": 5000000,
+        "sharpe": -0.0011936026692100058,
+        "sortino": -0.0016880069619487526,
+        "std_period_return": 2.915473741945094e-08,
+        "undefined_metrics": [],
+        "value_at_risk": 4.5000000000000006e-08
+      },
+      "mode": "heap",
+      "observations": 5000000,
+      "peak_rss_bytes": 47308800,
+      "peak_rss_delta_bytes": 10129408,
+      "tail_count": 250000
+    },
+    "radix": {
+      "baseline_rss_bytes": 37183488,
+      "elapsed_seconds": 5.956453099963255,
+      "metrics": {
+        "conditional_value_at_risk": 4.79703e-08,
+        "max_drawdown": 1.277118788056697e-06,
+        "mean_period_return": -4.800000000002912e-14,
+        "net_return": -2.421195898216766e-07,
+        "observations": 5000000,
+        "sharpe": -0.0011936026692100058,
+        "sortino": -0.0016880069619487526,
+        "std_period_return": 2.915473741945094e-08,
+        "undefined_metrics": [],
+        "value_at_risk": 4.5000000000000006e-08
+      },
+      "mode": "radix",
+      "observations": 5000000,
+      "peak_rss_bytes": 41201664,
+      "peak_rss_delta_bytes": 4018176,
+      "tail_count": 250000
+    }
+  },
+  "schema": "rles.f7-tail-process-rss.v1",
+  "synthetic_only": true,
+  "source_manifest": {
+    "files": 605,
+    "identity_sha256": "36bbcb3881e44be8b85753ff3ba82d4844b4d17d66c2fda471a32b737d0d93ae"
+  },
+  "verification": {
+    "source_selector": "224 passed, 18 dependency warnings",
+    "installed_wheel_selector_without_PYTHONPATH": "224 passed, 18 dependency warnings",
+    "wheel": "rles_research-0.4.1-py3-none-any.whl built offline with the RouteB-local Hatchling backend",
+    "source_metrics_sha256_normalized_lf": "f63ce22b1eb0976a74641955085b0c96876dc8963f0591eaddcae479c31e0b95",
+    "installed_metrics_sha256_normalized_lf": "f63ce22b1eb0976a74641955085b0c96876dc8963f0591eaddcae479c31e0b95",
+    "uv_pip_check": "72 packages compatible",
+    "ruff": "full packages/tests/qa/ci check passed",
+    "mypy": "226 source files passed",
+    "public_backup_file_level_reproduction": {
+      "branch_commit": "67bf9542b7a211a06e6dc0ebe6dac9ab7eb42358",
+      "metrics_tests": "107 passed",
+      "normalized_metrics_sha256_matches_backup": true,
+      "normalized_runner_sha256_matches_backup": true,
+      "rss_profile": {
+        "observations": 5000000,
+        "exact_metrics_match": true,
+        "heap_peak_rss_delta_bytes": 10203136,
+        "radix_peak_rss_delta_bytes": 3866624,
+        "radix_rss_reduction_fraction": 0.621035728623043,
+        "radix_to_heap_elapsed_ratio": 1.1631315391395056
+      },
+      "limitation": "The checkout came from the public RouteB backup, but tests reused the RouteB .venv-win-app interpreter; this is source checkout reproduction, not a clean dependency environment or a full-project F9 close."
+    }
+  }
+}

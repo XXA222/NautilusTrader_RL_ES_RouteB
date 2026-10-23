@@ -106,6 +106,7 @@ def test_l2_visibility_is_decision_time_bounded() -> None:
         provenance="fixture:source-sha256",
     )
     store = CuratedStore((event,))
+    assert store._visible_by_kind["ohlcv_1m"] is store._visible_by_event_time["ohlcv_1m"]
     assert store.visible(minute + 4) == ()
     assert store.visible(minute + 5) == (event,)
     with pytest.raises(TypeError, match="immutable market payload"):
@@ -144,6 +145,7 @@ def test_event_time_window_is_bounded_and_filters_late_availability() -> None:
     events = (price("a-old", 20, 20), price("b-in-window", 50, 60),
               price("c-not-yet-available", 65, 75), price("d-boundary", 70, 70))
     store = CuratedStore(events)
+    assert store._visible_by_kind["mark"] is not store._visible_by_event_time["mark"]
 
     assert store.visible_event_window(70, 45, "mark") == (events[1], events[3])
     assert store.visible_event_window(74, 45, "mark") == (events[1], events[3])

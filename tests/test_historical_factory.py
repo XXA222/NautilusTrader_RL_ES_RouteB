@@ -1,5 +1,4 @@
 """Synthetic contract tests for production assembly; never real-data claims."""
-from bisect import bisect_left, bisect_right
 from dataclasses import asdict
 from decimal import Decimal
 from hashlib import sha256
@@ -76,54 +75,65 @@ def test_historical_frame_batch_partition_is_ordered_complete_and_linear_windowe
     assert tuple(batch for frame in frames for batch in frame) == tuple(batch for _, batch in batches)
 
 
-def test_factory_market_batch_index_matches_uncached_visible_event_grouping(tmp_path):
+def test_factory_lazy_episode_frames_match_windowed_visible_event_grouping(tmp_path, monkeypatch):
+    import rles_gym_bridge.historical as historical_module
+
     factory = HistoricalEnvironmentFactory(**recipe(tmp_path, bar_count=30))
+    # CuratedStore owns the validated events; keeping a second Fold-wide tuple
+    # of the same OHLCV Event references serves no consumer.
+    assert not hasattr(factory, "_bars")
     warmup_minutes = max(
         field.lookback_bars * field.timeframe_minutes
         for field in factory.features.fields if field.source_kind == "ohlcv_1m"
     ) + 2
-    feed_start_ns = max(0, factory.rows[0].decision_ts_ns - warmup_minutes * MINUTE_NS)
-    feed_end_ns = factory.rows[-1].decision_ts_ns
-    expected = {}
-    for event in factory.store.available_event_window(feed_start_ns, feed_end_ns):
-        if event.kind in {"instrument_rule", "funding_update"}:
-            continue
-        if event.payload.get("instrument") != factory.instrument:
-            continue
-        expected.setdefault(event.available_at_ns, []).append(event.event_id)
+    original_features = historical_module.visible_market_features
+    feature_calls = []
 
-    first = factory._visible_market_batch_index()
-    second = factory._visible_market_batch_index()
+    def counted_features(*args, **kwargs):
+        feature_calls.append(kwargs["decision_ts_ns"])
+        return original_features(*args, **kwargs)
 
-    assert first is second
-    assert [(timestamp, [event.event_id for event in batch.events])
-            for timestamp, batch in first] == list(expected.items())
-    batch_times = tuple(timestamp for timestamp, _batch in first)
+    monkeypatch.setattr(historical_module, "visible_market_features", counted_features)
     for start_offset in (0, 7):
+        feature_calls.clear()
         episode_rows = factory.rows[start_offset:start_offset + 8]
         episode_feed_start = max(
             0, episode_rows[0].decision_ts_ns - warmup_minutes * MINUTE_NS,
         )
-        left = bisect_left(batch_times, episode_feed_start)
-        right = bisect_right(batch_times, episode_rows[-1].decision_ts_ns)
-        uncached = _visible_batches_by_decision(
-            first[left:right], tuple(row.decision_ts_ns for row in episode_rows),
-        )
-        cached = factory._episode_market_batch_groups(
-            start_offset=start_offset, episode_rows=episode_rows,
-            feed_start_ns=episode_feed_start,
-        )
-        assert cached == uncached
         frames = factory._episode_barrier_frames(
             start_offset=start_offset, episode_rows=episode_rows,
             feed_start_ns=episode_feed_start,
         )
-        cached_frames = factory._barrier_frames_by_row
-        assert cached_frames is not None
-        assert frames[0].batches == uncached[0]
-        assert frames[0].market == cached_frames[start_offset].market
-        assert frames[0].time_features == cached_frames[start_offset].time_features
-        assert frames[1:] == cached_frames[start_offset + 1:start_offset + len(episode_rows)]
+        assert not isinstance(frames, tuple)
+        assert len(feature_calls) == 0
+        for index, row in enumerate(episode_rows):
+            start_available_ns = (episode_feed_start if index == 0
+                                  else episode_rows[index - 1].decision_ts_ns + 1)
+            expected_groups = {}
+            for event in factory.store.available_event_window(
+                    start_available_ns, row.decision_ts_ns):
+                if (event.kind in {"instrument_rule", "funding_update"}
+                        or event.payload.get("instrument") != factory.instrument
+                        or event.available_at_ns is None):
+                    continue
+                expected_groups.setdefault(event.available_at_ns, []).append(
+                    to_market_event(event, quality_grade=DataQualityGrade(
+                        factory.quality.grade.value)))
+            expected_batches = tuple(
+                VisibleBatch(timestamp, tuple(events), True)
+                for timestamp, events in sorted(expected_groups.items())
+            )
+            frame = frames[index]
+            assert frame.batches == expected_batches
+            assert frame.market == original_features(
+                row, factory.features, factory.schema, instrument=factory.instrument,
+                decision_ts_ns=row.decision_ts_ns,
+            )
+            assert frame.time_features == {}
+            assert feature_calls[-1] == row.decision_ts_ns
+        assert frames[0] == frames[0]  # repeated reads are deterministic, not retained in a Fold cache
+        assert feature_calls[-1] == episode_rows[0].decision_ts_ns
+        assert not hasattr(factory, "_barrier_frames_by_row")
 
 
 def test_cached_episode_frames_preserve_native_replay_boundary_and_ledger(tmp_path, monkeypatch):

@@ -1,0 +1,24 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "F7 fixed-memory exact VaR/CVaR tail selection",
+  "finding": "The online return reducer held an exact lower-tail heap proportional to the configured tail count.",
+  "change": "Cap the online heap at 8192 values. For larger configured tails, spool float64 returns to an automatically deleted temporary file and use in-place NumPy memmap partition for exact VaR plus fsum of the selected slice for CVaR.",
+  "verification": {
+    "focused_metrics_and_parity": "122 passed",
+    "full_native_metrics_history_liquidation_selector": "218 passed, 18 dependency warnings",
+    "ruff": "passed",
+    "mypy": "passed for metrics.py",
+    "diff_check": "passed",
+    "synthetic_streaming_differential": {
+      "returns": 1000000,
+      "tail_count": 50000,
+      "all_metrics_equal_to_heap_reference": true,
+      "bounded_memmap_tracemalloc_peak_bytes": 217746,
+      "legacy_heap_tracemalloc_peak_bytes": 2046312,
+      "python_allocation_reduction_fraction": 0.8936,
+      "bounded_memmap_seconds_with_tracemalloc": 5.8,
+      "legacy_heap_seconds_with_tracemalloc": 6.216
+    }
+  },
+  "scope": "RouteB .venv-win-app; synthetic returns only. tracemalloc reports Python allocations and does not measure process RSS or a full historical Train workload. No market, account, Validation, Test, or Holdout data was accessed."
+}

@@ -207,6 +207,14 @@ class Event:
         return self._bound_hash
 
 
+def _event_available_key(event: Event) -> int:
+    return cast(int, event.available_at_ns)
+
+
+def _event_time_key(event: Event) -> int:
+    return event.ts_event_ns
+
+
 @dataclass(frozen=True)
 class DataQualityReport:
     grade: Grade
@@ -480,30 +488,34 @@ class CuratedStore:
         self.instruments = frozenset(cast(str, event.payload["instrument"])
                                      for event in self.events
                                      if isinstance(event.payload.get("instrument"), str))
-        visible_events = tuple(event for event in self.events if event.available_at_ns is not None)
-        self._visible_events = visible_events
-        self._visible_times = tuple(cast(int, event.available_at_ns) for event in visible_events)
+        visible_count = 0
+        for event in self.events:
+            if event.available_at_ns is None:
+                break
+            visible_count += 1
+        self._visible_events = (self.events if visible_count == len(self.events)
+                                else self.events[:visible_count])
         visible_by_kind: dict[str, list[Event]] = {}
-        for event in visible_events:
+        for event in self._visible_events:
             visible_by_kind.setdefault(event.kind, []).append(event)
         self._visible_by_kind = {kind: tuple(events) for kind, events in visible_by_kind.items()}
-        self._visible_times_by_kind = {
-            kind: tuple(cast(int, event.available_at_ns) for event in events)
-            for kind, events in self._visible_by_kind.items()
-        }
-        visible_by_event_time: dict[str, list[Event]] = {}
-        for event in visible_events:
-            visible_by_event_time.setdefault(event.kind, []).append(event)
-        self._visible_by_event_time = {
-            kind: tuple(sorted(events, key=lambda event: (event.ts_event_ns,
-                                                           cast(int, event.available_at_ns),
-                                                           event.event_id)))
-            for kind, events in visible_by_event_time.items()
-        }
-        self._visible_event_times_by_kind = {
-            kind: tuple(event.ts_event_ns for event in events)
-            for kind, events in self._visible_by_event_time.items()
-        }
+        visible_by_event_time: dict[str, tuple[Event, ...]] = {}
+        for kind, events in visible_by_kind.items():
+            # The availability index is already in event-time order for the
+            # common case where facts arrive in chronological order. Reuse
+            # its tuple to avoid a second N-reference index. Late-arriving
+            # facts still receive their own event-time-sorted index.
+            if all((left.ts_event_ns, cast(int, left.available_at_ns), left.event_id)
+                   <= (right.ts_event_ns, cast(int, right.available_at_ns), right.event_id)
+                   for left, right in zip(events, events[1:])):
+                visible_by_event_time[kind] = self._visible_by_kind[kind]
+            else:
+                visible_by_event_time[kind] = tuple(sorted(
+                    events, key=lambda event: (event.ts_event_ns,
+                                               cast(int, event.available_at_ns),
+                                               event.event_id),
+                ))
+        self._visible_by_event_time = visible_by_event_time
         # Derived feature indexes are lazy and excluded from snapshot identity.
         self._feature_cache: dict[tuple[Any, ...], Any] = {}
         rules_by_instrument: dict[str, list[Event]] = {}
@@ -585,12 +597,9 @@ class CuratedStore:
 
     def visible(self, decision_ns: int, kind: str | None = None) -> tuple[Event, ...]:
         require_ns(decision_ns)
-        if kind is None:
-            events, times = self._visible_events, self._visible_times
-        else:
-            events = self._visible_by_kind.get(kind, ())
-            times = self._visible_times_by_kind.get(kind, ())
-        return events[:bisect_right(times, decision_ns)]
+        events = (self._visible_events if kind is None
+                  else self._visible_by_kind.get(kind, ()))
+        return events[:bisect_right(events, decision_ns, key=_event_available_key)]
 
     def visible_event_window(self, decision_ns: int, start_event_ns: int,
                              kind: str) -> tuple[Event, ...]:
@@ -600,9 +609,8 @@ class CuratedStore:
         if type(kind) is not str or not kind or start_event_ns > decision_ns:
             raise DataError("invalid visible event-time window")
         events = self._visible_by_event_time.get(kind, ())
-        times = self._visible_event_times_by_kind.get(kind, ())
-        first = bisect_left(times, start_event_ns)
-        last = bisect_right(times, decision_ns)
+        first = bisect_left(events, start_event_ns, key=_event_time_key)
+        last = bisect_right(events, decision_ns, key=_event_time_key)
         return tuple(event for event in events[first:last]
                      if event.available_at_ns is not None
                      and event.available_at_ns <= decision_ns)
@@ -615,14 +623,13 @@ class CuratedStore:
         if start_available_ns > end_available_ns:
             raise DataError("invalid availability-time window")
         if kind is None:
-            events, times = self._visible_events, self._visible_times
+            events = self._visible_events
         else:
             if type(kind) is not str or kind not in KINDS:
                 raise DataError("unknown availability-time event kind")
             events = self._visible_by_kind.get(kind, ())
-            times = self._visible_times_by_kind.get(kind, ())
-        first = bisect_left(times, start_available_ns)
-        last = bisect_right(times, end_available_ns)
+        first = bisect_left(events, start_available_ns, key=_event_available_key)
+        last = bisect_right(events, end_available_ns, key=_event_available_key)
         return events[first:last]
 
     def latest_rule(self, decision_ns: int, instrument: str) -> Event:
