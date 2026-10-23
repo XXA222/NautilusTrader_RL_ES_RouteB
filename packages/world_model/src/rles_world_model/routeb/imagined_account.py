@@ -6,7 +6,14 @@ certification remains BLOCKED until native differential testing passes.
 """
 from __future__ import annotations
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_EVEN, localcontext
+from decimal import (
+    Decimal,
+    DecimalException,
+    ROUND_CEILING,
+    ROUND_FLOOR,
+    ROUND_HALF_EVEN,
+    localcontext,
+)
 import math
 from .market import Candle,MINUTE_NS
 
@@ -137,41 +144,63 @@ class ImaginedAccount:
         delta=order.signed_qty
         rate = self.maker if maker else self.taker
         quantum = Decimal(1).scaleb(-self.equity_precision)
-        with localcontext() as context:
-            context.prec = 64
-            fee_decimal = (Decimal(str(abs(delta))) * Decimal(str(price)) * Decimal(str(rate))).quantize(
-                quantum,
-                rounding=ROUND_HALF_EVEN,
-            )
+        try:
+            with localcontext() as context:
+                context.prec = 64
+                fee_decimal = (Decimal(str(abs(delta))) * Decimal(str(price)) * Decimal(str(rate))).quantize(
+                    quantum,
+                    rounding=ROUND_HALF_EVEN,
+                )
+        except DecimalException as exc:
+            raise ValueError("imagined account fill exceeds finite numeric range") from exc
         fee = float(fee_decimal)
+        if not math.isfinite(price) or not math.isfinite(fee):
+            raise ValueError("imagined account fill exceeds finite numeric range")
         # Realized PNL on reduction or reversal, never count both realized and MTM.
+        realized = 0.0
         if old and old*delta<0:
             closed=min(abs(old),abs(delta))
-            self.cash+=closed*(price-self.entry)*(1. if old>0 else -1.)
-        self.cash-=fee
+            realized = closed*(price-self.entry)*(1. if old>0 else -1.)
+        next_cash = self.cash + realized - fee
         new=old+delta
         if abs(new)<1e-12:
-            self.entry=0.0;new=0.0
+            next_entry=0.0;new=0.0
         elif abs(old)<1e-12 or old*new<0:
-            self.entry=price
+            next_entry=price
         elif old*delta>0:
-            self.entry=(abs(old)*self.entry+abs(delta)*price)/abs(new)
-        self.qty=new
-        self.fees_paid+=fee
+            next_entry=(abs(old)/abs(new))*self.entry+(abs(delta)/abs(new))*price
+        else:
+            next_entry=self.entry
+        next_fees_paid=self.fees_paid+fee
+        if not all(math.isfinite(value) for value in (
+                realized, next_cash, new, next_entry, next_fees_paid)):
+            raise ValueError("imagined account fill exceeds finite numeric range")
+        self._mark_equity(next_cash,new,next_entry,bar.close)
         fill=Fill(bar.ts_close_ns,delta,price,fee,maker)
+        self.cash=next_cash
+        self.entry=next_entry
+        self.qty=new
+        self.fees_paid=next_fees_paid
         self.fills.append(fill)
         return fill
+
+    def _mark_equity(self,cash:float,qty:float,entry:float,close:float)->float:
+        value = cash if qty==0 else cash+qty*(close-entry)
+        if not math.isfinite(value):
+            raise ValueError("imagined account equity exceeds finite numeric range")
+        rounded=round(value,self.equity_precision)
+        if not math.isfinite(rounded):
+            raise ValueError("imagined account equity exceeds finite numeric range")
+        return rounded
 
     def on_bar(self,bar:Candle)->Fill|None:
         if self.last_bar_ns is not None and bar.ts_close_ns != self.last_bar_ns+MINUTE_NS:
             raise ValueError('imagined bar replay must be strictly increasing and contiguous')
         if self.instrument_id is not None and bar.instrument != self.instrument_id:
             raise ValueError('imagined account cannot mix instruments')
-        if self.instrument_id is None:
-            self.instrument_id = bar.instrument
-        self.last_bar_ns=bar.ts_close_ns
         order=self.pending
         result=None
+        next_pending=self.pending
         if order is not None:
             # Without tick data, never fill an order in a bar whose open
             # preceded order activation.
@@ -201,25 +230,31 @@ class ImaginedAccount:
                 fill_quantity = min(abs(order.signed_qty), available)
                 if price is not None and fill_quantity > 1e-12:
                     fill_delta = math.copysign(fill_quantity, order.signed_qty)
+                    remaining = order.signed_qty - fill_delta
+                    remaining_depth = max(0.0, available - fill_quantity)
+                    next_pending = (None if abs(remaining) <= 1e-12 else Pending(
+                        remaining, order.kind, order.submitted_at_ns, order.active_from_ns,
+                        order.limit_price, order.initial_signed_qty, remaining_depth,
+                    ))
                     fill_order = Pending(
                         fill_delta, order.kind, order.submitted_at_ns, order.active_from_ns,
                         order.limit_price, order.initial_signed_qty, available,
                     )
                     result=self._apply_fill(fill_order,bar,float(price),maker=maker)
-                    remaining = order.signed_qty - fill_delta
-                    remaining_depth = max(0.0, available - fill_quantity)
-                    self.pending = (None if abs(remaining) <= 1e-12 else Pending(
-                        remaining, order.kind, order.submitted_at_ns, order.active_from_ns,
-                        order.limit_price, order.initial_signed_qty, remaining_depth,
-                    ))
+                    self.pending=next_pending
+        if result is None:
+            self._mark_equity(self.cash,self.qty,self.entry,bar.close)
+        if self.instrument_id is None:
+            self.instrument_id = bar.instrument
+        self.last_bar_ns=bar.ts_close_ns
         self.last_close=bar.close
         return result
 
     @property
     def equity(self)->float:
-        value = self.cash if self.qty==0 or self.last_close is None else (
-            self.cash+self.qty*(self.last_close-self.entry))
-        return round(value, self.equity_precision)
+        if self.last_close is None:
+            return self._mark_equity(self.cash,0.0,0.0,0.0)
+        return self._mark_equity(self.cash,self.qty,self.entry,self.last_close)
     @property
     def economics_eligible(self)->bool:
         # Funding, liquidation, margin tiers, actual historical exchange rules,

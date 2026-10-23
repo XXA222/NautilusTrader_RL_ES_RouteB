@@ -268,6 +268,61 @@ def test_imagined_account_fails_closed_on_mixed_market_instruments():
     assert account.fills == []
 
 
+def test_imagined_account_fill_overflow_does_not_partially_advance_state():
+    account = ImaginedAccount(
+        initial_equity=1000.0,
+        fee_maker=0.9,
+        fee_taker=0.9,
+        max_abs_qty=1e6,
+    )
+    first = Candle(MINUTE_NS, MINUTE_NS, "BTC/USD.SIM", 100, 101, 99, 100, 1000)
+    account.on_bar(first)
+    account.submit(target_qty=1e6, decision_ns=MINUTE_NS)
+
+    extreme = Candle(
+        2 * MINUTE_NS,
+        2 * MINUTE_NS,
+        "BTC/USD.SIM",
+        1e308,
+        1e308,
+        1e308,
+        1e308,
+        1000,
+    )
+    with pytest.raises(ValueError, match="fill exceeds finite numeric range"):
+        account.on_bar(extreme)
+
+    assert account.last_bar_ns == MINUTE_NS
+    assert account.last_close == 100
+    assert account.cash == 1000
+    assert account.qty == 0
+    assert account.fees_paid == 0
+    assert account.pending is not None
+    assert account.fills == []
+
+
+def test_imagined_account_rejects_unrepresentable_mark_without_advancing():
+    account = ImaginedAccount(
+        initial_equity=1000.0,
+        fee_maker=0.0,
+        fee_taker=0.0,
+        max_abs_qty=1e6,
+    )
+    account.on_bar(Candle(MINUTE_NS, MINUTE_NS, "BTC/USD.SIM", 100, 101, 99, 100, 1000))
+    account.submit(target_qty=1e6, decision_ns=MINUTE_NS)
+    account.on_bar(Candle(
+        2 * MINUTE_NS, 2 * MINUTE_NS, "BTC/USD.SIM", 1e308, 1e308, 1e308, 1e308, 1000,
+    ))
+
+    with pytest.raises(ValueError, match="equity exceeds finite numeric range"):
+        account.on_bar(Candle(3 * MINUTE_NS, 3 * MINUTE_NS, "BTC/USD.SIM", 1, 1, 1, 1, 1000))
+
+    assert account.last_bar_ns == 2 * MINUTE_NS
+    assert account.last_close == 1e308
+    assert account.qty == 1e6
+    assert len(account.fills) == 1
+
+
 def test_imagined_limit_market_cancellation_and_equity():
     account=ImaginedAccount(initial_equity=1000,fee_maker=0,fee_taker=.001)
     history=bars(5)
