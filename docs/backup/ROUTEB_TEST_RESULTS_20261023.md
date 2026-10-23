@@ -19,6 +19,10 @@ is stored under `docs/audit_evidence/20261023/`.
   both changed research modules.
 - The follow-up terminal-failure spool cleanup selector passed **134 tests**;
   Ruff and MyPy passed for the changed research modules.
+- Native parity, research metrics, application CLI, real application flow and
+  orchestrator workflow passed **197 tests** with 13 third-party warnings;
+  after making final-snapshot release exception-safe, the focused set passed
+  **186 tests**. Ruff and MyPy passed for the changed modules.
 - Ruff on changed source and test files: **passed**.
 - MyPy on the changed Native metrics module: **passed**. The changed data,
   Native metrics and historical modules also passed together with package
@@ -54,3 +58,5 @@ The return-spool lifecycle regression is recorded in
 `f7_accumulator_spool_release_20261023.json`.
 The terminal failure-path cleanup regression is recorded in
 `f7_accumulator_spool_failure_cleanup_20261023.json`.
+Final-snapshot release and its orchestrator integration results are recorded in
+`f7_final_snapshot_release_20261023.json`.

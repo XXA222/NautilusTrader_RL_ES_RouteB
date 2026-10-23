@@ -305,6 +305,31 @@ def test_native_report_accumulator_closes_disk_return_spool_after_finish():
     assert accumulator._metrics._released
 
 
+def test_native_report_accumulator_releases_terminal_snapshot_after_order_copy():
+    snapshot = SimpleNamespace(**{
+        **vars(_snapshot(21, "1020")),
+        "all_orders": ({"client_order_id": "terminal-order"},),
+    })
+    accumulator = NativeReportAccumulator(
+        sample_interval_ns=10, max_return_count=4,
+        contract_multiplier=Decimal(1),
+    )
+    for item in (_snapshot(1, "1000"), _snapshot(11, "1010"), snapshot):
+        accumulator.add_snapshot(item, {})
+    report = accumulator.finish()
+
+    assert accumulator.final_snapshot is snapshot
+    accumulator.release_final_snapshot()
+
+    assert accumulator.final_snapshot is None
+    assert report["metrics"]["observations"] == 2
+    with pytest.raises(MetricsError, match="before report finalization"):
+        NativeReportAccumulator(
+            sample_interval_ns=10, max_return_count=4,
+            contract_multiplier=Decimal(1),
+        ).release_final_snapshot()
+
+
 @pytest.mark.parametrize("failure_phase", ["snapshot", "finalization"])
 def test_native_report_accumulator_closes_disk_return_spool_after_failure(failure_phase):
     accumulator = NativeReportAccumulator(

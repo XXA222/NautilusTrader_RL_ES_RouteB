@@ -2130,3 +2130,11 @@ Evidence: `docs/audit_evidence/20261023/f7_current_source_native_growth_20261023
 Failure-path review found that both snapshot ingestion errors and finalization errors permanently poison the online accumulator while previously leaving the exact-tail temporary spool open. Those terminal error handlers now release metric storage immediately while preserving the original exception and report-event indexes for diagnosis. The focused Native/research selector passes **134 tests**, with Ruff and MyPy passing for the changed modules. Synthetic regressions verify spool closure after a nonchronological snapshot and after an insufficient-series finalization error. Evidence: `docs/audit_evidence/20261023/f7_accumulator_spool_failure_cleanup_20261023.json`.
 
 **Boundary / next cursor:** only lifecycle behavior was tested; full-history RSS/trajectory and all externally gated provenance/independent-validation requirements remain open. Continue A01–A14 locally actionable audit work.
+
+### F7 release terminal snapshot after native order indexing — 2026-10-23
+
+The online orchestrator now copies terminal `all_orders` into its required order lookup and then releases the complete final snapshot from the summary accumulator in an exception-safe `finally` block. The batch-report fallback is unchanged. `release_final_snapshot()` is legal only after successful report finalization.
+
+**Verification:** Native parity, research metrics, CLI, real application flow and orchestrator workflow: **197 passed, 13 third-party warnings** (334.72s). After making release exception-safe, the focused set reran with **186 passed** (5.51s). Ruff and MyPy for the changed sources passed. The long integration selector used the checked-in `real_ethusdt_20240101` archive fixture and a temporary isolated research registry; it did not use the user's project ledger or account data. Evidence: `docs/audit_evidence/20261023/f7_final_snapshot_release_20261023.json`.
+
+**Boundary / next cursor:** this shortens snapshot lifetime after its order facts are copied; required report facts remain O(n). Full-history Native RSS/trajectory and externally gated provenance, independent-validation, market-scope/depth, historical-trial and M4.2 requirements remain open. Continue locally actionable A01–A14 source audit.

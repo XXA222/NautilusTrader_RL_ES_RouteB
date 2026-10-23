@@ -772,7 +772,12 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
                 break
         if summary_accumulator is not None:
             report = summary_accumulator.finish()
-            final_snapshot = summary_accumulator.final_snapshot
+            try:
+                native_orders = _index_native_orders(getattr(
+                    summary_accumulator.final_snapshot, "all_orders", (),
+                ))
+            finally:
+                summary_accumulator.release_final_snapshot()
         else:
             report = native_report(
                 factory.snapshots, fill_references=factory.fill_references,
@@ -783,7 +788,7 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
                 contract_multiplier=factory.contract_multiplier,
             )
             final_snapshot = factory.snapshots[-1] if factory.snapshots else None
-        native_orders = _index_native_orders(getattr(final_snapshot, "all_orders", ()))
+            native_orders = _index_native_orders(getattr(final_snapshot, "all_orders", ()))
         fills_by_order: dict[str, list[dict]] = {}
         for fill in report.get("fills", ()):
             identity = fill.get("client_order_id")

@@ -1,0 +1,20 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "F7 / release the final Native snapshot after order indexing",
+  "finding": "The orchestrator copied `all_orders` into its order lookup, but both the accumulator and a local variable kept the complete final snapshot alive through execution diagnostics.",
+  "change": "After successful report finalization, the orchestrator indexes native orders directly from the accumulator's final snapshot and releases the accumulator reference in a `finally` block. The fallback batch-report path remains unchanged. `release_final_snapshot()` refuses to run before finalization.",
+  "verification": {
+    "source_and_orchestrator_selector": "Native report parity, research metrics, application CLI, real application flow, and orchestrator workflow: 197 passed, 13 third-party warnings in 334.72s",
+    "focused_rerun_after_exception_safe_release": "Native report parity, research metrics, application CLI, and orchestrator workflow: 186 passed in 5.51s",
+    "ruff": "passed for native_metrics.py, application.py, and test_native_report_accumulator_parity.py",
+    "mypy": "passed for metrics.py, native_metrics.py, and application.py; untyped third-party import diagnostics disabled",
+    "unit_regression": "Report metrics remain available after final snapshot release; release-before-finish is rejected.",
+    "integration_scope": "The integration selector uses the checked-in real_ethusdt_20240101 archive fixture and a temporary isolated research registry. It does not open the user's project registry or access account data."
+  },
+  "source_sha256": {
+    "packages/research/src/rles_research/native_metrics.py": "1BC4ADBF009FC55A9902662234383CEBD4D3F9ABD2588E9320769ABE3C8B1DE7",
+    "packages/orchestrator/src/rles_orchestrator/application.py": "F321BAF1E09483B1230F6E66D2CFE8A6A648ED023FD5C23BDB7335A13B989131",
+    "tests/test_native_report_accumulator_parity.py": "3E2B95485C54A9F0D266243CB88AA830D3141B4B3E80CACC0222C1D43150C791"
+  },
+  "boundary": "This shortens snapshot lifetime after order facts are copied. It does not reduce report-required order/fill facts or close the full-history Native RSS/trajectory gate."
+}

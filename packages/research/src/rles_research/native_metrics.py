@@ -790,6 +790,12 @@ class NativeReportAccumulator:
     def final_snapshot(self) -> Any:
         return self._last_snapshot
 
+    def release_final_snapshot(self) -> None:
+        """Release the terminal snapshot after consumers copy its order facts."""
+        if not self._finished:
+            raise MetricsError("cannot release the final snapshot before report finalization")
+        self._last_snapshot = None
+
     @property
     def snapshot_count(self) -> int:
         """Number of native barriers consumed so far."""
