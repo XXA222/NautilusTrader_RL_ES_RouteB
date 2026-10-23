@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from rles_contracts.json_utils import ensure_json_nesting_depth
+
 
 _SOURCE_ROOTS = ("packages", "tests", "configs", "ci", "packaging", "requirements", "qa")
 _ROOT_FILES = (
@@ -42,12 +44,13 @@ def _reject_json_constant(value: str) -> None:
 
 def _read_manifest(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"),
-                            object_pairs_hook=_unique_json_object,
+        content = path.read_text(encoding="utf-8")
+        ensure_json_nesting_depth(content)
+        value = json.loads(content, object_pairs_hook=_unique_json_object,
                             parse_constant=_reject_json_constant)
     except _DuplicateManifestKey as exc:
         raise ValueError(f"duplicate JSON manifest key in {path}: {exc}") from exc
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+    except (OSError, UnicodeDecodeError, ValueError, RecursionError) as exc:
         raise ValueError(f"cannot read JSON manifest: {path}") from exc
     if not isinstance(value, dict):
         raise ValueError(f"expected JSON object: {path}")

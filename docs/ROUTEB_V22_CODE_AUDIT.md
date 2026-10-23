@@ -589,3 +589,9 @@ Follow-up `json.loads()` review found direct readers outside the original failin
 Run `39920709883` found a second runtime-dependent reader after the original A10 fix: the research-ledger QA reconciler's report parser allowed 20,000-level JSON to reach `_require_dict` on Linux. The shared guard now runs before JSON decoding; the existing canonical-report error boundary wraps the depth rejection consistently. Windows CPU and isolated JAX CPU passed on the preceding snapshot commit.
 
 **Repair verification:** focused selector **32 passed**; full PR selection **903 passed, 4 skipped, 644 deselected**; WorldModel **234 passed, 14 JAX-only skipped**; MyPy **227 files** and Ruff pass. Manifest: 606 files, `2a62c2b1df6ff198bcd2283fddd5d488fb04882a359771ec2c3cef86a95e3313`. New Hosted confirmation after repair is pending.
+
+### A10 consistent nesting at QA manifests and reports — 2026-10-23
+
+Expanded the shared 512-container guard to `qa/source_manifest.py`, `qa/wheel_manifest.py`, `qa/smoke/wheel_imports.py`, and the two M13 report analyzers. These parsers previously only translated `RecursionError`; a runtime that parses beyond that limit could return a generic object/schema error.
+
+**Verification:** source/wheel/M13/provenance/reconciler selector **96 passed, 1 symlink-capability skip**, one expected duplicate-ZIP warning; MyPy **227 files**, Ruff pass; manifest: 606 files, identity `c5d261fa08c2940c83476dcd8df19a69c5c7d0b195284d3a25388e01d00a87a8`. Hosted run `39924080730` fully passed on the reconciler fix before these additional readers changed. Fresh CI for the expanded source remains pending.

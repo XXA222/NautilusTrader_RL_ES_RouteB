@@ -4,7 +4,7 @@
   "status": "LOCAL_PASS_HOSTED_CONFIRMATION_PENDING",
   "checkout": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
   "finding": "Five Hosted Linux PR-layer tests exposed version-dependent behavior: stdlib JSON parsing raised RecursionError for deeply nested JSON on one runtime, while other readers reached generic schema errors or accepted the same shape. Existing RecursionError normalization alone did not provide a stable cross-platform boundary.",
-  "fix": "Add a shared rles_contracts.json_utils.ensure_json_nesting_depth scanner with a 512-container limit. It ignores quoted and escaped delimiters. Apply it before parsing in all seven package strict JSON helpers, Binance transfer single/page importers, rles-data manifest CLI, orchestrator legacy inventory reader, Research ArtifactStore integrity/completion/L1 manifests, contract error and canonical-byte readers, and compute worker transport serialization/decode boundaries. The hosted follow-on exposed one additional QA reader: qa/world_model/reconcile_routeb_research_ledger.py now preflights canonical report JSON with the same shared guard.",
+  "fix": "Add a shared rles_contracts.json_utils.ensure_json_nesting_depth scanner with a 512-container limit. It ignores quoted and escaped delimiters. Apply it before parsing in all seven package strict JSON helpers, Binance transfer single/page importers, rles-data manifest CLI, orchestrator legacy inventory reader, Research ArtifactStore integrity/completion/L1 manifests, contract error and canonical-byte readers, and compute worker transport serialization/decode boundaries. The hosted follow-on exposed one additional QA reader: qa/world_model/reconcile_routeb_research_ledger.py now preflights canonical report JSON with the same shared guard. Broadened the same cross-runtime preflight to QA source/wheel manifest readers, installed-wheel direct_url.json provenance, and both M13 report analyzers, which previously normalized RecursionError but could still reach generic schema validation on Linux.",
   "assertions": [
     "All seven package strict readers reject over-limit input before platform-dependent JSON parsing.",
     "Binance single and paged imports preserve MetricsError boundary on over-depth documents.",
@@ -13,7 +13,9 @@
     "Research ArtifactStore integrity, completion, and L1 manifests reject excessive depth within ArtifactError boundary.",
     "Contract error/canonical readers and compute transport map excess depth to their public error boundary.",
     "Quoted delimiters and escaped quotes do not count toward structural nesting; depth 512 is accepted and 513 rejected.",
-    "The RouteB research-ledger reconciler rejects excessive nesting inside its canonical-report JSON error boundary."
+    "The RouteB research-ledger reconciler rejects excessive nesting inside its canonical-report JSON error boundary.",
+    "Source and wheel manifest readers reject excessive nesting before schema validation.",
+    "Installed-wheel direct_url.json provenance and both M13 report analyzers use the shared nesting guard."
   ],
   "verification": [
     {
@@ -47,8 +49,24 @@
     {
       "command": "RouteB GitHub Actions run 39920709883 on commit e3c010d",
       "result": "Windows CPU and isolated JAX CPU jobs passed; Linux PR-layer selector passed with 896 passed/11 skipped/644 deselected, but world-model suite exposed one QA reconciler deep-JSON failure. Fixed by applying the shared preflight to canonical report reads; fresh hosted confirmation on the repair commit is pending."
+    },
+    {
+      "command": "Source manifest, wheel manifest, M13 analyzers, wheel provenance and reconciler reader selector",
+      "result": "96 passed, 1 environment-dependent symlink skip, 1 expected duplicate-ZIP warning"
+    },
+    {
+      "command": "Latest complete Hosted run before this follow-on, run 39924080730 on commit 638a485",
+      "result": "Linux CPU, Windows CPU, and isolated JAX CPU all passed; this run predates the source/wheel/M13 reader additions."
+    },
+    {
+      "command": "Current pre-follow-on source identity",
+      "result": "606 files; 2a62c2b1df6ff198bcd2283fddd5d488fb04882a359771ec2c3cef86a95e3313"
+    },
+    {
+      "command": "Current follow-on source identity",
+      "result": "606 files; c5d261fa08c2940c83476dcd8df19a69c5c7d0b195284d3a25388e01d00a87a8"
     }
   ],
   "data_access": "Synthetic malformed JSON inputs only; no market, account, Train, Validation, Test, or Holdout payloads read.",
-  "remaining": "Fresh Hosted Linux/Windows/JAX CPU confirmation for the reconciler follow-on source remains pending. Continue auditing other JSON boundaries and project issues."
+  "remaining": "A fresh Hosted Linux/Windows/JAX CPU run for the expanded QA reader guard is pending. Continue the A10 source audit and other locally solvable project findings."
 }
