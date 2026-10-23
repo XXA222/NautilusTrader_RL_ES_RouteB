@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from rles_data.core import DAY_NS, MINUTE_NS, DataError, FoldManifest, Window
+from rles_data.core import DAY_NS, MINUTE_NS, DataError, FoldManifest, Window, routeb_workspace_root
 
 from .baselines import score_baselines
 from .contracts import MarketFrame, MarketReplay
@@ -92,7 +92,13 @@ def _validate_registered_b0_fold(fold: FoldManifest) -> None:
 
 
 def _routeb_code_identity(root: Path | None = None) -> dict[str, str]:
-    root = (Path(__file__).resolve().parents[4] if root is None else Path(root)).resolve()
+    if root is None:
+        resolved_root = routeb_workspace_root(__file__)
+        if resolved_root is None:
+            raise DataError("cannot resolve Route B workspace root before market access")
+        root = resolved_root
+    else:
+        root = Path(root).resolve()
     snapshot_marker: Path | None = None
     try:
         commit = subprocess.run(

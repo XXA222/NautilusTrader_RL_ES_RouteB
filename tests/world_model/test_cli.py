@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import subprocess
 
 import numpy as np
@@ -15,6 +16,8 @@ pytestmark = pytest.mark.unit
 
 
 def test_code_identity_falls_back_to_explicit_snapshot_commit(monkeypatch):
+    monkeypatch.setenv("RLES_WORKSPACE_ROOT", str(Path(__file__).resolve().parents[2]))
+
     def no_git_commit(*_args, **_kwargs):
         raise subprocess.CalledProcessError(128, "git rev-parse HEAD")
 

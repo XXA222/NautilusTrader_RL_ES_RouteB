@@ -5,7 +5,15 @@ from pathlib import Path
 from time import time_ns
 import uuid
 
-from rles_data.core import CuratedStore, DataError, MINUTE_NS, digest, require_hash, require_ns
+from rles_data.core import (
+    CuratedStore,
+    DataError,
+    MINUTE_NS,
+    digest,
+    require_hash,
+    require_ns,
+    routeb_workspace_root,
+)
 from rles_data.io import curated_event_time_bounds, curated_source_identity, read_curated_window
 from rles_research.access import ProjectResearchRegistry
 
@@ -16,26 +24,23 @@ DATA_FAMILY = "perpetual-market-v1"
 
 def project_registry() -> ProjectResearchRegistry:
     # Source checkout identity is stable even if the CLI's cwd/output changes.
-    source = Path(__file__).resolve().parents[4]
-    candidates = (source, *Path.cwd().resolve().parents, Path.cwd().resolve())
-    for candidate in candidates:
-        metadata = candidate / "pyproject.toml"
-        if metadata.is_file() and "[tool.uv.workspace]" in metadata.read_text(encoding="utf-8"):
-            registry = ProjectResearchRegistry(candidate / ".artifacts" / "research-access.sqlite")
-            inventory_path = candidate / "docs" / "audit_evidence" / "20261016" / "legacy_research_access_v2.json"
-            if not inventory_path.is_file():
-                raise DataError("legacy research inventory missing; restore the tracked inventory before research")
-            content = inventory_path.read_bytes()
-            inventory_sha = sha256(content).hexdigest()
-            marker = inventory_path.with_suffix(".json.sha256")
-            if not marker.is_file() or marker.read_text(encoding="ascii") != inventory_sha:
-                raise DataError("legacy research inventory integrity mismatch")
-            try:
-                registry.import_inventory(content)
-            except ValueError as exc:
-                raise DataError("legacy research inventory is invalid or unresolved") from exc
-            return registry
-    raise DataError("project research registry unavailable; run from a workspace checkout")
+    candidate = routeb_workspace_root(__file__)
+    if candidate is None:
+        raise DataError("project research registry unavailable; configure RLES_WORKSPACE_ROOT")
+    registry = ProjectResearchRegistry(candidate / ".artifacts" / "research-access.sqlite")
+    inventory_path = candidate / "docs" / "audit_evidence" / "20261016" / "legacy_research_access_v2.json"
+    if not inventory_path.is_file():
+        raise DataError("legacy research inventory missing; restore the tracked inventory before research")
+    content = inventory_path.read_bytes()
+    inventory_sha = sha256(content).hexdigest()
+    marker = inventory_path.with_suffix(".json.sha256")
+    if not marker.is_file() or marker.read_text(encoding="ascii") != inventory_sha:
+        raise DataError("legacy research inventory integrity mismatch")
+    try:
+        registry.import_inventory(content)
+    except ValueError as exc:
+        raise DataError("legacy research inventory is invalid or unresolved") from exc
+    return registry
 
 
 def market_key(instrument: str) -> str:

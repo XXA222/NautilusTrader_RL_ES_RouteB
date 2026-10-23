@@ -550,9 +550,10 @@ def test_registry_path_does_not_depend_on_output_or_cwd(tmp_path, monkeypatch):
     from types import SimpleNamespace
     monkeypatch.setattr(module, "ProjectResearchRegistry",
                         lambda path: SimpleNamespace(path=path, import_inventory=lambda *_: None))
+    workspace_root = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("RLES_WORKSPACE_ROOT", str(workspace_root))
     monkeypatch.chdir(tmp_path)
     registry = module.project_registry()
-    workspace_root = Path(__file__).resolve().parents[1]
     assert registry.path == workspace_root / ".artifacts" / "research-access.sqlite"
 
 

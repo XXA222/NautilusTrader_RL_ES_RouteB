@@ -11,6 +11,8 @@ on:
 jobs:
   cpu:
     if: ${{ inputs.lane == 'pr' || inputs.lane == 'nightly' || inputs.lane == 'release' }}
+    env:
+      RLES_WORKSPACE_ROOT: ${{ github.workspace }}
     strategy:
       fail-fast: false
       matrix:
@@ -85,6 +87,8 @@ jobs:
   world-model-jax-cpu:
     if: ${{ inputs.lane == 'pr' || inputs.lane == 'nightly' || inputs.lane == 'release' }}
     runs-on: ubuntu-latest
+    env:
+      RLES_WORKSPACE_ROOT: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4

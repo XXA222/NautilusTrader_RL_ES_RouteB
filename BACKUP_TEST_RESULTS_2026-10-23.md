@@ -9,10 +9,10 @@ This is a RouteB-only snapshot in the independent public repository `XXA222/Naut
 - RouteB world-model JAX CPU suite on Python 3.12.10: **119 passed**; isolated world-model MyPy: **37 source files, no issues**.
 - Full Ruff check: **passed** (`packages ci qa tests`).
 - Current-source distribution build: **12 wheels and 12 sdists**; wheel manifest: **12 wheels, all_match=true**, including the world-model `py.typed` marker.
-- Source manifest: **370 files**; source identity SHA-256 `4abd7dc89f4545abdd3e0249ef66cb7144df30d66e81be638bb41a2221b3fe24`.
+- Source manifest: **370 files**; source identity SHA-256 `74a6a89ec657bfbbd8999d83a1851f7031f12ead1983db5f1bf09c49790d87f1`.
 - Git diff whitespace check: **passed**.
 
-The reusable CI workflow now verifies source/wheel payloads before installation and checks the world model in an isolated Python 3.12/JAX CPU job that runs pytest, MyPy, and B2/B3 mechanism smoke tests. The pinned DreamerV3 checkout smoke still requires the Hosted CI runner.
+The reusable CI workflow now verifies source/wheel payloads before installation and checks the world model in an isolated Python 3.12/JAX CPU job that runs pytest, MyPy, and B2/B3 mechanism smoke tests. Wheel-installed code resolves its workspace from the fixed `RLES_WORKSPACE_ROOT` CI setting, so registry/commit identity does not depend on `site-packages` or test cwd. The pinned DreamerV3 checkout smoke requires the Hosted CI runner.
 
 ## Snapshot scope and limits
 
