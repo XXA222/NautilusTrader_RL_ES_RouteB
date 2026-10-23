@@ -70,6 +70,10 @@ def project_registered_train_replay(config: dict, window: dict, *, marker_sha256
                                     label: str, instrument: str,
                                     allow_legacy_isolated_snapshot: bool = False) -> MarketReplay:
     """Reserve the development Train interval before decoding a curated payload."""
+    environment = config.get("environment") if isinstance(config, dict) else None
+    if (not isinstance(environment, dict) or not isinstance(instrument, str)
+            or not instrument or environment.get("instrument") != instrument):
+        raise DataError("Train instrument differs from its environment config")
     from rles_orchestrator.research_access import read_registered_train_window
 
     store = read_registered_train_window(

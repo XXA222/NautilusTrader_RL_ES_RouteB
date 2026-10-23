@@ -196,6 +196,37 @@ def test_imagined_account_rejects_unknown_limit_fill_policy(policy):
                         limit_fill_policy=policy)
 
 
+def test_registered_train_replay_rejects_instrument_scope_mismatch_before_read(monkeypatch):
+    from rles_data.core import CuratedStore, DataError
+    from rles_orchestrator import research_access
+    from rles_world_model.train_dataset import project_registered_train_replay
+
+    reader_called = False
+
+    def fake_read(*_args, **_kwargs):
+        nonlocal reader_called
+        reader_called = True
+        return CuratedStore(())
+
+    monkeypatch.setattr(research_access, "read_registered_train_window", fake_read)
+    config = {
+        "environment": {
+            "market_path": "synthetic-unused.parquet",
+            "instrument": "BTC/USD",
+            "start_ns": MINUTE_NS,
+            "end_ns": 3 * MINUTE_NS,
+        },
+    }
+    with pytest.raises(DataError, match="Train instrument differs from its environment config"):
+        project_registered_train_replay(
+            config,
+            {"start_ns": MINUTE_NS, "end_ns": 3 * MINUTE_NS},
+            marker_sha256="a" * 64,
+            label="train-instrument-scope-mismatch",
+            instrument="ETH/USD",
+        )
+    assert reader_called is False
+
 @pytest.mark.parametrize("field", [
     "initial_equity", "fee_maker", "fee_taker", "max_abs_qty",
     "simulated_depth_fraction", "market_slippage_bps", "price_increment",

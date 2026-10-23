@@ -1,0 +1,27 @@
+{
+  "schema": "rles.routeb.audit-evidence.v1",
+  "audit_item": "A04/A09 / registered Train replay instrument authorization identity",
+  "source_identity_sha256": "09bc47996ad1e8f36e2e675f6f46238b0f37723e9efa48b45f868af47808a070",
+  "finding": "project_registered_train_replay accepted an instrument argument that differed from config.environment.instrument and entered the registered reader before detecting that the requested market was not the authorized Train market.",
+  "change": "Validate that a nonempty replay instrument exactly matches the environment instrument before importing or calling the registered Train data reader.",
+  "red_regression": "The mismatched BTC-config/ETH-request case entered the mocked reader and failed later with an empty-window error instead of rejecting the authorization mismatch before read.",
+  "verification": {
+    "world_model_cli_research_access_and_wfo_source_selector": "217 passed, 2 JAX-only skipped",
+    "same_selector_against_current_installed_wheels": "217 passed, 2 JAX-only skipped",
+    "wheel_manifest": "12 wheels; all_match=true",
+    "isolated_wheel_provenance": "12 packages and 6 entry points loaded from the isolated wheel environment",
+    "ruff": "passed for changed source and test",
+    "mypy": "train_dataset.py passed"
+  },
+  "data_access": "Synthetic config plus a mocked reader only. Rejection is asserted before reader invocation; no registry, market, Train, Validation, Test, or Holdout payload was accessed.",
+  "hosted_preceding_commit": {
+    "run_id": "39958369168",
+    "commit": "9eb379bc3adddbef5d791b94f8cdac2be1c4614d",
+    "linux_cpu": "success",
+    "windows_cpu": "success",
+    "jax_cpu": "success",
+    "validate_lane": "success",
+    "gpu": "skipped (no GPU runner)"
+  },
+  "current_revision_hosted_status": "pending; this instrument-identity repair is being pushed separately for a fresh run."
+}
