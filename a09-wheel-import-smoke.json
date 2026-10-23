@@ -1,0 +1,132 @@
+{
+  "python": "3.14.7",
+  "prefix": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app",
+  "installed_wheels": {
+    "rles-compute-runtime": {
+      "version": "0.4.1",
+      "modules": {
+        "rles_compute_runtime": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_compute_runtime\\__init__.py"
+      },
+      "entry_points": [
+        {
+          "group": "nautilus_rles.compute",
+          "name": "local",
+          "module": "rles_compute_runtime.provider",
+          "module_path": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_compute_runtime\\provider.py"
+        }
+      ]
+    },
+    "rles-contracts": {
+      "version": "0.4.0",
+      "modules": {
+        "rles_contracts": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_contracts\\__init__.py"
+      },
+      "entry_points": []
+    },
+    "rles-data": {
+      "version": "0.4.1",
+      "modules": {
+        "rles_data": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_data\\__init__.py"
+      },
+      "entry_points": []
+    },
+    "rles-es-evotorch": {
+      "version": "0.4.0.dev2",
+      "modules": {
+        "rles_es_evotorch": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_es_evotorch\\__init__.py"
+      },
+      "entry_points": [
+        {
+          "group": "nautilus_rles.es",
+          "name": "evotorch",
+          "module": "rles_es_evotorch",
+          "module_path": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_es_evotorch\\__init__.py"
+        }
+      ]
+    },
+    "rles-execution": {
+      "version": "0.4.0.dev2",
+      "modules": {
+        "rles_execution": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_execution\\__init__.py"
+      },
+      "entry_points": []
+    },
+    "rles-gym-bridge": {
+      "version": "0.4.0.dev2",
+      "modules": {
+        "rles_gym_bridge": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_gym_bridge\\__init__.py"
+      },
+      "entry_points": []
+    },
+    "rles-nautilus-adapter": {
+      "version": "0.4.0.dev2",
+      "modules": {
+        "rles_nautilus_adapter": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_nautilus_adapter\\__init__.py"
+      },
+      "entry_points": [
+        {
+          "group": "nautilus_rles.engine",
+          "name": "nt_rc6",
+          "module": "rles_nautilus_adapter",
+          "module_path": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_nautilus_adapter\\__init__.py"
+        }
+      ]
+    },
+    "rles-orchestrator": {
+      "version": "0.4.0.dev2",
+      "modules": {
+        "rles_orchestrator": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_orchestrator\\__init__.py"
+      },
+      "entry_points": [
+        {
+          "group": "console_scripts",
+          "name": "rles",
+          "module": "rles_orchestrator.application",
+          "module_path": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_orchestrator\\application.py"
+        }
+      ]
+    },
+    "rles-research": {
+      "version": "0.4.1",
+      "modules": {
+        "rles_research": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_research\\__init__.py"
+      },
+      "entry_points": []
+    },
+    "rles-risk": {
+      "version": "0.4.0.dev2",
+      "modules": {
+        "rles_risk": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_risk\\__init__.py"
+      },
+      "entry_points": []
+    },
+    "rles-rl-sb3": {
+      "version": "0.4.1",
+      "modules": {
+        "rles_rl_sb3": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_rl_sb3\\__init__.py"
+      },
+      "entry_points": [
+        {
+          "group": "nautilus_rles.rl",
+          "name": "sb3",
+          "module": "rles_rl_sb3",
+          "module_path": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_rl_sb3\\__init__.py"
+        }
+      ]
+    },
+    "rles-world-model": {
+      "version": "0.1.0.dev0",
+      "modules": {
+        "rles_world_model": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_world_model\\__init__.py"
+      },
+      "entry_points": [
+        {
+          "group": "console_scripts",
+          "name": "rles-world-model",
+          "module": "rles_world_model.cli",
+          "module_path": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB\\.venv-win-app\\Lib\\site-packages\\rles_world_model\\cli.py"
+        }
+      ]
+    }
+  }
+}

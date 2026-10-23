@@ -6,13 +6,13 @@ from dataclasses import asdict
 from decimal import Decimal
 from hashlib import sha256
 from bisect import bisect_left, bisect_right
-import json
 from math import gcd
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, Mapping
 
 from rles_contracts.dto import DataQualityGrade, ExecutionPlan
+from rles_contracts.serialization import strict_json_loads
 from rles_data.contracts import to_market_event
 from rles_data.core import Availability, CuratedStore, DataError, Event, FeatureField, FeatureSpec, KINDS, MINUTE_NS, Window, digest
 from rles_data.coverage import CoveragePolicy
@@ -79,7 +79,10 @@ def load_rules(path: str | Path) -> tuple[Event, ...]:
     source = Path(path).resolve()
     if not source.is_file():
         raise DataError(f"historical instrument rules unavailable: {source}")
-    document = json.loads(source.read_text(encoding="utf-8"))
+    try:
+        document = strict_json_loads(source.read_bytes(), context="historical rules manifest")
+    except (OSError, ValueError) as exc:
+        raise DataError("invalid historical instrument rules manifest") from exc
     if set(document) != {"sources", "events"} or not document["sources"] or not document["events"]:
         raise DataError("rules manifest requires source documents and normalized events")
     verified = set()

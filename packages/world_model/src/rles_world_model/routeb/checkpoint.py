@@ -17,6 +17,7 @@ import json
 import os
 import tempfile
 import numpy as np
+from rles_data.io import strict_json_loads
 
 SCHEMA = "routeb.jax-checkpoint.v2"
 
@@ -93,7 +94,9 @@ def load_checkpoint(path: str | Path, *, params_template, opt_template,
                     expected_identity: dict, expected_config: dict):
     import jax
     path = Path(path)
-    meta = json.loads(path.with_suffix('.json').read_text(encoding='utf-8'))
+    meta = strict_json_loads(
+        path.with_suffix('.json').read_bytes(), context='Route B optimizer checkpoint manifest',
+    )
     if (meta.get('schema') != SCHEMA or meta.get('identity') != expected_identity
         or meta.get('config') != expected_config):
         raise ValueError('checkpoint schema/train/config identity mismatch')
@@ -124,4 +127,5 @@ def load_checkpoint(path: str | Path, *, params_template, opt_template,
 
         weights = restore('p', lp)
         optimizer = restore('o', lo)
-    return pt.unflatten(weights), ot.unflatten(optimizer), meta['step'], meta['seed']
+    return (jax.tree_util.tree_unflatten(pt, weights),
+            jax.tree_util.tree_unflatten(ot, optimizer), meta['step'], meta['seed'])

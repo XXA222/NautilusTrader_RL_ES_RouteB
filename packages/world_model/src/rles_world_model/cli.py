@@ -10,7 +10,8 @@ from pathlib import Path
 import subprocess
 import sys
 
-from rles_data.core import DAY_NS, MINUTE_NS, DataError, FoldManifest, Window
+from rles_data.core import DAY_NS, MINUTE_NS, DataError, FoldManifest, Window, routeb_workspace_root
+from rles_data.io import strict_json_loads
 
 from .baselines import score_baselines
 from .contracts import MarketFrame, MarketReplay
@@ -27,8 +28,8 @@ from .upstream import inspect_upstream
 
 def _read_json(path: str) -> dict:
     try:
-        value = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        value = strict_json_loads(Path(path).read_bytes(), context="world-model CLI input")
+    except OSError as exc:
         raise DataError(f"cannot read valid JSON input: {path}") from exc
     if not isinstance(value, dict):
         raise DataError("JSON input root must be an object")
@@ -92,7 +93,13 @@ def _validate_registered_b0_fold(fold: FoldManifest) -> None:
 
 
 def _routeb_code_identity(root: Path | None = None) -> dict[str, str]:
-    root = (Path(__file__).resolve().parents[4] if root is None else Path(root)).resolve()
+    if root is None:
+        resolved_root = routeb_workspace_root(__file__)
+        if resolved_root is None:
+            raise DataError("cannot resolve Route B workspace root before market access")
+        root = resolved_root
+    else:
+        root = Path(root).resolve()
     snapshot_marker: Path | None = None
     try:
         commit = subprocess.run(
@@ -105,8 +112,10 @@ def _routeb_code_identity(root: Path | None = None) -> dict[str, str]:
         # manifest, and bind that manifest into the source fingerprint below.
         snapshot_marker = root / "docs" / "world_model" / "REPO_BASELINE.json"
         try:
-            marker = json.loads(snapshot_marker.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            marker = strict_json_loads(
+                snapshot_marker.read_bytes(), context="Route B repository base-commit manifest",
+            )
+        except (OSError, DataError):
             raise DataError("cannot freeze Route B repository commit before market access") from exc
         if (not isinstance(marker, dict)
                 or set(marker) != {"schema_version", "repository_commit"}

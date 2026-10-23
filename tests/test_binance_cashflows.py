@@ -57,6 +57,12 @@ def test_binance_transfer_export_maps_to_native_cashflow_facts_and_reconciles() 
     b"{}",
     b'[{"incomeType":"COMMISSION","income":"-1","asset":"USDT","time":15,"tranId":1}]',
     b'[{"incomeType":"TRANSFER","income":"1","asset":"BTC","time":15,"tranId":1}]',
+    b'[{"incomeType":"TRANSFER","income":0.12345678901234567890,"asset":"USDT","time":15,"tranId":1}]',
+    b'[{"incomeType":"TRANSFER","income":"1e3","asset":"USDT","time":15,"tranId":1}]',
+    b'[{"incomeType":"TRANSFER","income":"01.0","asset":"USDT","time":15,"tranId":1}]',
+    b'[{"incomeType":"TRANSFER","income":"1.","asset":"USDT","time":15,"tranId":1}]',
+    b'[{"incomeType":"TRANSFER","income":".1","asset":"USDT","time":15,"tranId":1}]',
+    b'[{"incomeType":"TRANSFER","income":"+1","asset":"USDT","time":15,"tranId":1}]',
     b'[{"incomeType":"TRANSFER","income":"0","asset":"USDT","time":15,"tranId":1}]',
     b'[{"incomeType":"TRANSFER","income":"1","asset":"USDT","time":5,"tranId":1}]',
 ])
@@ -66,6 +72,23 @@ def test_binance_transfer_import_fails_closed_on_bad_source_or_alignment(payload
             payload, account_scope_id="account", currency="USDT",
             sample_barriers_ns=(10_000_000, 20_000_000, 30_000_000),
         )
+
+
+@pytest.mark.parametrize("paged", [False, True])
+def test_binance_transfer_import_normalizes_excessive_json_nesting(paged: bool) -> None:
+    payload = b"[" * 20_000 + b"0" + b"]" * 20_000
+    with pytest.raises(MetricsError, match="invalid Binance income-history"):
+        if paged:
+            import_binance_usdm_transfer_income_pages(
+                (BinanceIncomePage(10, 20, 2, payload),), query_start_ms=10,
+                query_end_ms=20, account_scope_id="account", currency="USDT",
+                sample_barriers_ns=(10_000_000, 20_000_000),
+            )
+        else:
+            import_binance_usdm_transfer_income(
+                payload, account_scope_id="account", currency="USDT",
+                sample_barriers_ns=(10_000_000, 20_000_000),
+            )
 
 
 def test_binance_transfer_import_rejects_conflicting_ids_and_invalid_barriers() -> None:

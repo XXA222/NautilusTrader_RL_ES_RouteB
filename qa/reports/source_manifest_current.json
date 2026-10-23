@@ -1,7 +1,7 @@
 {
-  "schema": "rles.source-manifest.v1",
-  "generated_at_utc": "2026-10-22T21:17:14.626916+00:00",
-  "source_identity_sha256": "1c13a80943336f56d6da01e59ed54be01655f694e7a0bb291e86b401de4c5c01",
+  "schema": "rles.source-manifest.v3",
+  "generated_at_utc": "2026-10-23T11:38:01.576010+00:00",
+  "source_identity_sha256": "477362b52a170124ad5608bac552dad1e1dcde27670e97626a3ed05abf1f535c",
   "scope": {
     "included": [
       ".gitattributes",
@@ -42,1062 +42,11 @@
       "qa/reports"
     ]
   },
-  "runtime": {
-    "python": "3.12.10",
-    "platform": "Windows-11-10.0.26200-SP0",
-    "machine": "AMD64",
-    "os_name": "nt",
-    "installed_distributions": [
-      {
-        "name": "absl-py",
-        "version": "2.5.0"
-      },
-      {
-        "name": "aiodns",
-        "version": "4.0.0"
-      },
-      {
-        "name": "aiofiles",
-        "version": "25.1.0"
-      },
-      {
-        "name": "aiohappyeyeballs",
-        "version": "2.6.1"
-      },
-      {
-        "name": "aiohttp",
-        "version": "3.13.5"
-      },
-      {
-        "name": "aiosignal",
-        "version": "1.4.0"
-      },
-      {
-        "name": "alembic",
-        "version": "1.18.5"
-      },
-      {
-        "name": "annotated-doc",
-        "version": "0.0.4"
-      },
-      {
-        "name": "annotated-types",
-        "version": "0.7.0"
-      },
-      {
-        "name": "anyio",
-        "version": "4.13.0"
-      },
-      {
-        "name": "argon2-cffi",
-        "version": "25.1.0"
-      },
-      {
-        "name": "argon2-cffi-bindings",
-        "version": "25.1.0"
-      },
-      {
-        "name": "arrow",
-        "version": "1.4.0"
-      },
-      {
-        "name": "ast-comments",
-        "version": "1.3.0"
-      },
-      {
-        "name": "ast_serialize",
-        "version": "0.6.0"
-      },
-      {
-        "name": "asttokens",
-        "version": "3.0.2"
-      },
-      {
-        "name": "async-lru",
-        "version": "2.3.0"
-      },
-      {
-        "name": "attrs",
-        "version": "26.1.0"
-      },
-      {
-        "name": "babel",
-        "version": "2.18.0"
-      },
-      {
-        "name": "beautifulsoup4",
-        "version": "4.15.0"
-      },
-      {
-        "name": "bleach",
-        "version": "6.4.0"
-      },
-      {
-        "name": "boolean.py",
-        "version": "5.0"
-      },
-      {
-        "name": "build",
-        "version": "1.4.2"
-      },
-      {
-        "name": "CacheControl",
-        "version": "0.14.4"
-      },
-      {
-        "name": "cachetools",
-        "version": "7.0.5"
-      },
-      {
-        "name": "ccxt",
-        "version": "4.5.61"
-      },
-      {
-        "name": "certifi",
-        "version": "2026.2.25"
-      },
-      {
-        "name": "cffi",
-        "version": "2.0.0"
-      },
-      {
-        "name": "cfgv",
-        "version": "3.5.0"
-      },
-      {
-        "name": "charset-normalizer",
-        "version": "3.4.7"
-      },
-      {
-        "name": "click",
-        "version": "8.3.2"
-      },
-      {
-        "name": "cloudpickle",
-        "version": "3.1.2"
-      },
-      {
-        "name": "cmaes",
-        "version": "0.13.0"
-      },
-      {
-        "name": "coincurve",
-        "version": "21.0.0"
-      },
-      {
-        "name": "colorama",
-        "version": "0.4.6"
-      },
-      {
-        "name": "colorlog",
-        "version": "6.12.0"
-      },
-      {
-        "name": "comm",
-        "version": "0.2.3"
-      },
-      {
-        "name": "coverage",
-        "version": "7.15.2"
-      },
-      {
-        "name": "cryptography",
-        "version": "46.0.6"
-      },
-      {
-        "name": "cyclonedx-python-lib",
-        "version": "11.11.0"
-      },
-      {
-        "name": "dash-core-components",
-        "version": "2.0.0"
-      },
-      {
-        "name": "dash-html-components",
-        "version": "2.0.0"
-      },
-      {
-        "name": "dash-table",
-        "version": "5.0.0"
-      },
-      {
-        "name": "datasieve",
-        "version": "0.1.9"
-      },
-      {
-        "name": "debugpy",
-        "version": "1.8.21"
-      },
-      {
-        "name": "decorator",
-        "version": "5.3.1"
-      },
-      {
-        "name": "defusedxml",
-        "version": "0.7.1"
-      },
-      {
-        "name": "dictdiffer",
-        "version": "0.9.0"
-      },
-      {
-        "name": "distlib",
-        "version": "0.4.3"
-      },
-      {
-        "name": "dodgy",
-        "version": "0.2.1"
-      },
-      {
-        "name": "execnet",
-        "version": "2.1.2"
-      },
-      {
-        "name": "executing",
-        "version": "2.2.1"
-      },
-      {
-        "name": "Farama-Notifications",
-        "version": "0.0.6"
-      },
-      {
-        "name": "fastapi",
-        "version": "0.135.3"
-      },
-      {
-        "name": "fastjsonschema",
-        "version": "2.22.1"
-      },
-      {
-        "name": "filelock",
-        "version": "3.32.0"
-      },
-      {
-        "name": "fqdn",
-        "version": "1.5.1"
-      },
-      {
-        "name": "freqtrade",
-        "version": "2026.6"
-      },
-      {
-        "name": "freqtrade-client",
-        "version": "2026.3"
-      },
-      {
-        "name": "frozenlist",
-        "version": "1.8.0"
-      },
-      {
-        "name": "fsspec",
-        "version": "2026.6.0"
-      },
-      {
-        "name": "ft-pandas-ta",
-        "version": "0.3.16"
-      },
-      {
-        "name": "greenlet",
-        "version": "3.3.2"
-      },
-      {
-        "name": "grpcio",
-        "version": "1.83.0"
-      },
-      {
-        "name": "gymnasium",
-        "version": "1.3.0"
-      },
-      {
-        "name": "h11",
-        "version": "0.16.0"
-      },
-      {
-        "name": "hjson",
-        "version": "3.0.2"
-      },
-      {
-        "name": "httpcore",
-        "version": "1.0.9"
-      },
-      {
-        "name": "httpx",
-        "version": "0.28.1"
-      },
-      {
-        "name": "humanize",
-        "version": "4.15.0"
-      },
-      {
-        "name": "identify",
-        "version": "2.6.19"
-      },
-      {
-        "name": "idna",
-        "version": "3.11"
-      },
-      {
-        "name": "iniconfig",
-        "version": "2.3.0"
-      },
-      {
-        "name": "ipykernel",
-        "version": "7.3.0"
-      },
-      {
-        "name": "ipython",
-        "version": "9.15.0"
-      },
-      {
-        "name": "ipython_pygments_lexers",
-        "version": "1.1.1"
-      },
-      {
-        "name": "ipywidgets",
-        "version": "8.1.8"
-      },
-      {
-        "name": "isoduration",
-        "version": "20.11.0"
-      },
-      {
-        "name": "janus",
-        "version": "2.0.0"
-      },
-      {
-        "name": "jedi",
-        "version": "0.20.0"
-      },
-      {
-        "name": "Jinja2",
-        "version": "3.1.6"
-      },
-      {
-        "name": "joblib",
-        "version": "1.5.3"
-      },
-      {
-        "name": "json5",
-        "version": "0.15.0"
-      },
-      {
-        "name": "jsonpointer",
-        "version": "3.1.1"
-      },
-      {
-        "name": "jsonschema",
-        "version": "4.26.0"
-      },
-      {
-        "name": "jsonschema-specifications",
-        "version": "2025.9.1"
-      },
-      {
-        "name": "jupyter",
-        "version": "1.1.1"
-      },
-      {
-        "name": "jupyter-console",
-        "version": "6.6.3"
-      },
-      {
-        "name": "jupyter-events",
-        "version": "0.12.1"
-      },
-      {
-        "name": "jupyter-lsp",
-        "version": "2.3.1"
-      },
-      {
-        "name": "jupyter_builder",
-        "version": "1.1.1"
-      },
-      {
-        "name": "jupyter_client",
-        "version": "8.9.1"
-      },
-      {
-        "name": "jupyter_core",
-        "version": "5.9.1"
-      },
-      {
-        "name": "jupyter_server",
-        "version": "2.20.0"
-      },
-      {
-        "name": "jupyter_server_terminals",
-        "version": "0.5.4"
-      },
-      {
-        "name": "jupyterlab",
-        "version": "4.6.2"
-      },
-      {
-        "name": "jupyterlab_pygments",
-        "version": "0.3.0"
-      },
-      {
-        "name": "jupyterlab_server",
-        "version": "2.28.0"
-      },
-      {
-        "name": "jupyterlab_widgets",
-        "version": "3.0.16"
-      },
-      {
-        "name": "lark",
-        "version": "1.3.1"
-      },
-      {
-        "name": "librt",
-        "version": "0.13.0"
-      },
-      {
-        "name": "license-expression",
-        "version": "30.4.4"
-      },
-      {
-        "name": "lightgbm",
-        "version": "4.7.0"
-      },
-      {
-        "name": "Mako",
-        "version": "1.3.12"
-      },
-      {
-        "name": "Markdown",
-        "version": "3.10.2"
-      },
-      {
-        "name": "markdown-it-py",
-        "version": "4.0.0"
-      },
-      {
-        "name": "MarkupSafe",
-        "version": "3.0.3"
-      },
-      {
-        "name": "matplotlib-inline",
-        "version": "0.2.2"
-      },
-      {
-        "name": "mdurl",
-        "version": "0.1.2"
-      },
-      {
-        "name": "mistune",
-        "version": "3.3.4"
-      },
-      {
-        "name": "mpmath",
-        "version": "1.3.0"
-      },
-      {
-        "name": "msgpack",
-        "version": "1.2.1"
-      },
-      {
-        "name": "multidict",
-        "version": "6.7.1"
-      },
-      {
-        "name": "mypy",
-        "version": "2.3.0"
-      },
-      {
-        "name": "mypy_extensions",
-        "version": "1.1.0"
-      },
-      {
-        "name": "narwhals",
-        "version": "2.24.0"
-      },
-      {
-        "name": "nbclient",
-        "version": "0.11.0"
-      },
-      {
-        "name": "nbconvert",
-        "version": "7.17.1"
-      },
-      {
-        "name": "nbformat",
-        "version": "5.10.4"
-      },
-      {
-        "name": "nbstripout",
-        "version": "0.9.1"
-      },
-      {
-        "name": "nest-asyncio2",
-        "version": "1.7.2"
-      },
-      {
-        "name": "networkx",
-        "version": "3.6.1"
-      },
-      {
-        "name": "nodeenv",
-        "version": "1.10.0"
-      },
-      {
-        "name": "notebook",
-        "version": "7.6.1"
-      },
-      {
-        "name": "notebook_shim",
-        "version": "0.2.4"
-      },
-      {
-        "name": "numpy",
-        "version": "2.5.1"
-      },
-      {
-        "name": "numpy-typing-compat",
-        "version": "20260602.2.5"
-      },
-      {
-        "name": "optuna",
-        "version": "4.9.0"
-      },
-      {
-        "name": "optype",
-        "version": "0.18.0"
-      },
-      {
-        "name": "orjson",
-        "version": "3.11.8"
-      },
-      {
-        "name": "packageurl-python",
-        "version": "0.17.6"
-      },
-      {
-        "name": "packaging",
-        "version": "26.0"
-      },
-      {
-        "name": "paginate",
-        "version": "0.5.7"
-      },
-      {
-        "name": "pandas",
-        "version": "3.0.3"
-      },
-      {
-        "name": "pandocfilters",
-        "version": "1.5.1"
-      },
-      {
-        "name": "parso",
-        "version": "0.8.7"
-      },
-      {
-        "name": "pathspec",
-        "version": "1.1.1"
-      },
-      {
-        "name": "pillow",
-        "version": "12.3.0"
-      },
-      {
-        "name": "pip",
-        "version": "25.0.1"
-      },
-      {
-        "name": "pip-api",
-        "version": "0.0.34"
-      },
-      {
-        "name": "pip-requirements-parser",
-        "version": "32.0.1"
-      },
-      {
-        "name": "pip_audit",
-        "version": "2.10.1"
-      },
-      {
-        "name": "platformdirs",
-        "version": "4.11.0"
-      },
-      {
-        "name": "plotly",
-        "version": "6.0.1"
-      },
-      {
-        "name": "plotly",
-        "version": "6.9.0"
-      },
-      {
-        "name": "pluggy",
-        "version": "1.6.0"
-      },
-      {
-        "name": "pre_commit",
-        "version": "4.6.1"
-      },
-      {
-        "name": "prettytable",
-        "version": "3.11.0"
-      },
-      {
-        "name": "prometheus_client",
-        "version": "0.26.0"
-      },
-      {
-        "name": "prompt_toolkit",
-        "version": "3.0.52"
-      },
-      {
-        "name": "propcache",
-        "version": "0.5.2"
-      },
-      {
-        "name": "protobuf",
-        "version": "7.35.1"
-      },
-      {
-        "name": "psutil",
-        "version": "5.9.8"
-      },
-      {
-        "name": "pure_eval",
-        "version": "0.2.3"
-      },
-      {
-        "name": "py-serializable",
-        "version": "2.1.0"
-      },
-      {
-        "name": "pyarrow",
-        "version": "24.0.0"
-      },
-      {
-        "name": "pycares",
-        "version": "5.0.1"
-      },
-      {
-        "name": "pycodestyle",
-        "version": "2.14.0"
-      },
-      {
-        "name": "pycoingecko",
-        "version": "3.2.0"
-      },
-      {
-        "name": "pycparser",
-        "version": "3.0"
-      },
-      {
-        "name": "pydantic",
-        "version": "2.12.5"
-      },
-      {
-        "name": "pydantic_core",
-        "version": "2.41.5"
-      },
-      {
-        "name": "pyflakes",
-        "version": "3.4.0"
-      },
-      {
-        "name": "Pygments",
-        "version": "2.20.0"
-      },
-      {
-        "name": "PyJWT",
-        "version": "2.12.1"
-      },
-      {
-        "name": "pyparsing",
-        "version": "3.3.2"
-      },
-      {
-        "name": "pyproject_hooks",
-        "version": "1.2.0"
-      },
-      {
-        "name": "pytest",
-        "version": "8.4.2"
-      },
-      {
-        "name": "pytest-asyncio",
-        "version": "1.4.0"
-      },
-      {
-        "name": "pytest-cov",
-        "version": "7.1.0"
-      },
-      {
-        "name": "pytest-mock",
-        "version": "3.15.1"
-      },
-      {
-        "name": "pytest-random-order",
-        "version": "1.2.0"
-      },
-      {
-        "name": "pytest-timeout",
-        "version": "2.4.0"
-      },
-      {
-        "name": "pytest-xdist",
-        "version": "3.8.0"
-      },
-      {
-        "name": "python-dateutil",
-        "version": "2.9.0.post0"
-      },
-      {
-        "name": "python-discovery",
-        "version": "1.5.0"
-      },
-      {
-        "name": "python-json-logger",
-        "version": "4.1.0"
-      },
-      {
-        "name": "python-rapidjson",
-        "version": "1.23"
-      },
-      {
-        "name": "python-telegram-bot",
-        "version": "22.7"
-      },
-      {
-        "name": "pytz",
-        "version": "2026.1.post1"
-      },
-      {
-        "name": "pywin32",
-        "version": "312"
-      },
-      {
-        "name": "pywinpty",
-        "version": "3.0.5"
-      },
-      {
-        "name": "PyYAML",
-        "version": "6.0.2"
-      },
-      {
-        "name": "pyzmq",
-        "version": "27.1.0"
-      },
-      {
-        "name": "questionary",
-        "version": "2.1.1"
-      },
-      {
-        "name": "referencing",
-        "version": "0.37.0"
-      },
-      {
-        "name": "regex",
-        "version": "2026.7.19"
-      },
-      {
-        "name": "requests",
-        "version": "2.33.1"
-      },
-      {
-        "name": "retrying",
-        "version": "1.4.2"
-      },
-      {
-        "name": "rfc3339-validator",
-        "version": "0.1.4"
-      },
-      {
-        "name": "rfc3986-validator",
-        "version": "0.1.1"
-      },
-      {
-        "name": "rfc3987-syntax",
-        "version": "1.1.0"
-      },
-      {
-        "name": "rich",
-        "version": "14.3.3"
-      },
-      {
-        "name": "rles-es-evotorch",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rles-orchestrator",
-        "version": "0.4.0.dev2"
-      },
-      {
-        "name": "rpds-py",
-        "version": "0.30.0"
-      },
-      {
-        "name": "ruff",
-        "version": "0.15.18"
-      },
-      {
-        "name": "sb3_contrib",
-        "version": "2.9.0"
-      },
-      {
-        "name": "schedule",
-        "version": "1.2.2"
-      },
-      {
-        "name": "scikit-learn",
-        "version": "1.9.0"
-      },
-      {
-        "name": "scipy",
-        "version": "1.18.0"
-      },
-      {
-        "name": "scipy-stubs",
-        "version": "1.18.0.1"
-      },
-      {
-        "name": "sdnotify",
-        "version": "0.3.2"
-      },
-      {
-        "name": "semver",
-        "version": "3.0.4"
-      },
-      {
-        "name": "Send2Trash",
-        "version": "2.1.0"
-      },
-      {
-        "name": "setoptconf-tmp",
-        "version": "0.3.1"
-      },
-      {
-        "name": "setuptools",
-        "version": "82.0.1"
-      },
-      {
-        "name": "simplejson",
-        "version": "4.1.2"
-      },
-      {
-        "name": "six",
-        "version": "1.17.0"
-      },
-      {
-        "name": "snowballstemmer",
-        "version": "3.1.1"
-      },
-      {
-        "name": "sortedcontainers",
-        "version": "2.4.0"
-      },
-      {
-        "name": "soupsieve",
-        "version": "2.9.1"
-      },
-      {
-        "name": "SQLAlchemy",
-        "version": "2.0.49"
-      },
-      {
-        "name": "stable_baselines3",
-        "version": "2.9.0"
-      },
-      {
-        "name": "stack-data",
-        "version": "0.6.3"
-      },
-      {
-        "name": "starlette",
-        "version": "1.0.0"
-      },
-      {
-        "name": "sympy",
-        "version": "1.14.0"
-      },
-      {
-        "name": "TA-Lib",
-        "version": "0.6.8"
-      },
-      {
-        "name": "tabulate",
-        "version": "0.10.0"
-      },
-      {
-        "name": "technical",
-        "version": "1.6.0"
-      },
-      {
-        "name": "tensorboard",
-        "version": "2.21.0"
-      },
-      {
-        "name": "tensorboard-data-server",
-        "version": "0.7.2"
-      },
-      {
-        "name": "terminado",
-        "version": "0.18.1"
-      },
-      {
-        "name": "threadpoolctl",
-        "version": "3.6.0"
-      },
-      {
-        "name": "time-machine",
-        "version": "3.2.0"
-      },
-      {
-        "name": "tinycss2",
-        "version": "1.5.1"
-      },
-      {
-        "name": "toml",
-        "version": "0.10.2"
-      },
-      {
-        "name": "tomli",
-        "version": "2.4.1"
-      },
-      {
-        "name": "tomli_w",
-        "version": "1.2.0"
-      },
-      {
-        "name": "tomlkit",
-        "version": "0.15.1"
-      },
-      {
-        "name": "torch",
-        "version": "2.13.0"
-      },
-      {
-        "name": "tornado",
-        "version": "6.5.7"
-      },
-      {
-        "name": "tqdm",
-        "version": "4.66.5"
-      },
-      {
-        "name": "traitlets",
-        "version": "5.15.1"
-      },
-      {
-        "name": "types-cachetools",
-        "version": "7.0.0.20260713"
-      },
-      {
-        "name": "types-filelock",
-        "version": "3.2.7"
-      },
-      {
-        "name": "types-python-dateutil",
-        "version": "2.9.0.20260716"
-      },
-      {
-        "name": "types-requests",
-        "version": "2.33.0.20260712"
-      },
-      {
-        "name": "types-tabulate",
-        "version": "0.10.0.20260508"
-      },
-      {
-        "name": "typing-inspection",
-        "version": "0.4.2"
-      },
-      {
-        "name": "typing_extensions",
-        "version": "4.16.0"
-      },
-      {
-        "name": "tzdata",
-        "version": "2026.1"
-      },
-      {
-        "name": "uri-template",
-        "version": "1.3.0"
-      },
-      {
-        "name": "urllib3",
-        "version": "2.7.0"
-      },
-      {
-        "name": "uvicorn",
-        "version": "0.43.0"
-      },
-      {
-        "name": "virtualenv",
-        "version": "21.7.0"
-      },
-      {
-        "name": "watchdog",
-        "version": "6.0.0"
-      },
-      {
-        "name": "wcwidth",
-        "version": "0.6.0"
-      },
-      {
-        "name": "webcolors",
-        "version": "25.10.0"
-      },
-      {
-        "name": "webencodings",
-        "version": "0.5.1"
-      },
-      {
-        "name": "websocket-client",
-        "version": "1.9.0"
-      },
-      {
-        "name": "websockets",
-        "version": "12.0"
-      },
-      {
-        "name": "Werkzeug",
-        "version": "3.0.6"
-      },
-      {
-        "name": "widgetsnbextension",
-        "version": "4.0.15"
-      },
-      {
-        "name": "winloop",
-        "version": "0.6.3"
-      },
-      {
-        "name": "wrapt",
-        "version": "2.3.0"
-      },
-      {
-        "name": "xgboost",
-        "version": "3.3.0"
-      },
-      {
-        "name": "yarl",
-        "version": "1.23.0"
-      },
-      {
-        "name": "zipp",
-        "version": "4.1.0"
-      },
-      {
-        "name": "zlib-ng",
-        "version": "1.0.0"
-      }
-    ]
-  },
   "upstream_nautilus": {
     "path": "nautilus_trader",
     "commit": "b82f3e3c801f4d7d0423f11c34fea8806c09e68a",
     "tracked_worktree_clean": true,
-    "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "status_entries": [
-      "?? python/nautilus_trader/nautilus_pyo3.pdb"
-    ]
+    "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "files": [
     {
@@ -1112,8 +61,8 @@
     },
     {
       "path": ".github/workflows/l6-ci-reusable.yml",
-      "size_bytes": 5582,
-      "sha256": "1f9ae36ef002b053c01b1ca5f16d7f163c3b26fc9608842f9dda0cf7f9a7ec56"
+      "size_bytes": 8818,
+      "sha256": "0ee456f1ec31b32ba1b88d3b6e4ff729409cdfcc4fab42dc29f7ca2c370328c8"
     },
     {
       "path": ".python-version",
@@ -1167,8 +116,8 @@
     },
     {
       "path": "configs/discount_half_life_evaluation_20261017.json",
-      "size_bytes": 2388,
-      "sha256": "c44da41f036d6793199f243298f3a348d0e015d78d80a31459f83e89bd8308b3"
+      "size_bytes": 2338,
+      "sha256": "773fa9593e8258279b5a16c203b2b3f46df8437db47fe4ddba8f4050f0405618"
     },
     {
       "path": "configs/discount_half_life_evaluation_20261017.json.sha256",
@@ -1202,8 +151,8 @@
     },
     {
       "path": "configs/low_capacity_predictor_20261016.errata.json",
-      "size_bytes": 695,
-      "sha256": "395ab83192a13555f451f70d5b98d46c093d6efedf00697aa840dabb1bcad985"
+      "size_bytes": 687,
+      "sha256": "d867fe2f19892b9f9ac091a34929e79fea72eb52227953b0ad21b66866561d7e"
     },
     {
       "path": "configs/low_capacity_predictor_20261016.errata.json.sha256",
@@ -1212,8 +161,8 @@
     },
     {
       "path": "configs/low_capacity_predictor_20261016.json",
-      "size_bytes": 3093,
-      "sha256": "972ba3efdf14c2417eca5934ae873b571cf9569b2d0f46ca450502bfcde1004b"
+      "size_bytes": 3017,
+      "sha256": "4f71770d6f71d675a2e7d6b35a01346b8054d4263472c66025fb185ec05fef34"
     },
     {
       "path": "configs/low_capacity_predictor_20261016.json.sha256",
@@ -1232,8 +181,8 @@
     },
     {
       "path": "configs/train_signal_baselines_20261016.json",
-      "size_bytes": 1706,
-      "sha256": "da29700ff7778510b89225502b60689e78fa9169538a950b0ac1f4fb8c21cfa5"
+      "size_bytes": 1660,
+      "sha256": "16da1d3f8d0d1e957984fb679217c574b142e578ff7bab94c4211012530b935c"
     },
     {
       "path": "configs/train_signal_baselines_20261016.json.sha256",
@@ -1247,8 +196,8 @@
     },
     {
       "path": "configs/zero_target_exit_probe_20261016.json",
-      "size_bytes": 1889,
-      "sha256": "cbf5c47541e4b31cf09fa003ab8de0710cbfe7a4323d2984523e97548586a0fd"
+      "size_bytes": 1848,
+      "sha256": "5e63ff65790cce32eed9330c0784d55e480158d06328ba1c8d2396b9b38b29f0"
     },
     {
       "path": "configs/zero_target_exit_probe_20261016.json.sha256",
@@ -1307,13 +256,13 @@
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/recovery.py",
-      "size_bytes": 4998,
-      "sha256": "2ca5957cf8482cd33ec83ff5139fc09accb74c05687b8f7340b16c61a6d3bbf7"
+      "size_bytes": 5098,
+      "sha256": "3e75dddad1b713a39929003eabedbaebdd82e42a007df8bc390a6135cba88284"
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/resources.py",
-      "size_bytes": 25927,
-      "sha256": "7f40082af7f0c8d531201cbc4c2cbaf1aefe0ae2c934b52da773eecd656eb4a8"
+      "size_bytes": 26522,
+      "sha256": "f7f4aedd225d50693c728ee7a16c690b042a702daf50493e3cb6491f2f5df151"
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/supervisor.py",
@@ -1322,8 +271,8 @@
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/transport.py",
-      "size_bytes": 3383,
-      "sha256": "eb3c07e982837453096cdf045d73772a827c58450244ba7b4dbc8e02fde8d4bb"
+      "size_bytes": 3626,
+      "sha256": "ded0d62d717f03849d5378c8b0b00de0ec1ede035cec7ea9b892c55e96c7d6d0"
     },
     {
       "path": "packages/compute_runtime/src/rles_compute_runtime/validation.py",
@@ -1372,8 +321,8 @@
     },
     {
       "path": "packages/contracts/src/rles_contracts/errors.py",
-      "size_bytes": 4955,
-      "sha256": "e5f1d8d400bee5c54363236d6591e6889d4d3bb4f846fa873c4979ba86e7a814"
+      "size_bytes": 4972,
+      "sha256": "6b8b41343be4c1bbbc8c1026d48f6d0bbac331eec9cce8c49edc4af07c11f1cd"
     },
     {
       "path": "packages/contracts/src/rles_contracts/frozen.py",
@@ -1412,8 +361,8 @@
     },
     {
       "path": "packages/contracts/src/rles_contracts/schema.py",
-      "size_bytes": 4848,
-      "sha256": "ac9201a13c6b151beadc91f9d819c7894c2e8e49fb8a37c62556728f085951e4"
+      "size_bytes": 4438,
+      "sha256": "3fb6b3ac0058050fe7ad7b9c256cfb80fe6214ff58af39a0901c2f3f35e8dee8"
     },
     {
       "path": "packages/contracts/src/rles_contracts/seed.py",
@@ -1422,8 +371,8 @@
     },
     {
       "path": "packages/contracts/src/rles_contracts/serialization.py",
-      "size_bytes": 11366,
-      "sha256": "1f593aea69ef8dc567f99df61683e7c9e1917f6b8a65ce18fbf265d8e3e1c30f"
+      "size_bytes": 12948,
+      "sha256": "10624353735b40154ec56d30a952f5f2d2b1f14170d809a67341b48af94aa8b8"
     },
     {
       "path": "packages/contracts/src/rles_contracts/validation.py",
@@ -1442,13 +391,13 @@
     },
     {
       "path": "packages/data/src/rles_data/__main__.py",
-      "size_bytes": 7438,
-      "sha256": "fa965a3551fe60781607b522c95b53ac8149e8f5fe5afa051917a2280955efe0"
+      "size_bytes": 7159,
+      "sha256": "5a10180be01e59c084e1b4efdb5fe21c1beabfee8abe897da77c64a9f4545174"
     },
     {
       "path": "packages/data/src/rles_data/binance_archive.py",
-      "size_bytes": 39054,
-      "sha256": "09e3ce984df8e0b5083f9dc17ac35649dab707c6536dfd374a25f61a2b3f0fb5"
+      "size_bytes": 39166,
+      "sha256": "4aa5f66ee94aa90765f674015801a5aebf8922d21a8966d91e79b1fc1fbaad8c"
     },
     {
       "path": "packages/data/src/rles_data/contracts.py",
@@ -1457,8 +406,8 @@
     },
     {
       "path": "packages/data/src/rles_data/core.py",
-      "size_bytes": 38742,
-      "sha256": "570a3ec96864c1545ee5e225d1b8da212c0ca289bba8770569523fcaf470e1b5"
+      "size_bytes": 40133,
+      "sha256": "3da8a3a4e0fbb7ac9bacfd08562fdf8bcec24db02837d5068590a772cba81df1"
     },
     {
       "path": "packages/data/src/rles_data/coverage.py",
@@ -1477,8 +426,8 @@
     },
     {
       "path": "packages/data/src/rles_data/io.py",
-      "size_bytes": 29268,
-      "sha256": "39a49a0da13d868ec21d437afc63371721eefaf1f3bd0bf67b2e400bc0abaaba"
+      "size_bytes": 29095,
+      "sha256": "1c43dbd9e7ab5084e2ec4b3bce6aa85235cef57fa517e54b98b5ab9090adfb98"
     },
     {
       "path": "packages/data/src/rles_data/quality.py",
@@ -1512,8 +461,8 @@
     },
     {
       "path": "packages/es_evotorch/src/rles_es_evotorch/checkpoint.py",
-      "size_bytes": 7654,
-      "sha256": "e7e992e981e36c7e5c89af43b395d149cf0b14ba9d27cb6c7b50bf1c1f5ecd0b"
+      "size_bytes": 7761,
+      "sha256": "833120969ec01cd1145e8d282fe877467298d77fb6b2663ca0699fb626373757"
     },
     {
       "path": "packages/es_evotorch/src/rles_es_evotorch/evaluation.py",
@@ -1527,8 +476,8 @@
     },
     {
       "path": "packages/es_evotorch/src/rles_es_evotorch/provider.py",
-      "size_bytes": 36507,
-      "sha256": "08f3557a5abb4b2289a33df0c2d242533e7ba0b5f47f9f9b7c884e6ce8a77b9f"
+      "size_bytes": 36640,
+      "sha256": "72e623ce8062270274fb816009c89cbd042bfb1de809671208bad0d9fc1a028d"
     },
     {
       "path": "packages/es_evotorch/src/rles_es_evotorch/soft_risk.py",
@@ -1587,8 +536,8 @@
     },
     {
       "path": "packages/gym_bridge/src/rles_gym_bridge/historical.py",
-      "size_bytes": 44870,
-      "sha256": "7cf96faaa72d715e733f38a88ed55e35ebeb02c0501dddb9af1afba29f1f9ed2"
+      "size_bytes": 45081,
+      "sha256": "16822a9f07b5c5d4e9c03b22834ba0c87651013851c42f93b73d7e7734e9ab78"
     },
     {
       "path": "packages/gym_bridge/src/rles_gym_bridge/l2_bridge.py",
@@ -1682,8 +631,8 @@
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/application.py",
-      "size_bytes": 108952,
-      "sha256": "407d7a8eb5aaf2cb989c3cad3f690a7b6cb63a21d7bca4a542a71053af60cab8"
+      "size_bytes": 112397,
+      "sha256": "d071a24a820c4c2338c3d215626eb039b7e9d8c8b28552b580debd499da574ab"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/diagnostics.py",
@@ -1712,13 +661,13 @@
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/research_access.py",
-      "size_bytes": 14701,
-      "sha256": "e2835791d013df69d8aabe33e80738e21247b5f708e35fbcf94ec18adab0fd97"
+      "size_bytes": 14097,
+      "sha256": "6b9aa461495338a8fd235ccd0067a79b4e9b1ee998652ad6ffb9459f259b7f68"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/rl_stage.py",
-      "size_bytes": 25925,
-      "sha256": "6325602231321572c5acf9c2a3eeadee80a6f4263f853569a8870a872d59bf5c"
+      "size_bytes": 26049,
+      "sha256": "08861eb8a5be389aad63f2cda2d544ab38812a7625d4f7fc0b9ab4db76a0ca0c"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/transfer.py",
@@ -1727,8 +676,8 @@
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/wfo_application.py",
-      "size_bytes": 76706,
-      "sha256": "2b465d5e2d4277a2e7c477f24ec764cbc2a6f8eaba1f21129bf8637faeb13f08"
+      "size_bytes": 77009,
+      "sha256": "11f80265b60cca60810f034f54cfa78120aa22ef278fb419421e299ca05e27d0"
     },
     {
       "path": "packages/orchestrator/src/rles_orchestrator/workflow.py",
@@ -1752,13 +701,13 @@
     },
     {
       "path": "packages/research/src/rles_research/access.py",
-      "size_bytes": 40587,
-      "sha256": "265c89b8deb7669ca47a71034c2fe0694cee93f8e32cf2cd649965ebf578ee5e"
+      "size_bytes": 50820,
+      "sha256": "89aab6c3593922bcdd3505585d9755abc28b0626bf0ee4dc2407b72b78cd9c4e"
     },
     {
       "path": "packages/research/src/rles_research/artifacts.py",
-      "size_bytes": 11667,
-      "sha256": "9f43e892c06388c86f2ac2b7b1cc903dff0e394f24f445616568c71dbf63973f"
+      "size_bytes": 11731,
+      "sha256": "0f439564249cc21c2da5bba637b2a855f6d5d2c8bd845c11103398f10e6e420d"
     },
     {
       "path": "packages/research/src/rles_research/baselines.py",
@@ -1767,8 +716,13 @@
     },
     {
       "path": "packages/research/src/rles_research/binance_cashflows.py",
-      "size_bytes": 12172,
-      "sha256": "0be8012fb167badacbb4d624e73776814fa072ff62ad521f51899587dd49977e"
+      "size_bytes": 12191,
+      "sha256": "c206d1bc8355e72a196294fd9b129993433f75159a054c7bbd9bd72d0c1f8e24"
+    },
+    {
+      "path": "packages/research/src/rles_research/json_utils.py",
+      "size_bytes": 466,
+      "sha256": "241da68806b4367836ba214931b700ff055c11b69f2e689133b1123cadb2f95f"
     },
     {
       "path": "packages/research/src/rles_research/ledger.py",
@@ -1777,13 +731,13 @@
     },
     {
       "path": "packages/research/src/rles_research/metrics.py",
-      "size_bytes": 15745,
-      "sha256": "21bbd10a083e833ddca41630038caa9fea2c61ddda40a8c47a9628910cbb3543"
+      "size_bytes": 17168,
+      "sha256": "18286dcf8b2b3cb170edd13ee21f4c95ace5748823f7d83ef694fe1b2fa27390"
     },
     {
       "path": "packages/research/src/rles_research/native_metrics.py",
-      "size_bytes": 49504,
-      "sha256": "d3c39d23687a04324f1b34c3bd2de6c8865fed269842ee4e316f2b990e4e6f9f"
+      "size_bytes": 55822,
+      "sha256": "9cfc2dddc84fca6efc248b938da76ab887c89a7e34584b4868cb85e59e357c74"
     },
     {
       "path": "packages/research/src/rles_research/numeric.py",
@@ -1837,13 +791,13 @@
     },
     {
       "path": "packages/rl_sb3/src/rles_rl_sb3/actor.py",
-      "size_bytes": 20900,
-      "sha256": "8b17486a0963ecd75947a663cd7428c42eead19a8e342163f53571b4db5df021"
+      "size_bytes": 21225,
+      "sha256": "5cd975daf745a5a997e5f713653c4f81a837eedb0a0d724dbd233aaba18dc12b"
     },
     {
       "path": "packages/rl_sb3/src/rles_rl_sb3/checkpoint.py",
-      "size_bytes": 20516,
-      "sha256": "7c11be37d830f3fd66cdbbbbf7f8e840b1e952e233c8800e68e68fbae23eaa4c"
+      "size_bytes": 20929,
+      "sha256": "266aa39ab64afd0885475471d5ad1b5cd674e9d7fd1a4ac1526e83b33d97f0ee"
     },
     {
       "path": "packages/rl_sb3/src/rles_rl_sb3/config.py",
@@ -1892,13 +846,13 @@
     },
     {
       "path": "packages/world_model/environment/pyproject.toml",
-      "size_bytes": 373,
-      "sha256": "51c2048468fd2e79e11dbdafede02b866f04bb08a328cce804e36b2a8dc4a346"
+      "size_bytes": 433,
+      "sha256": "09912398bd57874ff94a75e00d4670f6723cfe1f701d2d1e730168c287ba3a48"
     },
     {
       "path": "packages/world_model/environment/uv.lock",
-      "size_bytes": 121597,
-      "sha256": "8373f8e4f7f1a5983b75407c4b048f09905275b066916451721cdddbddb8b994"
+      "size_bytes": 148225,
+      "sha256": "5e3f4a84abc5b76495095c32a8b65f9d40bb5019c7758bf8e68fbdfcc406b5f1"
     },
     {
       "path": "packages/world_model/pyproject.toml",
@@ -1927,18 +881,18 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/baselines.py",
-      "size_bytes": 7155,
-      "sha256": "c2cc1f17f31bb93ecd208ca54ad2c2834043f63ee929e7e9c080fc5c01669337"
+      "size_bytes": 7022,
+      "sha256": "a916a667ddfc1fa1d695b874b23228060eb136c6d13cb55d5f0613ca6e80ad79"
     },
     {
       "path": "packages/world_model/src/rles_world_model/bundle.py",
-      "size_bytes": 8000,
-      "sha256": "0d1cd2ce7087bc92cc62d192d27e26743da42a6500374ef3422c85838d5966bf"
+      "size_bytes": 8074,
+      "sha256": "78cbd77f88d10c08b7848063bda4293b4799ef5c5b1757bf632454785b0e9f1c"
     },
     {
       "path": "packages/world_model/src/rles_world_model/cli.py",
-      "size_bytes": 35535,
-      "sha256": "8d48f9734557bbcda740eb4c710c5ff1b3d9c70f33cdaf40094dc17a3cac45d2"
+      "size_bytes": 35236,
+      "sha256": "d442e337dd4df1e0cc11833a8b74ee65a9ce824e21a7b631ca32fc62d3602903"
     },
     {
       "path": "packages/world_model/src/rles_world_model/contracts.py",
@@ -1971,14 +925,19 @@
       "sha256": "078d6f189a81abedc50131fb55a0e14d8062c3de0347effe650fcc6e8ea0beac"
     },
     {
+      "path": "packages/world_model/src/rles_world_model/py.typed",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
       "path": "packages/world_model/src/rles_world_model/routeb/__init__.py",
       "size_bytes": 600,
       "sha256": "3b7596c781f67641f951b317a6def9eab226697aca2ad03b3654bf6aeabc5826"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/checkpoint.py",
-      "size_bytes": 5763,
-      "sha256": "33f5e1232649bc6cb280880907deba5603f0985e60636da1aa5d690cbde0c5fd"
+      "size_bytes": 5916,
+      "sha256": "9e878b9eca406e79e1795539290fc5621d55e6d2b18adcd491152fd0bdf32b28"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/clock.py",
@@ -1992,8 +951,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/evaluation.py",
-      "size_bytes": 44483,
-      "sha256": "40ae9c608086c44f1f51cfc37d300922b0d68d0631a1e67917f0e8970bef476c"
+      "size_bytes": 44577,
+      "sha256": "bc9661f379e931886f727b5b91add9b03bf4974e0471e129d2dfeb2ae8e480c4"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/fold_evaluation.py",
@@ -2062,8 +1021,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/sequences.py",
-      "size_bytes": 8827,
-      "sha256": "4c6f4466767d16a286b76141ba1aae993a043ec4c6ec55561019ab585a5837ea"
+      "size_bytes": 8929,
+      "sha256": "70b4b0544e0b536cb9f20dfef8d6a93366bc63de913f8873abcaa4079021747a"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/synthetic_feedback.py",
@@ -2072,13 +1031,13 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/worker_cli.py",
-      "size_bytes": 16330,
-      "sha256": "9b156d0c1d9c3634cdc9da7c0945a64cb0f98a391a426cc0a0ce1aa34a3ce12c"
+      "size_bytes": 16512,
+      "sha256": "532ff47b99caee605e7cbb5a3896bb2729cf42ae9bfd9e4ff16b9d0b2a3f8b8f"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/worker_client.py",
-      "size_bytes": 10680,
-      "sha256": "57a1fa2c2736790e5bfb73fb775560dabe633d89e3539677cf474fd1d742c8b3"
+      "size_bytes": 10779,
+      "sha256": "07fddc5f113edbde88923c9a31a323a1c27cffead6c1fdd5fd667343ab2925b7"
     },
     {
       "path": "packages/world_model/src/rles_world_model/runtime.py",
@@ -2097,8 +1056,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/train_dataset.py",
-      "size_bytes": 4807,
-      "sha256": "87611bb90b80fb77c792b1e6c1fc98fc2c65e031eb3852affff47b297a7c8a0b"
+      "size_bytes": 4727,
+      "sha256": "c56a12f56379b0c83c0981212c61a63c995a1b0034d4707ca2e6ec0c7f663a05"
     },
     {
       "path": "packages/world_model/src/rles_world_model/upstream.py",
@@ -2117,8 +1076,8 @@
     },
     {
       "path": "pyproject.toml",
-      "size_bytes": 1832,
-      "sha256": "23f2319436b24d8bb4073ceac9cb41a63ab679adb08d121d879ae331f87abeb5"
+      "size_bytes": 1913,
+      "sha256": "e444a73fe1b2840e19e75bcddace11a3a913ed7e62d2a9e0fb60e74d05d669eb"
     },
     {
       "path": "qa/analyze_m13_stage_contribution.py",
@@ -2197,8 +1156,8 @@
     },
     {
       "path": "qa/source_manifest.py",
-      "size_bytes": 6793,
-      "sha256": "2867bb3d0287277e7c813044ff0c3a4878bd655b54d026ff75c23dd889e54370"
+      "size_bytes": 8451,
+      "sha256": "dfd2167ef0f12d3976d2fc720689866ce0aaedad90d907820ead5b4b323280ef"
     },
     {
       "path": "qa/train_signal_baselines.py",
@@ -2207,8 +1166,8 @@
     },
     {
       "path": "qa/wheel_manifest.py",
-      "size_bytes": 5569,
-      "sha256": "96991cfdd97f4afacfc684de743db202c998e8334e3c9edaaf2ac10263421742"
+      "size_bytes": 6933,
+      "sha256": "5569aa36e2a2e92d1c772c7d307ad702ecea16631927d89169cf9ed81bc328a8"
     },
     {
       "path": "qa/world_model/b1_cpu_smoke.py",
@@ -2582,8 +1541,8 @@
     },
     {
       "path": "tests/test_application_cli.py",
-      "size_bytes": 36656,
-      "sha256": "3de2c1d2785572dd986dd252f5a3e2b1788348f2c8f1af3ea34378188f35bdaf"
+      "size_bytes": 39934,
+      "sha256": "cae1c2ea71bb493b70d41cba2cd035cd9c38c626bb7b90dd1fb685fba97f3cb1"
     },
     {
       "path": "tests/test_archive_day_errors.py",
@@ -2592,13 +1551,13 @@
     },
     {
       "path": "tests/test_binance_archive_range.py",
-      "size_bytes": 27367,
-      "sha256": "c9f7aca24697a2376011005c9ca8e246c34a440bf43166d933fc363d221b63e5"
+      "size_bytes": 28640,
+      "sha256": "cbfc23e8b767aea4c7cafb318747307c9a43d5203279220a5bcee7347052e58a"
     },
     {
       "path": "tests/test_binance_cashflows.py",
-      "size_bytes": 7198,
-      "sha256": "461e93f88b6d2fcb4aae11d569dbd6b48420d947408b91270c8d010f3f3a48bd"
+      "size_bytes": 8515,
+      "sha256": "d538f37da74e5c72bbceab77c5d8ef17b013c4d88a90338947a77cbcf5f7ce2e"
     },
     {
       "path": "tests/test_compute_device.py",
@@ -2607,8 +1566,8 @@
     },
     {
       "path": "tests/test_compute_runtime_contracts.py",
-      "size_bytes": 5521,
-      "sha256": "6c24aee08ece8a883f45fbd4a045a34634abef8d32103435bd8a0152d00ed294"
+      "size_bytes": 5820,
+      "sha256": "aa54dffe1efd8d2621d44357c1568c949e2e9a566c35f70213390f25b0e76e5c"
     },
     {
       "path": "tests/test_compute_worker_pool.py",
@@ -2627,8 +1586,8 @@
     },
     {
       "path": "tests/test_curated_window_read.py",
-      "size_bytes": 6972,
-      "sha256": "03281acd91d7b0246295a7597973f40f69f7b6d4f69563b7abc25c6b5ac370a6"
+      "size_bytes": 7426,
+      "sha256": "b3132c0188b273931d4e976881750ab1be9efda08525e3a3700e47a777004fe3"
     },
     {
       "path": "tests/test_data_event_guards.py",
@@ -2672,13 +1631,13 @@
     },
     {
       "path": "tests/test_historical_factory.py",
-      "size_bytes": 84722,
-      "sha256": "16da7d27518b4b8ee69c0b9ce09a9a6997bfe93f7c3c41d0f8488c81306a9ece"
+      "size_bytes": 85080,
+      "sha256": "3541e64dd0cf7b5391699681507a75c54694082b9e6f1c259b7e54f4b0a182fc"
     },
     {
       "path": "tests/test_l2_cli.py",
-      "size_bytes": 2003,
-      "sha256": "1fd21dc2b47f5ae9f591676e4708be0f8901846061209b1c52e6b3a2c7af39d5"
+      "size_bytes": 2428,
+      "sha256": "c690af4e4208ad3284f9e6d766bb892d7538a1d8e4f15940bb2d60f5db636da0"
     },
     {
       "path": "tests/test_l2_gym_bridge.py",
@@ -2692,13 +1651,13 @@
     },
     {
       "path": "tests/test_l4_provider_smoke.py",
-      "size_bytes": 26988,
-      "sha256": "1ab84536157e511621a1ed739b2b0f61efa3220f3897a98c8ad341089a2123cc"
+      "size_bytes": 27807,
+      "sha256": "038bba7404a1b5a6cc863f8fcb91fce2e093a5c4768789556a81c75d5392121e"
     },
     {
       "path": "tests/test_layer_invariants.py",
-      "size_bytes": 19070,
-      "sha256": "33a1b7da5753c2750e73f06109e2daeeca3f40f0ccfdf6cfaabb76943272cf5e"
+      "size_bytes": 20447,
+      "sha256": "ee7ea9cdfb8c735c16edfc287a94b46a1bf5553713b0d8e6d2ebfd69d7cd1f96"
     },
     {
       "path": "tests/test_limit_execution_contract.py",
@@ -2732,13 +1691,13 @@
     },
     {
       "path": "tests/test_native_report_accumulator_parity.py",
-      "size_bytes": 8921,
-      "sha256": "f77410a6a5a5639fa53fc5663a00dc3173bf035095fd760e313b59639e1c0281"
+      "size_bytes": 9847,
+      "sha256": "a281f180fccc8442b507a5ea21cf974bf32fcd3a306a43acc2f9d014813c5441"
     },
     {
       "path": "tests/test_native_training_episode.py",
-      "size_bytes": 65260,
-      "sha256": "696013bd5df83b9e97297eb6f15dde2d52ef82078a47f4ffe716cba506b2fae3"
+      "size_bytes": 64014,
+      "sha256": "9170f21347d32c399b5e0d66127f39486fcc50f0cd45588cc84208094658d8a5"
     },
     {
       "path": "tests/test_nautilus_adapter_smoke.py",
@@ -2772,8 +1731,8 @@
     },
     {
       "path": "tests/test_research_access.py",
-      "size_bytes": 40690,
-      "sha256": "166cda3075a19bd310ecf6d1b8c7a141e7c459f3b3a1ebb18045cc54b5f35f79"
+      "size_bytes": 53309,
+      "sha256": "78a80f8bf4b24c6bda5d990ea195e0485cf08d3c87e80e4d38ec6be0579cc2b5"
     },
     {
       "path": "tests/test_research_ledger.py",
@@ -2782,8 +1741,8 @@
     },
     {
       "path": "tests/test_research_metrics.py",
-      "size_bytes": 43742,
-      "sha256": "da38cce1632f903273211021528f6fbb5d49091353d4f11824bea273a07a433a"
+      "size_bytes": 54003,
+      "sha256": "e03cf67628246a578cb5b3ff2f98ff6cf0bbe15cbc574d5ab2e094b882c169a9"
     },
     {
       "path": "tests/test_research_numeric_guards.py",
@@ -2792,8 +1751,8 @@
     },
     {
       "path": "tests/test_research_wfo.py",
-      "size_bytes": 60746,
-      "sha256": "d7a824be1e2ee4fa46d9241ec128dc72ea084d74ec5d390df7c56dce97433b09"
+      "size_bytes": 61319,
+      "sha256": "464146966f2ddce417d1afcbdd9e29fe48fb4537a3e5ec86c1ea3d96d6c453b7"
     },
     {
       "path": "tests/test_resource_recovery.py",
@@ -2822,8 +1781,8 @@
     },
     {
       "path": "tests/test_source_manifest.py",
-      "size_bytes": 4534,
-      "sha256": "0dc1a8326094ac67b1be252d18195d071997011b055c7f16eb233fe1842cb49e"
+      "size_bytes": 8456,
+      "sha256": "8d031b1a465b85a960eae3fa3e067f3ad564b73936a69df7763f1979d650e79a"
     },
     {
       "path": "tests/test_spawn_sb3_vec_env.py",
@@ -2832,8 +1791,8 @@
     },
     {
       "path": "tests/test_wheel_manifest.py",
-      "size_bytes": 2120,
-      "sha256": "07011980eb32221fe8094f69ce0ed75e9e25c88cd25c469649ad54e430bc289c"
+      "size_bytes": 4318,
+      "sha256": "e796a7f8766f22da6b92f6a9e9e529414c5ba2da5a4445e6c5881bedf3cbf7a8"
     },
     {
       "path": "tests/test_windows_job_contract.py",
@@ -2862,23 +1821,23 @@
     },
     {
       "path": "tests/world_model/test_b0_b1.py",
-      "size_bytes": 5044,
-      "sha256": "680800477bc7d3a5e0ffd0d11459dc69049b715bf6069b285da5d195616c05aa"
+      "size_bytes": 4929,
+      "sha256": "f5aef334df0a8d19436bf57daffc0468397cb9b365eba0106b8a1e29cb6f9143"
     },
     {
       "path": "tests/world_model/test_b0_contracts.py",
-      "size_bytes": 3460,
-      "sha256": "2b138dee9fc508ed13e2c1d601aaf5fbe04e60427c238fcf2802eecf6c067545"
+      "size_bytes": 3385,
+      "sha256": "cf54635061f75f3b079dcce499eeb62cbc049de5ccfb5adcdea78998cf37afbf"
     },
     {
       "path": "tests/world_model/test_b1_action_boundary.py",
-      "size_bytes": 712,
-      "sha256": "e3842e4a2c33baa1f572d367ffe5452b076da883f68fd15a521fcb8a84d5abe2"
+      "size_bytes": 711,
+      "sha256": "aaff7b3673e1c6094bb80f3076a913a5e11d1a196a39dc14dc5a95d58ab26a7e"
     },
     {
       "path": "tests/world_model/test_cli.py",
-      "size_bytes": 23658,
-      "sha256": "590c916c8c4e53c23507444d56a4c81ca71959c2910685e5440f90a0ff18ea92"
+      "size_bytes": 24524,
+      "sha256": "47339653a43070c3ec400108332c17e8d06d3b6b9f781fa5a67197d2957c6c0d"
     },
     {
       "path": "tests/world_model/test_dataset.py",
@@ -2897,8 +1856,8 @@
     },
     {
       "path": "tests/world_model/test_routeb_additive.py",
-      "size_bytes": 10108,
-      "sha256": "3dc4b9e3cddd3f178c3c7466cb729b135e464c9650b7a6853adcd214a68af607"
+      "size_bytes": 11042,
+      "sha256": "17dc40dddf17dca8962cea853ad4851acc95a960e56d4806fe5ff1a26facfaa8"
     },
     {
       "path": "tests/world_model/test_routeb_e0.py",
@@ -2927,8 +1886,8 @@
     },
     {
       "path": "tests/world_model/test_routeb_quality_v2.py",
-      "size_bytes": 33054,
-      "sha256": "d135ae65c1d920e080350e0e1d3a875c2eb40271a9e32a5e6bbb6288f7739787"
+      "size_bytes": 35065,
+      "sha256": "5f708769a06664142d25752999a8fc627cab5ef6f7c219bbdcc23a64a7aabe95"
     },
     {
       "path": "tests/world_model/test_scales_forecast.py",

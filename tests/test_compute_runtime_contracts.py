@@ -7,6 +7,7 @@ from rles_compute_runtime.benchmark import (
 )
 from rles_compute_runtime.errors import ComputeError, ComputeProtocolError
 from rles_compute_runtime.workers import _json_object
+from rles_compute_runtime.transport import small_json
 
 pytestmark = pytest.mark.unit
 
@@ -73,6 +74,14 @@ def test_worker_payload_must_be_a_json_object() -> None:
     assert _json_object({"step": 1}, "payload") == {"step": 1}
     with pytest.raises(ComputeProtocolError, match="string-keyed JSON object"):
         _json_object([1, 2], "payload")
+
+
+def test_compute_worker_payload_rejects_excessive_json_depth() -> None:
+    value: object = 0
+    for _ in range(129):
+        value = [value]
+    with pytest.raises(ComputeProtocolError, match="excessively nested"):
+        small_json(value)
 
 
 def test_benchmark_maps_oversized_integer_to_validation_error() -> None:

@@ -55,4 +55,16 @@ def test_l2_cli_rejects_duplicate_manifest_keys(tmp_path, capsys) -> None:
     error = json.loads(capsys.readouterr().err)
     assert exit_code == 2
     assert error["error"] == "DataError"
-    assert "duplicate validation manifest key" in error["detail"]
+    assert "duplicate JSON key" in error["detail"]
+
+
+def test_l2_cli_normalizes_excessive_manifest_json_nesting(tmp_path, capsys) -> None:
+    manifest_path = tmp_path / "deep.json"
+    manifest_path.write_bytes(b"[" * 20_000 + b"0" + b"]" * 20_000)
+
+    exit_code = main(["validate", "--manifest-json", str(manifest_path)])
+    error = json.loads(capsys.readouterr().err)
+
+    assert exit_code == 2
+    assert error["error"] == "DataError"
+    assert "nesting limit 128" in error["detail"]

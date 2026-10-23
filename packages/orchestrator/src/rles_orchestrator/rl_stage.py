@@ -10,6 +10,7 @@ from pathlib import Path
 import tempfile
 
 import numpy as np
+from rles_contracts.serialization import strict_json_loads
 
 from rles_es_evotorch.actor import ActorGenomeSpec, act, decode, genome_hash
 from rles_rl_sb3.actor import InferenceActor
@@ -125,7 +126,7 @@ class RLStageExecutor:
             if not path.is_file():
                 raise RuntimeError("A4 R1 resume is missing its durable E1 transfer evidence")
             payload = path.read_bytes()
-            raw = json.loads(payload.decode("utf-8"))
+            raw = strict_json_loads(payload, context="durable E1 transfer evidence")
             if not isinstance(raw, dict) or set(raw) != {"result", "evidence_hash"}:
                 raise RuntimeError("durable E1 transfer evidence schema mismatch")
             value = raw["result"]
@@ -168,7 +169,7 @@ class RLStageExecutor:
             identity = sha256(payload).hexdigest()
             if marker.read_text(encoding="ascii") != identity:
                 raise RuntimeError("durable R1 learning diagnostics failed integrity verification")
-            record = json.loads(payload.decode("utf-8"))
+            record = strict_json_loads(payload, context="durable R1 learning diagnostics")
             if (not isinstance(record, dict)
                     or record.get("schema") not in {
                         "rles.r1-learning.v1", "rles.r1-learning.v2", "rles.r1-learning.v3",

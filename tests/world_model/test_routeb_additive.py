@@ -171,6 +171,28 @@ def test_checkpoint_roundtrip_full_optimizer_tree(tmp_path):
         load_checkpoint(path,params_template=p,opt_template=o,
                         expected_identity={**identity,'train_scope_id':'not-authorized'},
                         expected_config=cfg)
+    path.with_suffix('.json').write_text(
+        '{"schema":"routeb.jax-checkpoint.v2","schema":"other"}',
+        encoding='utf-8',
+    )
+    with pytest.raises(ValueError, match='duplicate JSON key'):
+        load_checkpoint(path, params_template=p, opt_template=o,
+                        expected_identity=identity, expected_config=cfg)
+
+
+def test_bundle_restore_rejects_ambiguous_manifest(tmp_path):
+    from rles_data.core import DataError
+    from rles_world_model.bundle import load_bundle
+
+    bundle = tmp_path / 'bundle'
+    bundle.mkdir()
+    (bundle / 'manifest.json').write_text(
+        '{"schema_version":"rles.world_model.bundle.v1",'
+        '"schema_version":"other"}', encoding='utf-8',
+    )
+    with pytest.raises(DataError, match='bundle manifest or state archive is unreadable'):
+        load_bundle(bundle, None, expected_feature_spec_hash='0' * 64,
+                    expected_source_code_sha256='1' * 64)
 
 
 def test_delayed_hourly_bucket_visibility_no_future():

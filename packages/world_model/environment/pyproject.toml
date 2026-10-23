@@ -15,5 +15,8 @@ dependencies = [
   "scope>=0.4.4,<0.5.0",
 ]
 
+[dependency-groups]
+dev = ["mypy==2.3.0", "pytest==9.1.1"]
+
 [tool.uv]
 package = false

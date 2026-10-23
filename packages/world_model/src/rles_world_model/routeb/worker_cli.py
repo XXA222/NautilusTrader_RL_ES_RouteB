@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 import sys
 import numpy as np
+from rles_data.io import strict_json_loads
 from .jax_model import RSSMConfig
 from .jax_gru import GRUConfig
 from .jax_train import (train, forecast_distribution_standardized,
@@ -77,7 +78,9 @@ def main(argv:list[str]|None=None)->int:
     ed.add_argument("--configuration",required=True)
     args=ap.parse_args(argv)
     try:
-        config=json.loads(Path(args.configuration).read_text('utf-8'))
+        config=strict_json_loads(
+            Path(args.configuration).read_bytes(), context='Route B worker configuration',
+        )
         if set(config)!={"model","training"}:
             raise ValueError("unknown model/training configuration keys")
         e1=args.command.startswith('e1-')
@@ -98,7 +101,9 @@ def main(argv:list[str]|None=None)->int:
                     "kind":"E1_TRAIN_DIAGNOSTIC_ONLY" if e1 else "TRAIN_DIAGNOSTIC_ONLY",
                     "checkpoint":args.checkpoint,"reports":report}
         else:
-            request=json.loads(Path(args.request).read_text('utf-8'))
+            request=strict_json_loads(
+                Path(args.request).read_bytes(), context='Route B worker forecast request',
+            )
             batch=args.command in {'forecast-batch','e1-forecast-batch'}
             expected={"schema","train_scope_id","dataset_id","history_npz","context_sha256","scaler_sha256","horizon",
                       "n_paths","seed","train_npz_sha256","instrument"}

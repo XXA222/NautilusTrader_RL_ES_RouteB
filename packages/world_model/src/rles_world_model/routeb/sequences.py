@@ -11,6 +11,7 @@ import hashlib
 import os
 import tempfile
 import numpy as np
+from rles_data.io import strict_json_loads
 from .market import MarketSequence, MINUTE_NS
 from .codec import OHLCVCodec, TrainOnlyStandardizer
 
@@ -139,7 +140,9 @@ def load_worker_batch(path: str|Path, *, expected_scope: str,
                       snapshot_sha: str,upstream_sha: str)->tuple[SequenceBatch,dict]:
     """Loads prepared features only; validates metadata but does not grant data access."""
     path=Path(path)
-    meta=json.loads(path.with_suffix('.json').read_text('utf-8'))
+    meta=strict_json_loads(
+        path.with_suffix('.json').read_bytes(), context='Route B Train sequence manifest',
+    )
     if (meta.get('schema')!=SCHEMA or meta.get('purpose')!='train' or
         meta.get('train_scope_id')!=expected_scope or
         meta.get('snapshot_sha')!=snapshot_sha or meta.get('upstream_sha')!=upstream_sha):

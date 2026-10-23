@@ -12,9 +12,11 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+from typing import Any
 import uuid
 
 from .ledger import ResearchLedger, ResearchLockError
+from .json_utils import loads_unique_json
 
 
 _TRIAL_EVENT_TRANSITIONS = {
@@ -51,6 +53,52 @@ def _transition_sql(transitions: dict[str, set[str]]) -> str:
 def _hash(value: object) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
                                      allow_nan=False).encode()).hexdigest()
+
+
+def _decode_formal_identity(value: str) -> dict[str, Any]:
+    """Decode persisted formal-scope identity and fail closed on corruption."""
+    try:
+        identity = loads_unique_json(value)
+    except (TypeError, ValueError) as exc:
+        raise ResearchLockError("corrupted prior formal reservation identity") from exc
+    if not isinstance(identity, dict):
+        raise ResearchLockError("corrupted prior formal reservation identity")
+    return identity
+
+
+def _decode_query_intent_identity(value: str, *, protocol_id: str,
+                                  intent_id: str) -> dict[str, Any]:
+    """Validate the persisted authorization fields before using them as a scope grant."""
+    identity = _decode_formal_identity(value)
+    candidate_ids = identity.get("candidate_ids")
+    source_sha256 = identity.get("source_sha256")
+    if (identity.get("protocol_id") != protocol_id
+            or identity.get("query_id") != intent_id
+            or not isinstance(source_sha256, str) or len(source_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in source_sha256)
+            or not isinstance(candidate_ids, list) or not candidate_ids
+            or any(not isinstance(candidate, str) or not candidate
+                   for candidate in candidate_ids)
+            or len(set(candidate_ids)) != len(candidate_ids)):
+        raise ResearchLockError("corrupted formal query intent identity")
+    return identity
+
+
+def _legacy_wfo_test_query(identity: object, purpose: object) -> tuple[str, str] | None:
+    """Extract the durable query key represented by the frozen legacy inventory."""
+    if not isinstance(identity, dict) or purpose != "test":
+        return None
+    evidence = identity.get("evidence")
+    if not isinstance(evidence, dict) or evidence.get("kind") != "test":
+        return None
+    protocol_id = identity.get("protocol_id")
+    query_id = evidence.get("query_id")
+    if (not isinstance(protocol_id, str) or not protocol_id
+            or evidence.get("protocol_id") != protocol_id
+            or not isinstance(query_id, str) or not query_id
+            or ("query_id" in identity and identity["query_id"] != query_id)):
+        raise ValueError("legacy formal Test query identity is invalid")
+    return protocol_id, query_id
 
 
 class ProjectResearchRegistry:
@@ -101,6 +149,17 @@ class ProjectResearchRegistry:
                 BEFORE DELETE ON access BEGIN
                 SELECT RAISE(ABORT,'project access records are append-only'); END""")
             c.execute("CREATE TABLE IF NOT EXISTS inventory_import (sha TEXT PRIMARY KEY)")
+            c.execute("""CREATE TABLE IF NOT EXISTS legacy_query_identity (
+                access_key TEXT PRIMARY KEY, protocol_id TEXT NOT NULL, query_id TEXT NOT NULL,
+                FOREIGN KEY(access_key) REFERENCES access(access_key))""")
+            c.execute("CREATE INDEX IF NOT EXISTS legacy_query_lookup "
+                      "ON legacy_query_identity(protocol_id,query_id)")
+            c.execute("""CREATE TRIGGER IF NOT EXISTS legacy_query_identity_no_update
+                BEFORE UPDATE ON legacy_query_identity BEGIN
+                SELECT RAISE(ABORT,'legacy query identities are append-only'); END""")
+            c.execute("""CREATE TRIGGER IF NOT EXISTS legacy_query_identity_no_delete
+                BEFORE DELETE ON legacy_query_identity BEGIN
+                SELECT RAISE(ABORT,'legacy query identities are append-only'); END""")
             c.execute("""CREATE TABLE IF NOT EXISTS trial_attempt (
                 attempt_key TEXT PRIMARY KEY, protocol_id TEXT NOT NULL,
                 candidate_id TEXT NOT NULL, candidate_sha TEXT NOT NULL,
@@ -160,17 +219,74 @@ class ProjectResearchRegistry:
                     SELECT RAISE(ABORT,'invalid project trial lifecycle transition');
                 END""")
 
-    def import_inventory(self, entries: list[dict], inventory_sha: str) -> None:
+    def import_inventory(self, content: bytes) -> None:
+        if not isinstance(content, bytes) or not content:
+            raise ValueError("legacy research inventory bytes required")
+        inventory_sha = hashlib.sha256(content).hexdigest()
+        try:
+            inventory = loads_unique_json(content)
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError) as exc:
+            detail = str(exc)
+            if "duplicate JSON key" in detail:
+                detail = detail.replace("duplicate JSON key", "duplicate inventory JSON key")
+            raise ValueError(f"legacy research inventory is not strict UTF-8 JSON: {detail}") from exc
+        if (not isinstance(inventory, dict)
+                or inventory.get("schema") != "rles.legacy-research-access.v1"
+                or not isinstance(inventory.get("entries"), list)
+                or not isinstance(inventory.get("unresolved"), list)
+                or inventory["unresolved"]):
+            raise ValueError("legacy research inventory schema or resolution state is invalid")
+        entries = inventory["entries"]
         with self._tx() as c:
             if c.execute("SELECT 1 FROM inventory_import WHERE sha=?", (inventory_sha,)).fetchone():
+                # Older registry versions recorded the frozen inventory bytes
+                # but did not promote nested WFO Test query identities. Repair
+                # that omission via an append-only side table, not by rewriting
+                # immutable historical access rows.
+                for entry in entries:
+                    protocol_query = _legacy_wfo_test_query(
+                        entry.get("identity") if isinstance(entry, dict) else None,
+                        entry.get("purpose") if isinstance(entry, dict) else "",
+                    )
+                    if protocol_query is not None:
+                        self._record_legacy_query_identity(c, entry["key"], *protocol_query)
                 return
             # Known historical accesses can already overlap. Import records
             # that contamination, it does not grant permission for new reads.
             # Keep the entries and completion marker in one transaction.
             for entry in entries:
+                if not isinstance(entry, dict) or set(entry) != {
+                    "key", "market", "family", "start_ns", "end_ns", "purpose", "identity",
+                }:
+                    raise ValueError("legacy research inventory entry schema is invalid")
+                identity = entry["identity"]
+                protocol_query = _legacy_wfo_test_query(identity, entry["purpose"])
+                if protocol_query is not None:
+                    protocol_id, query_id = protocol_query
+                    # Historical WFO inventory nests the durable query row
+                    # under evidence. Promote it to the current lock schema
+                    # while keeping the original evidence unchanged.
+                    identity = {**identity, "query_id": query_id}
+                    entry = {**entry, "identity": identity}
                 expected = self._scope(owner="legacy-inventory", **entry)
                 self._reserve_record(c, entry["key"], expected, historical=True)
+                if protocol_query is not None:
+                    self._record_legacy_query_identity(c, entry["key"], *protocol_query)
             c.execute("INSERT OR IGNORE INTO inventory_import VALUES(?)", (inventory_sha,))
+
+    @staticmethod
+    def _record_legacy_query_identity(c, access_key: str,
+                                     protocol_id: str, query_id: str) -> None:
+        previous = c.execute(
+            "SELECT protocol_id,query_id FROM legacy_query_identity WHERE access_key=?",
+            (access_key,),
+        ).fetchone()
+        expected = (protocol_id, query_id)
+        if previous is not None and previous != expected:
+            raise ResearchLockError("legacy query identity changed")
+        if previous is None:
+            c.execute("INSERT INTO legacy_query_identity VALUES(?,?,?)",
+                      (access_key, protocol_id, query_id))
 
     @contextmanager
     def _tx(self):
@@ -189,7 +305,9 @@ class ProjectResearchRegistry:
     @staticmethod
     def _scope(*, key: str, owner: str, market: str, family: str,
                start_ns: int, end_ns: int, purpose: str, identity: dict) -> tuple:
-        if (any(not isinstance(v, str) or not v for v in (key, owner, market, family))
+        if (any(not isinstance(v, str) or not v or v != v.strip()
+                for v in (key, owner, market, family))
+                or market != market.upper() or family != family.lower()
                 or type(start_ns) is not int or type(end_ns) is not int
                 or not 0 < start_ns < end_ns or not isinstance(purpose, str)
                 or purpose not in {"development", "test", "holdout"}
@@ -269,7 +387,8 @@ class ProjectResearchRegistry:
                 or not isinstance(identity.get("candidate_ids"), list)
                 or not identity["candidate_ids"]
                 or any(not isinstance(value, str) or not value
-                       for value in identity["candidate_ids"])):
+                       for value in identity["candidate_ids"])
+                or len(set(identity["candidate_ids"])) != len(identity["candidate_ids"])):
             raise ResearchLockError("invalid pre-read formal query intent")
         with self._tx() as c:
             row = c.execute(
@@ -289,10 +408,7 @@ class ProjectResearchRegistry:
                 (market, family, end_ns, start_ns),
             ).fetchall()
             for (previous_owner, _m, _f, _s, _e, _purpose, previous_identity) in formal_rows:
-                try:
-                    prior = json.loads(previous_identity)
-                except (TypeError, json.JSONDecodeError):
-                    prior = {}
+                prior = _decode_formal_identity(previous_identity)
                 if (previous_owner != owner or prior.get("protocol_id") != protocol_id):
                     raise ResearchLockError("project formal interval already reserved/used")
             intent_rows = c.execute(
@@ -340,7 +456,8 @@ class ProjectResearchRegistry:
 
     def verify_query_intent(self, *, protocol_id: str, intent_id: str, owner: str,
                             market: str, family: str, start_ns: int, end_ns: int,
-                            purpose: str, source_sha256: str, candidate_id: str) -> None:
+                            purpose: str, source_sha256: str,
+                            candidate_id: str) -> dict[str, object]:
         """Bind a later evaluation to a started, exact pre-read query intent."""
         with self._tx() as c:
             row = c.execute(
@@ -353,10 +470,13 @@ class ProjectResearchRegistry:
         expected = (owner, market, family, start_ns, end_ns, purpose)
         if row[:6] != expected or row[7] != "started":
             raise ResearchLockError("formal evaluation differs from its pre-read query intent")
-        identity = json.loads(row[6])
+        identity = _decode_query_intent_identity(
+            row[6], protocol_id=protocol_id, intent_id=intent_id,
+        )
         if (identity.get("source_sha256") != source_sha256
                 or candidate_id not in identity.get("candidate_ids", [])):
             raise ResearchLockError("formal evaluation source/candidate differs from its pre-read intent")
+        return identity
 
     @staticmethod
     def _reserve_record(c, key: str, expected: tuple, *, historical: bool = False) -> str:
@@ -373,11 +493,20 @@ class ProjectResearchRegistry:
             # query ID for a disjoint formal window. The only exception is the
             # paired policy/baseline component for the exact same Test scope.
             if purpose in {"test", "holdout"}:
-                current_identity = json.loads(encoded)
+                current_identity = loads_unique_json(encoded)
                 protocol_id = current_identity.get("protocol_id")
                 query_id = current_identity.get("query_id")
                 if (isinstance(protocol_id, str) and protocol_id
                         and isinstance(query_id, str) and query_id):
+                    imported_query = c.execute(
+                        "SELECT access_key FROM legacy_query_identity "
+                        "WHERE protocol_id=? AND query_id=? LIMIT 1",
+                        (protocol_id, query_id),
+                    ).fetchone()
+                    if imported_query is not None:
+                        raise ResearchLockError(
+                            f"project query identity already reserved: {query_id}"
+                        )
                     formal_rows = c.execute(
                         "SELECT owner,market,family,start_ns,end_ns,purpose,identity "
                         "FROM access WHERE purpose IN ('test','holdout')",
@@ -385,10 +514,7 @@ class ProjectResearchRegistry:
                     for (previous_owner, previous_market, previous_family,
                          previous_start, previous_end, previous_purpose,
                          previous_identity) in formal_rows:
-                        try:
-                            prior_identity = json.loads(previous_identity)
-                        except (TypeError, json.JSONDecodeError):
-                            continue
+                        prior_identity = _decode_formal_identity(previous_identity)
                         if (prior_identity.get("protocol_id") != protocol_id
                                 or prior_identity.get("query_id") != query_id):
                             continue
@@ -431,20 +557,20 @@ class ProjectResearchRegistry:
                     continue
                 raise ResearchLockError(f"project data interval already reserved/used: {previous_key}")
             intents = c.execute(
-                "SELECT owner,purpose,identity FROM query_intent "
+                "SELECT protocol_id,intent_id,owner,purpose,identity FROM query_intent "
                 "WHERE market=? AND family=? AND start_ns<? AND end_ns>?",
                 (market, family, end_ns, start_ns),
             ).fetchall()
-            for previous_owner, previous_purpose, previous_identity in intents:
-                try:
-                    prior = json.loads(previous_identity)
-                except (TypeError, json.JSONDecodeError):
-                    prior = {}
+            for previous_protocol, previous_intent, previous_owner, previous_purpose, previous_identity in intents:
+                prior = _decode_query_intent_identity(
+                    previous_identity, protocol_id=previous_protocol,
+                    intent_id=previous_intent,
+                )
                 if purpose not in {"test", "holdout"}:
-                    if previous_owner != owner:
-                        raise ResearchLockError("project formal query intent blocks development access")
-                    continue
-                current_identity = json.loads(encoded)
+                    # Once a formal interval is frozen, the same owner cannot
+                    # mint a new development reservation over it either.
+                    raise ResearchLockError("project formal query intent blocks development access")
+                current_identity = loads_unique_json(encoded)
                 if (previous_owner != owner or previous_purpose != purpose
                         or prior.get("protocol_id") != current_identity.get("protocol_id")):
                     raise ResearchLockError("project formal query intent blocks evaluation access")
@@ -536,7 +662,7 @@ class ProjectResearchRegistry:
                 "SELECT event_key,status,detail_json FROM trial_attempt_event "
                 "WHERE attempt_key=? ORDER BY rowid", (attempt_key,),
             ).fetchall()
-        return [{"event_key": row[0], "status": row[1], "detail": json.loads(row[2])}
+        return [{"event_key": row[0], "status": row[1], "detail": loads_unique_json(row[2])}
                 for row in rows]
 
     @staticmethod
@@ -583,7 +709,7 @@ class ProjectResearchRegistry:
         with self._tx() as c:
             rows = c.execute(
                 "SELECT attempt_key,protocol_id,candidate_id,candidate_sha,feature_sha,seed,recipe_json "
-                "FROM trial_attempt WHERE protocol_id=? ORDER BY candidate_id", (protocol_id,),
+                "FROM trial_attempt ORDER BY protocol_id,candidate_id",
             ).fetchall()
             total = int(c.execute("SELECT COUNT(*) FROM trial_attempt").fetchone()[0])
             project_rows = c.execute(
@@ -603,13 +729,48 @@ class ProjectResearchRegistry:
                     "SELECT event_key,status,detail_json FROM trial_attempt_event "
                     "WHERE attempt_key=? ORDER BY rowid", (row[0],),
                 ).fetchall()
-                attempts.append({
-                    "attempt_key": row[0], "protocol_id": row[1], "candidate_id": row[2],
-                    "candidate_sha256": row[3], "feature_sha256": row[4], "seed": row[5],
-                    "recipe": json.loads(row[6]),
-                    "events": [{"event_key": event[0], "status": event[1],
-                                "detail": json.loads(event[2])} for event in events],
-                })
+                try:
+                    recipe = loads_unique_json(row[6])
+                except (TypeError, ValueError) as exc:
+                    raise ResearchLockError("corrupted project trial recipe identity") from exc
+                if (any(not isinstance(value, str) or not value for value in row[:3])
+                        or not isinstance(recipe, dict) or _hash(recipe) != row[3]
+                        or json.dumps(recipe, sort_keys=True, separators=(",", ":"),
+                                      allow_nan=False) != row[6]
+                        or not isinstance(row[5], int) or not 0 <= row[5] < 2**32
+                        or not isinstance(row[4], str) or len(row[4]) != 64
+                        or any(character not in "0123456789abcdef" for character in row[4])):
+                    raise ResearchLockError("corrupted project trial recipe identity")
+                transitions = (_TRIAL_EVENT_TRANSITIONS
+                               if row[1] == _STANDALONE_TRIAL_PROTOCOL
+                               else _WFO_TRIAL_EVENT_TRANSITIONS)
+                restored_events = []
+                previous_status = None
+                for event_key, status, detail_json in events:
+                    try:
+                        detail = loads_unique_json(detail_json)
+                    except (TypeError, ValueError) as exc:
+                        raise ResearchLockError(
+                            "corrupted project trial lifecycle events",
+                        ) from exc
+                    if (not isinstance(event_key, str) or not event_key
+                            or not isinstance(status, str)
+                            or not isinstance(detail, dict)
+                            or (previous_status is None and status != "registered")
+                            or (previous_status is not None
+                                and status not in transitions.get(previous_status, set()))):
+                        raise ResearchLockError("corrupted project trial lifecycle events")
+                    restored_events.append({"event_key": event_key, "status": status,
+                                            "detail": detail})
+                    previous_status = status
+                if not restored_events:
+                    raise ResearchLockError("corrupted project trial lifecycle events")
+                if row[1] == protocol_id:
+                    attempts.append({
+                        "attempt_key": row[0], "protocol_id": row[1], "candidate_id": row[2],
+                        "candidate_sha256": row[3], "feature_sha256": row[4], "seed": row[5],
+                        "recipe": recipe, "events": restored_events,
+                    })
             return {
                 "schema": "rles.project-trial-attempt-inventory.v1",
                 "protocol_id": protocol_id,
@@ -648,9 +809,9 @@ def _same_test_query_component(owner: str, purpose: str, start_ns: int, end_ns: 
             or start_ns != previous_start or end_ns != previous_end):
         return False
     try:
-        current = json.loads(encoded)
-        previous = json.loads(previous_identity)
-    except (TypeError, json.JSONDecodeError):
+        current = loads_unique_json(encoded)
+        previous = loads_unique_json(previous_identity)
+    except (TypeError, ValueError):
         return False
     shared_keys = ("protocol_id", "query_id", "source_sha", "bundle_sha", "recipe_sha",
                    "code_sha", "split", "mode")
@@ -668,7 +829,7 @@ class EvaluationAccess:
 
     @property
     def identity(self) -> dict:
-        return json.loads(self.identity_json)
+        return _decode_formal_identity(self.identity_json)
 
     def consume(self, *, bundle_sha: str, split: str, start_ns: int, end_ns: int,
                 market: str, mode: str) -> None:
@@ -687,14 +848,17 @@ class EvaluationAccess:
 def authorize_evaluation(registry: ProjectResearchRegistry, ledger: ResearchLedger, *,
                          protocol_id: str, query_id: str, owner: str, market: str,
                          family: str, start_ns: int, end_ns: int, split: str,
-                         source_sha: str, bundle_sha: str, mode: str = "base",
+                         source_sha: str, bundle_sha: str, intent_id: str,
+                         candidate_id: str, mode: str = "base",
                          component: str = "policy") -> EvaluationAccess:
     state = ledger.state(protocol_id)
+    query = None
     if component not in ({"policy", "baselines"} if split == "test" else {"policy"}):
         raise ResearchLockError("evaluation component is not part of the fixed protocol")
     if split == "test":
         query = ledger.query(protocol_id, query_id)
-        if (state["state"] != "RECIPE_FROZEN" or query is None or query["kind"] != "test"):
+        if (state["state"] != "RECIPE_FROZEN" or query is None
+                or query["kind"] != "test" or query["candidate"] != candidate_id):
             raise ResearchLockError("Test access requires frozen recipe and durable query")
     elif split == "holdout":
         if (state["state"] != "HOLDOUT_OPENED" or state["retrain_sha"] != bundle_sha
@@ -703,6 +867,13 @@ def authorize_evaluation(registry: ProjectResearchRegistry, ledger: ResearchLedg
             raise ResearchLockError("Holdout access requires registered retrain and matching one-shot scope")
     else:
         raise ResearchLockError("formal access supports only Test/Holdout")
+    intent = registry.verify_query_intent(
+        protocol_id=protocol_id, intent_id=intent_id, owner=owner,
+        market=market, family=family, start_ns=start_ns, end_ns=end_ns,
+        purpose=split, source_sha256=source_sha, candidate_id=candidate_id,
+    )
+    if split == "test" and query is not None and query["fold_id"] != intent.get("fold_id"):
+        raise ResearchLockError("Test access fold differs from its pre-read query intent")
     identity = {"protocol_id": protocol_id, "query_id": query_id, "component": component,
                 "bundle_sha": bundle_sha, "source_sha": source_sha, "market": market,
                 "start_ns": start_ns, "end_ns": end_ns, "split": split, "mode": mode,

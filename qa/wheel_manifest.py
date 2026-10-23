@@ -40,7 +40,7 @@ def build_wheel_manifest(root: Path, wheels_dir: Path, source_identity: str) -> 
         if not isinstance(name, str) or not isinstance(version, str):
             raise ValueError(f"{project_file}: project name/version required")
         expected += 1
-        matches: list[tuple[Path, dict[str, str]]] = []
+        matches: list[tuple[Path, dict[str, str], str, list[str]]] = []
         for wheel in wheels:
             with zipfile.ZipFile(wheel) as archive:
                 metadata_paths = [n for n in archive.namelist()
@@ -50,38 +50,58 @@ def build_wheel_manifest(root: Path, wheels_dir: Path, source_identity: str) -> 
                 metadata = BytesParser(policy=default).parsebytes(archive.read(metadata_paths[0]))
                 if _normalize(str(metadata.get("Name", ""))) != _normalize(name):
                     continue
-                module_files = {
-                    item.filename: _sha256(archive.read(item))
-                    for item in archive.infolist()
-                    if item.filename.endswith(".py")
-                    and ".dist-info/" not in item.filename
-                    and ".data/" not in item.filename
-                }
-                matches.append((wheel, module_files))
+                payload_files: dict[str, str] = {}
+                duplicate_payload_paths: list[str] = []
+                for item in archive.infolist():
+                    path = item.filename
+                    parts = Path(path).parts
+                    if (item.is_dir()
+                            or any(part.endswith((".dist-info", ".data", ".egg-info"))
+                                   for part in parts)):
+                        continue
+                    if path in payload_files:
+                        duplicate_payload_paths.append(path)
+                    payload_files[path] = _sha256(archive.read(item))
+                wheel_version = str(metadata.get("Version", ""))
+                matches.append((wheel, payload_files, wheel_version,
+                                sorted(set(duplicate_payload_paths))))
         if len(matches) != 1:
             errors.append(f"{name}: expected exactly one wheel, found {len(matches)}")
             continue
 
-        wheel, built_files = matches[0]
+        wheel, built_files, wheel_version, duplicate_payload_paths = matches[0]
         source_files = {
             item.relative_to(source_root).as_posix(): _sha256(item.read_bytes())
-            for item in source_root.rglob("*.py")
-            if item.is_file() and not item.is_symlink()
+            for item in source_root.rglob("*")
+            if (item.is_file() and not item.is_symlink()
+                and not any(part == "__pycache__" or part.endswith(".egg-info")
+                            for part in item.relative_to(source_root).parts)
+                and item.suffix not in {".pyc", ".pyo"})
         }
         missing = sorted(set(source_files) - set(built_files))
         extra = sorted(set(built_files) - set(source_files))
         mismatch = sorted(path for path in set(source_files) & set(built_files)
                           if source_files[path] != built_files[path])
-        if missing or extra or mismatch:
+        version_mismatch = wheel_version != version
+        if missing or extra or mismatch or version_mismatch or duplicate_payload_paths:
             errors.append(f"{name}: missing={missing}, extra={extra}, content_mismatch={mismatch}")
+            if version_mismatch:
+                errors.append(f"{name}: project version={version}, wheel metadata version={wheel_version}")
+            if duplicate_payload_paths:
+                errors.append(f"{name}: duplicate wheel payload paths={duplicate_payload_paths}")
+        python_file_count = sum(path.endswith(".py") for path in built_files)
         records.append({
             "distribution": name,
             "version": version,
+            "wheel_version": wheel_version,
             "wheel": wheel.name,
             "wheel_sha256": _sha256(wheel.read_bytes()),
-            "source_file_count": len(source_files),
-            "wheel_python_file_count": len(built_files),
-            "source_matches_wheel": not (missing or extra or mismatch),
+            "source_payload_file_count": len(source_files),
+            "wheel_payload_file_count": len(built_files),
+            "wheel_python_file_count": python_file_count,
+            "source_matches_wheel": not (
+                missing or extra or mismatch or version_mismatch or duplicate_payload_paths
+            ),
             "missing": missing,
             "extra": extra,
             "content_mismatch": mismatch,
@@ -89,7 +109,7 @@ def build_wheel_manifest(root: Path, wheels_dir: Path, source_identity: str) -> 
     if len(wheels) != expected:
         errors.append(f"expected {expected} workspace wheels, found {len(wheels)}")
     return {
-        "schema": "rles.wheelhouse-manifest.v1",
+        "schema": "rles.wheelhouse-manifest.v2",
         "source_identity_sha256": source_identity,
         "wheel_count": len(records),
         "source_matches_all_wheels": not errors and len(records) == expected,

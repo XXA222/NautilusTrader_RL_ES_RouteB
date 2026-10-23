@@ -21,6 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
+from rles_contracts.serialization import strict_json_loads
 from rles_contracts.registry import ProviderDescriptor
 
 from .soft_risk import SoftRiskSpace
@@ -86,7 +87,9 @@ def _decode_state(blob: bytes) -> object:
         with np.load(BytesIO(blob), allow_pickle=False) as stored:
             if "__metadata__" not in stored.files:
                 raise ValueError("missing native state metadata")
-            metadata = json.loads(str(stored["__metadata__"].item()))
+            metadata = strict_json_loads(
+                str(stored["__metadata__"].item()), context="native ES state metadata",
+            )
             arrays = {key: stored[key].copy() for key in stored.files if key != "__metadata__"}
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         raise ValueError("invalid native ES state component") from exc

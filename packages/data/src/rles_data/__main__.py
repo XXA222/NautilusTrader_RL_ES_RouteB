@@ -11,7 +11,7 @@ from typing import NoReturn
 from .core import CuratedStore, DataError
 from .coverage import CoveragePolicy
 from .folds import build_folds
-from .io import ingest_parquet, write_fact_json
+from .io import ingest_parquet, strict_json_loads, write_fact_json
 
 
 class JSONParser(argparse.ArgumentParser):
@@ -54,22 +54,14 @@ def _strict_input(value: dict) -> dict:
     return value
 
 
-def _unique_json_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise DataError(f"duplicate validation manifest key: {key}")
-        result[key] = value
-    return result
-
-
 def _validate(args: argparse.Namespace) -> tuple[dict, int]:
     if args.manifest_json:
-        doc = json.loads(
-            Path(args.manifest_json).read_text(encoding="utf-8"),
-            object_pairs_hook=_unique_json_pairs,
-            parse_constant=lambda value: (_ for _ in ()).throw(DataError(f"invalid JSON constant: {value}")),
-        )
+        try:
+            doc = strict_json_loads(
+                Path(args.manifest_json).read_bytes(), context="validation manifest",
+            )
+        except OSError as exc:
+            raise DataError("cannot read validation manifest") from exc
         if (not isinstance(doc, dict) or set(doc) - {"inputs", "start_ns", "end_ns", "expected_instruments", "coverage_policy"}
                 or not isinstance(doc.get("inputs"), list) or not doc["inputs"]):
             raise DataError("invalid validation manifest")

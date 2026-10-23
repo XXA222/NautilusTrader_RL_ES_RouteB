@@ -12,6 +12,7 @@ from rles_contracts.serialization import (
     canonical_bytes,
     from_arrow_ipc,
     from_canonical_bytes,
+    strict_json_loads,
     to_arrow_ipc,
 )
 from rles_data.core import Availability, CuratedStore, DataError, Event
@@ -48,6 +49,17 @@ def test_l1_canonical_event_roundtrip_and_future_guard() -> None:
     with pytest.raises(ValueError, match="future event"):
         event.require_available(101)
     event.require_available(102)
+
+
+@pytest.mark.parametrize("payload", [
+    b'{"a":1,"a":2}',
+    b'[' * 129 + b'0' + b']' * 129,
+])
+def test_l1_json_parser_rejects_ambiguous_and_deep_input(payload: bytes) -> None:
+    with pytest.raises(ValueError):
+        strict_json_loads(payload, context="test input")
+    with pytest.raises(ValueError):
+        from_canonical_bytes(payload)
 
 
 @pytest.mark.parametrize(
@@ -473,4 +485,31 @@ def test_l6_artifact_commit_verify_restore_and_tamper_rejection(tmp_path) -> Non
     (target / "unindexed.txt").unlink()
     (target / "policy.txt").write_bytes(b"modified")
     with pytest.raises(ArtifactError, match="hash mismatch"):
+        store.verify("run-1", "attempt-1")
+
+
+@pytest.mark.artifact_restore
+def test_l6_artifact_verifier_rejects_ambiguous_marker_json(tmp_path) -> None:
+    hashes = {
+        name: f"{index:x}" * 64
+        for index, name in enumerate(
+            ("data_hash", "code_hash", "config_hash", "seed_hash", "deps_hash",
+             "adapter_hash", "compute_hash", "execution_hash", "risk_hash"),
+            start=1,
+        )
+    }
+    store = ArtifactStore(tmp_path / "artifacts", trusted_sources={"qa-local"})
+    writer = store.begin("run-1", "attempt-1")
+    writer.add("policy.txt", b"deterministic-test-policy")
+    target = writer.complete(
+        l1_manifest=hashes,
+        required_files=["policy.txt"],
+        trusted_source_id="qa-local",
+    )
+    marker = (target / "COMPLETED").read_text(encoding="utf-8")
+    (target / "COMPLETED").write_text(
+        marker[:-1] + ',"state":"COMPLETED"}', encoding="utf-8",
+    )
+
+    with pytest.raises(ArtifactError, match="invalid marker/index"):
         store.verify("run-1", "attempt-1")

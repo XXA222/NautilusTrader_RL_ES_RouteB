@@ -12,6 +12,7 @@ import sqlite3
 import threading
 import time
 import uuid
+from rles_contracts.serialization import strict_json_loads
 
 from .errors import ComputeError, QuotaExceeded
 
@@ -102,7 +103,8 @@ class ResourceQuota:
             raise ComputeError('enrolled Windows lease release requires Windows ownership proof')
         state, identity_json, evidence_json, memory_bytes = recovery
         try:
-            identity, evidence = json.loads(identity_json), json.loads(evidence_json)
+            identity = strict_json_loads(identity_json, context="CPU lease recovery identity")
+            evidence = strict_json_loads(evidence_json, context="CPU lease recovery evidence")
         except (TypeError, ValueError) as exc:
             raise ComputeError('corrupted lease release evidence') from exc
         if identity != owner_identity():
@@ -189,7 +191,7 @@ class ResourceQuota:
             self._require_lease(conn, lease)
             row = conn.execute('SELECT state,identity_json FROM lease_recovery WHERE token=?',
                                (lease.token,)).fetchone()
-            if row is None or row[0] != 'preparing' or json.loads(row[1]) != identity:
+            if row is None or row[0] != 'preparing' or strict_json_loads(row[1], context='CPU lease identity') != identity:
                 raise ComputeError('worker recovery enrollment is not owned or already sealed')
             conn.execute("UPDATE lease_recovery SET state='ready' WHERE token=?", (lease.token,))
 
@@ -226,10 +228,10 @@ class ResourceQuota:
             self._require_lease(conn, lease)
             row = conn.execute('SELECT state,identity_json,jobs_json,memory_bytes '
                                'FROM lease_recovery WHERE token=?', (lease.token,)).fetchone()
-            if row is None or row[0] != 'application_preparing' or json.loads(row[1]) != identity:
+            if row is None or row[0] != 'application_preparing' or strict_json_loads(row[1], context='application lease identity') != identity:
                 raise ComputeError('supervised GPU recovery enrollment is not owned or already sealed')
             try:
-                evidence = json.loads(row[2])
+                evidence = strict_json_loads(row[2], context='application lease evidence')
             except (TypeError, ValueError) as exc:
                 raise ComputeError('corrupted supervised GPU recovery evidence') from exc
             if (not isinstance(evidence, dict) or evidence.get('kind') != 'supervised_gpu'
@@ -257,7 +259,8 @@ class ResourceQuota:
             if row is None or row[0] != 'application_ready':
                 raise ComputeError('GPU lease lacks sealed supervised process-tree evidence')
             try:
-                identity, evidence = json.loads(row[1]), json.loads(row[2])
+                identity = strict_json_loads(row[1], context='application lease recovery identity')
+                evidence = strict_json_loads(row[2], context='application lease recovery evidence')
             except (TypeError, ValueError) as exc:
                 raise ComputeError('corrupted supervised GPU recovery evidence') from exc
             if (not isinstance(evidence, dict) or set(evidence) != {
@@ -314,7 +317,8 @@ class ResourceQuota:
             if row is None or row[0] != 'ready':
                 raise ComputeError('lease has no completed Windows Job recovery evidence')
             try:
-                identity, names = json.loads(row[1]), json.loads(row[2])
+                identity = strict_json_loads(row[1], context='CPU lease recovery identity')
+                names = strict_json_loads(row[2], context='CPU lease recovery job list')
             except (TypeError, ValueError) as exc:
                 raise ComputeError('corrupted lease recovery evidence') from exc
             if (not isinstance(names, list) or not 1 <= len(names) <= 128
@@ -429,7 +433,7 @@ class GPULearnerLease:
             previous = os.read(fd, max(previous_size, 1))
             if previous.strip(b'\0\r\n '):
                 try:
-                    old_state = json.loads(previous.decode('utf-8'))
+                    old_state = strict_json_loads(previous, context='GPU owner state')
                 except (UnicodeDecodeError, ValueError):
                     raise ComputeError('legacy or corrupted GPU owner file requires manual recovery')
                 if not isinstance(old_state, dict) or old_state.get('lock_protocol') != self._protocol:
@@ -465,7 +469,9 @@ class GPULearnerLease:
             if os.fstat(self._fd).st_size > 65536:
                 raise ValueError('GPU owner metadata exceeds supported size')
             os.lseek(self._fd, 0, os.SEEK_SET)
-            state = json.loads(os.read(self._fd, os.fstat(self._fd).st_size).decode('utf-8'))
+            state = strict_json_loads(
+                os.read(self._fd, os.fstat(self._fd).st_size), context='GPU lease owner state',
+            )
         except (OSError, UnicodeDecodeError, ValueError) as exc:
             raise ComputeError('GPU lease corrupted; manual recovery required') from exc
         if (state.get('lock_protocol') != self._protocol or state.get('token') != self.token

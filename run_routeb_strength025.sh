@@ -1,0 +1,19 @@
+set -euo pipefail
+cd "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB"
+export PYTHONPATH="packages/world_model/src:packages/data/src:packages/contracts/src:packages/orchestrator/src:packages/research/src"
+export JAX_PLATFORMS=cuda
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+root=".artifacts/world_model/fresh-trxusdt-20260211-risk-conditioning-strength025-20261021"
+mkdir -p "$root/ensemble"
+packages/world_model/environment/.venv-wsl/bin/python qa/world_model/run_registered_fold_ensemble.py \
+  --registered-fold-config configs/routeb/fresh_trxusdt_20260211_risk_conditioning_strength025_60_15_15_fold.json \
+  --e1-configuration configs/routeb/fresh_trxusdt_20260211_e1_persistent_risk_strength025_ensemble.json \
+  --e2-configuration configs/routeb/fresh_trxusdt_20260211_e2_persistent_risk_strength025_ensemble.json \
+  --worker-python packages/world_model/environment/.venv-wsl/bin/python \
+  --upstream-checkout .tmp/dreamerv3-route-b \
+  --output-dir "$root/ensemble/run-01" \
+  --model-seeds 31,102,20261018 \
+  --paths-per-seed 32 --forecast-seed 20261018 \
+  --horizons 1,5,15,30,60 --anchor-interval-minutes 120 \
+  --context-lookback 128 --volatility-window 15 --block-length 12 \
+  --bootstrap-replicates 2000 --seed 0 --timeout-seconds 1800

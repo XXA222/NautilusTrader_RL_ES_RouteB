@@ -141,6 +141,35 @@ def test_online_native_summary_rejects_cashflow_at_ambiguous_duplicate_barrier()
         )
 
 
+def test_online_native_summary_rejects_cashflow_at_initial_barrier_like_batch():
+    snapshots = (
+        _snapshot(1, "1000"),
+        _snapshot(11, "1100"),
+        _snapshot(21, "1100"),
+    )
+    cashflows = (_flow("initial-deposit", 1, "DEPOSIT", "100"),)
+
+    with pytest.raises(MetricsError, match="after the initial barrier"):
+        native_report(
+            snapshots,
+            fill_references={},
+            sample_interval_ns=10,
+            include_account_rows=False,
+            external_cashflows=cashflows,
+        )
+
+    streamed = NativeReportAccumulator(
+        sample_interval_ns=10,
+        max_return_count=len(snapshots) - 1,
+        contract_multiplier=Decimal(1),
+        external_cashflows=cashflows,
+    )
+    with pytest.raises(MetricsError, match="after the initial barrier"):
+        for snapshot in snapshots:
+            streamed.add_snapshot(snapshot, {})
+        streamed.finish()
+
+
 def test_online_native_summary_matches_batch_exact_tail_metrics():
     snapshots = tuple(
         _snapshot(index * 10, str(Decimal(1000) + Decimal((index * 17) % 9 * 5 - index)))

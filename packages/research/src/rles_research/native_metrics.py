@@ -4,12 +4,97 @@ from __future__ import annotations
 from decimal import DefaultContext, Decimal, DecimalException, Inexact, InvalidOperation, Rounded
 from decimal import MIN_EMIN, localcontext
 from collections.abc import Iterator, Sequence as SequenceABC
+import hashlib
 from itertools import groupby
-from typing import Any, Mapping, Sequence
+import json
+import os
+from pathlib import Path
+import re
+import tempfile
+from typing import Any, Callable, Mapping, Sequence
 
 from .metrics import AccountFactsAccumulator, MetricsError
 
 NATIVE_LIQUIDATION_COUNTS_AVAILABLE = True
+
+
+class _JsonlReportRows:
+    """Write optional report detail rows to a private temporary file, then publish once."""
+
+    def __init__(self, output_path: str | os.PathLike[str]) -> None:
+        requested = Path(output_path)
+        if not requested.name:
+            raise MetricsError("account rows output must name a file")
+        cursor = requested.parent.absolute()
+        while True:
+            if cursor.is_symlink():
+                raise MetricsError("account rows output directory must not contain symlinks")
+            if cursor.parent == cursor:
+                break
+            cursor = cursor.parent
+        parent = requested.parent.resolve()
+        if not parent.is_dir():
+            raise MetricsError("account rows output parent directory must exist")
+        self.destination = parent / requested.name
+        if self.destination.exists() or self.destination.is_symlink():
+            raise MetricsError("account rows output already exists")
+        try:
+            handle = tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", newline="\n", prefix=f".{requested.name}.",
+                suffix=".tmp", dir=parent, delete=False,
+            )
+        except OSError as exc:
+            raise MetricsError("could not create temporary account rows output") from exc
+        self._handle = handle
+        self._temporary = Path(handle.name)
+        self.account_rows = 0
+        self.reconciliation_rows = 0
+        self._published = False
+
+    def write(self, record_type: str, row: dict) -> None:
+        record = {"record_type": record_type, **row}
+        try:
+            self._handle.write(json.dumps(record, ensure_ascii=False, allow_nan=False,
+                                          separators=(",", ":")) + "\n")
+        except (OSError, TypeError, ValueError) as exc:
+            raise MetricsError("could not serialize account report row") from exc
+        if record_type == "account_row":
+            self.account_rows += 1
+        else:
+            self.reconciliation_rows += 1
+
+    def publish(self) -> dict[str, Any]:
+        try:
+            self._handle.flush()
+            os.fsync(self._handle.fileno())
+            self._handle.close()
+            checksum = hashlib.sha256()
+            with self._temporary.open("rb") as source:
+                for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                    checksum.update(chunk)
+            digest = checksum.hexdigest()
+            # A hard link publishes the complete same-directory file atomically
+            # and fails if another process created the destination meanwhile.
+            # Unlike creating a placeholder followed by replace(), this cannot
+            # overwrite a path swapped in by a concurrent writer.
+            os.link(self._temporary, self.destination)
+            self._temporary.unlink()
+        except OSError as exc:
+            raise MetricsError("could not publish account rows output") from exc
+        self._published = True
+        return {
+            "file": self.destination.name,
+            "format": "rles.native-report-rows.jsonl.v1",
+            "sha256": digest,
+            "account_row_count": self.account_rows,
+            "equity_reconciliation_row_count": self.reconciliation_rows,
+        }
+
+    def close(self) -> None:
+        if not self._handle.closed:
+            self._handle.close()
+        if not self._published:
+            self._temporary.unlink(missing_ok=True)
 
 
 def _decimal_exact(operation: str, left: Decimal, right: Decimal) -> Decimal:
@@ -63,6 +148,22 @@ def _decimal(value: Any, label: str) -> Decimal:
     if not result.is_finite():
         raise MetricsError(f"nonfinite native {label}")
     return result
+
+
+def _external_cashflow_amount(value: Any) -> Decimal:
+    """Parse sourced cash amounts without accepting binary floats or loose syntax."""
+    if isinstance(value, Decimal):
+        amount = value
+    elif type(value) is int:
+        amount = Decimal(value)
+    elif (isinstance(value, str)
+          and re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", value)):
+        amount = Decimal(value)
+    else:
+        raise MetricsError("external cashflow amount must be canonical exact decimal text")
+    if not amount.is_finite():
+        raise MetricsError("external cashflow amount must be finite")
+    return amount
 
 
 def _ordered_snapshots(snapshots: Sequence[Any]) -> list[Any]:
@@ -206,11 +307,11 @@ def _external_cashflows_by_time(cashflows: Sequence[Mapping[str, Any]],
             raise MetricsError("external cashflow currency differs from native account")
         if not isinstance(kind, str) or kind not in {"DEPOSIT", "WITHDRAWAL"}:
             raise MetricsError("external cashflow kind must be DEPOSIT or WITHDRAWAL")
-        amount = _decimal(fact.get("amount"), "external cashflow amount")
+        amount = _external_cashflow_amount(fact.get("amount"))
         if amount <= 0:
             raise MetricsError("external cashflow amount must be positive")
-        if not isinstance(source, str) or not source.strip():
-            raise MetricsError("external cashflow source identity required")
+        if not isinstance(source, str) or not source or source != source.strip():
+            raise MetricsError("external cashflow source identity must be canonical")
         if (not isinstance(source_hash, str) or len(source_hash) != 64
                 or any(character not in "0123456789abcdef" for character in source_hash)):
             raise MetricsError("external cashflow source SHA-256 required")
@@ -301,7 +402,8 @@ def account_rows(snapshots: Sequence[Any], *, fill_references: Mapping[str, Deci
 def reconcile_linear_equity(snapshots: Sequence[Any], *,
                             external_cashflows: Sequence[Mapping[str, Any]] = (),
                             rounding_per_event: Decimal = Decimal("0.00000001"),
-                            include_rows: bool = True) -> dict:
+                            include_rows: bool = True,
+                            row_consumer: Callable[[dict], None] | None = None) -> dict:
     """Independently reconcile quote-settled, unit-multiplier linear accounts.
 
     Requires a flat, event-free starting barrier. External cashflows must be
@@ -315,7 +417,9 @@ def reconcile_linear_equity(snapshots: Sequence[Any], *,
     deposits/withdrawals without independent typed source facts are outside this contract.
     """
     if (not isinstance(rounding_per_event, Decimal) or not rounding_per_event.is_finite()
-            or rounding_per_event < 0 or type(include_rows) is not bool):
+            or rounding_per_event < 0 or type(include_rows) is not bool
+            or (row_consumer is not None and not callable(row_consumer))
+            or (include_rows and row_consumer is not None)):
         raise MetricsError("finite nonnegative Decimal rounding and Boolean rows required")
     ordered = _ordered_snapshots(snapshots)
     for item in ordered:
@@ -338,6 +442,13 @@ def reconcile_linear_equity(snapshots: Sequence[Any], *,
     adjustments: dict[str, dict] = {}
     checked = open_barriers = checked_open = unchecked_open = 0
     rows = []
+
+    def record_row(row: dict) -> None:
+        if row_consumer is not None:
+            row_consumer(row)
+        elif include_rows:
+            rows.append(row)
+
     for index, snapshot in enumerate(ordered):
         external_cashflow = _add_decimal_exact(
             external_cashflow,
@@ -405,16 +516,15 @@ def reconcile_linear_equity(snapshots: Sequence[Any], *,
                     raise MetricsError(f"linear native equity mismatch at open barrier {index}: "
                                        f"residual={residual}, tolerance={tolerance}")
                 checked_open += 1
-                if include_rows:
-                    rows.append({"barrier_index": index, "ts_ns": snapshot.decision_ts_ns,
-                                 "native_equity": str(actual), "expected_equity": str(expected),
-                                 "price_pnl_at_mark": str(
-                                     _add_decimal_exact(cash, marked_notional)
-                                 ),
-                                 "mark_price": str(mark), "signed_quantity": str(quantity),
-                                 "fee": str(fee), "funding": str(funding),
-                                 "external_cashflow": str(external_cashflow),
-                                 "residual": str(residual), "tolerance": str(tolerance)})
+                record_row({"barrier_index": index, "ts_ns": snapshot.decision_ts_ns,
+                            "native_equity": str(actual), "expected_equity": str(expected),
+                            "price_pnl_at_mark": str(
+                                _add_decimal_exact(cash, marked_notional)
+                            ),
+                            "mark_price": str(mark), "signed_quantity": str(quantity),
+                            "fee": str(fee), "funding": str(funding),
+                            "external_cashflow": str(external_cashflow),
+                            "residual": str(residual), "tolerance": str(tolerance)})
             else:
                 unchecked_open += 1
             # The final barrier must retain authoritative terminal state.
@@ -436,13 +546,11 @@ def reconcile_linear_equity(snapshots: Sequence[Any], *,
             raise MetricsError(f"linear native equity mismatch at barrier {index}: "
                                f"residual={residual}, tolerance={tolerance}")
         checked += 1
-        if include_rows:
-            rows.append({"barrier_index": index, "ts_ns": snapshot.decision_ts_ns,
-                         "native_equity": str(actual), "expected_equity": str(expected),
-                         "realized_price_pnl": str(cash), "fee": str(fee),
-                         "funding": str(funding), "external_cashflow": str(external_cashflow),
-                         "residual": str(residual),
-                         "tolerance": str(tolerance)})
+        record_row({"barrier_index": index, "ts_ns": snapshot.decision_ts_ns,
+                    "native_equity": str(actual), "expected_equity": str(expected),
+                    "realized_price_pnl": str(cash), "fee": str(fee),
+                    "funding": str(funding), "external_cashflow": str(external_cashflow),
+                    "residual": str(residual), "tolerance": str(tolerance)})
     result: dict = {"scope": "flat_and_marked_open_barriers_quote_settled_unit_linear_with_explicit_cashflow_sources",
               "checked_flat_barriers": checked, "open_barriers": open_barriers,
               "unchecked_open_barriers": unchecked_open,
@@ -462,24 +570,57 @@ def native_report(snapshots: Sequence[Any], *, fill_references: Mapping[str, Dec
                   include_account_rows: bool = True,
                   external_cashflows: Sequence[Mapping[str, Any]] = (),
                   linear_equity_rounding: Decimal | None = None,
-                  contract_multiplier: Decimal = Decimal(1)) -> dict:
+                  contract_multiplier: Decimal = Decimal(1),
+                  account_rows_path: str | os.PathLike[str] | None = None) -> dict:
     """Build native economic metrics without inferring external account flows."""
     if (type(include_account_rows) is not bool or not isinstance(contract_multiplier, Decimal)
-            or not contract_multiplier.is_finite() or contract_multiplier != 1):
+            or not contract_multiplier.is_finite() or contract_multiplier != 1
+            or (account_rows_path is not None
+                and not isinstance(account_rows_path, (str, os.PathLike)))
+            or (account_rows_path is not None and not include_account_rows)):
         raise MetricsError("Boolean row option and unit finite contract multiplier required")
     ordered = _ordered_snapshots(snapshots)
     for item in ordered:
         _snapshot_records(item, "positions", "position")
         _snapshot_records(item, "orders", "order")
+    row_output = _JsonlReportRows(account_rows_path) if account_rows_path is not None else None
+    try:
+        report = _build_native_report(
+            ordered, fill_references=fill_references,
+            sample_interval_ns=sample_interval_ns,
+            allow_price_improvement=allow_price_improvement,
+            include_account_rows=include_account_rows,
+            external_cashflows=external_cashflows,
+            linear_equity_rounding=linear_equity_rounding,
+            row_output=row_output,
+        )
+        if row_output is not None:
+            report["account_rows_artifact"] = row_output.publish()
+        return report
+    finally:
+        if row_output is not None:
+            row_output.close()
+
+
+def _build_native_report(ordered: Sequence[Any], *, fill_references: Mapping[str, Decimal],
+                         sample_interval_ns: int, allow_price_improvement: bool,
+                         include_account_rows: bool,
+                         external_cashflows: Sequence[Mapping[str, Any]],
+                         linear_equity_rounding: Decimal | None,
+                         row_output: _JsonlReportRows | None) -> dict:
     accumulator = AccountFactsAccumulator(sample_interval_ns=sample_interval_ns,
                                           allow_price_improvement=allow_price_improvement)
-    rows: list[dict] | None = [] if include_account_rows else None
+    rows: list[dict] | None = [] if include_account_rows and row_output is None else None
+    account_row_count = 0
     for row in iter_account_rows(ordered, fill_references=fill_references,
                                  external_cashflows=external_cashflows,
                                  allow_price_improvement=allow_price_improvement):
         accumulator.add(row)
         if rows is not None:
             rows.append(row)
+        elif row_output is not None:
+            row_output.write("account_row", row)
+            account_row_count += 1
     metrics = accumulator.result(periods_per_year=365.25 * 86400 * 1e9 / sample_interval_ns)
     final = ordered[-1]
     fill_facts: dict[str, dict] = {}
@@ -515,10 +656,15 @@ def native_report(snapshots: Sequence[Any], *, fill_references: Mapping[str, Dec
             "costs_already_in_native_equity": True}
     if rows is not None:
         report["account_rows"] = rows
+    elif row_output is not None:
+        report["account_rows_streamed"] = account_row_count
     if linear_equity_rounding is not None:
         report["equity_reconciliation"] = reconcile_linear_equity(
             ordered, external_cashflows=external_cashflows,
-            rounding_per_event=linear_equity_rounding, include_rows=include_account_rows,
+            rounding_per_event=linear_equity_rounding,
+            include_rows=include_account_rows and row_output is None,
+            row_consumer=(None if row_output is None else
+                          lambda row: row_output.write("equity_reconciliation_row", row)),
         )
     return report
 
@@ -592,12 +738,12 @@ class NativeReportAccumulator:
                 raise MetricsError("external cashflow timestamp must be a nonnegative integer")
             if not isinstance(kind, str) or kind not in {"DEPOSIT", "WITHDRAWAL"}:
                 raise MetricsError("external cashflow kind must be DEPOSIT or WITHDRAWAL")
-            if not isinstance(source, str) or not source.strip():
-                raise MetricsError("external cashflow source identity required")
+            if not isinstance(source, str) or not source or source != source.strip():
+                raise MetricsError("external cashflow source identity must be canonical")
             if (not isinstance(source_hash, str) or len(source_hash) != 64
                     or any(character not in "0123456789abcdef" for character in source_hash)):
                 raise MetricsError("external cashflow source SHA-256 required")
-            amount = _decimal(fact.get("amount"), "external cashflow amount")
+            amount = _external_cashflow_amount(fact.get("amount"))
             if amount <= 0:
                 raise MetricsError("external cashflow amount must be positive")
             if not isinstance(fact.get("currency"), str) or not fact["currency"]:

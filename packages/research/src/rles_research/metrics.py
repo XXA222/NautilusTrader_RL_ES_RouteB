@@ -91,6 +91,7 @@ def _number(v, name: str) -> float:
 
 _TAIL_SORT_CHUNK = 8_192
 _TAIL_MERGE_FAN_IN = 32
+_TAIL_HEAP_MAX_COUNT = 8_192
 
 
 def _iter_float_file(path: Path) -> Generator[float, None, None]:
@@ -136,7 +137,7 @@ def _merge_float_runs(runs: Sequence[tuple[Path, int]], output: Path,
     return written
 
 
-def _disk_backed_tail(returns: _DiskBackedFloatSequence, count: int) -> tuple[float, float]:
+def _external_tail(returns: Iterable[float], count: int) -> tuple[float, float]:
     """Select exact VaR/CVaR with fixed-size sorted runs and bounded fan-in."""
     with tempfile.TemporaryDirectory(prefix="rles-vartail-") as directory:
         root = Path(directory)
@@ -253,13 +254,13 @@ def series_metrics(returns: Sequence[float], *, periods_per_year: float,
     sharpe = ((mean - risk_free_per_period) / sd
               * math.sqrt(periods_per_year) if sd > 0 else None)
     count = max(1, math.ceil(len(r) * tail_quantile))
-    if isinstance(r, _DiskBackedFloatSequence):
-        threshold, tail_mean = _disk_backed_tail(r, count)
+    if isinstance(r, _DiskBackedFloatSequence) or count > _TAIL_HEAP_MAX_COUNT:
+        threshold, tail_mean = _external_tail(r, count)
     else:
         worst = heapq.nsmallest(count, r)
         threshold = worst[-1]
         tail_mean = statistics.fmean(worst)
-    return {
+    result: dict[str, object] = {
         'net_return': path - 1,
         'max_drawdown': dd,
         'sharpe': sharpe,
@@ -272,6 +273,14 @@ def series_metrics(returns: Sequence[float], *, periods_per_year: float,
         'conditional_value_at_risk': -tail_mean,
         'observations': len(r),
     }
+    numeric_fields = (
+        'net_return', 'max_drawdown', 'sharpe', 'sortino', 'mean_period_return',
+        'std_period_return', 'value_at_risk', 'conditional_value_at_risk',
+    )
+    if any(result[field] is not None and not finite_real(result[field])
+           for field in numeric_fields):
+        raise MetricsError('series metrics produced a nonfinite result')
+    return result
 
 
 class AccountFactsAccumulator:
@@ -327,11 +336,24 @@ class AccountFactsAccumulator:
             if (self.max_return_count is not None
                     and len(self.returns) >= self.max_return_count):
                 raise MetricsError('account facts exceed configured maximum return count')
+            turnover_increment = _number(
+                row['turnover_notional'] / self.previous['equity'], 'turnover increment',
+            )
+            next_turnover = _number(self.turnover + turnover_increment, 'turnover aggregate')
+            next_totals = {
+                field: _number(self.totals[field] + row[field], f'{field} aggregate')
+                for field in self.totals
+            }
+            next_external_cashflow = _number(
+                self.external_cashflow + row['external_cashflow'],
+                'external cashflow aggregate',
+            )
+            # Validate every derived value before appending to the spool or
+            # advancing any of the accumulator's public state.
             self.returns.append(adjusted)
-            self.turnover += row['turnover_notional'] / self.previous['equity']
-            for field in self.totals:
-                self.totals[field] += row[field]
-            self.external_cashflow += row['external_cashflow']
+            self.turnover = next_turnover
+            self.totals = next_totals
+            self.external_cashflow = next_external_cashflow
         self.previous = row
         self.last_equity = row['equity']
         self.last_ts = ts
@@ -345,15 +367,22 @@ class AccountFactsAccumulator:
         result['turnover_ratio'] = self.turnover
         for field, value in self.totals.items():
             result[f'total_{field}'] = value
-        result['gross_return_before_reported_costs'] = (
+        gross_return = (
             self.last_equity - self.first_equity - self.external_cashflow
             + self.totals['fee'] + self.totals['slippage_cost'] - self.totals['funding']
         ) / self.first_equity
+        result['gross_return_before_reported_costs'] = _number(
+            gross_return, 'gross return before reported costs',
+        )
         if realized_trade_pnls is not None:
             pnl = [_number(x, 'realized_pnl') for x in realized_trade_pnls]
-            gross_profit = sum(x for x in pnl if x > 0)
-            gross_loss = -sum(x for x in pnl if x < 0)
-            result['trade_profit_factor'] = gross_profit / gross_loss if gross_loss > 0 else None
+            gross_profit = _number(sum(x for x in pnl if x > 0), 'gross profit aggregate')
+            gross_loss = _number(-sum(x for x in pnl if x < 0), 'gross loss aggregate')
+            profit_factor = gross_profit / gross_loss if gross_loss > 0 else None
+            result['trade_profit_factor'] = (
+                _number(profit_factor, 'trade profit factor')
+                if profit_factor is not None else None
+            )
             result['closed_trade_count'] = len(pnl)
         return result
 

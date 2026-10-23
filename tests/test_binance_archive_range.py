@@ -231,6 +231,18 @@ def test_funding_api_events_preserve_settlement_facts_and_observed_interval():
     assert all(event.source_hash == digest for event in events)
 
 
+def test_funding_api_events_reject_duplicate_json_keys():
+    content = (b'[{"symbol":"ETHUSDT","symbol":"BTCUSDT",'
+               b'"fundingTime":1800000000000,"fundingRate":"0.0001",'
+               b'"rateType":"Regular"}]')
+
+    with pytest.raises(ValueError, match="funding API response is not valid JSON"):
+        binance_archive.funding_api_events(
+            content, symbol="ETHUSDT", instrument="ETHUSDT-PERP.SIM", source_url="fixture",
+            expected_sha256=sha256(content).hexdigest(), delay_ns=1_000_000,
+        )
+
+
 def test_funding_api_events_reject_unsorted_or_non_minute_settlement_gaps():
     import json
 
@@ -408,6 +420,23 @@ def test_fetch_archive_resume_uses_local_verified_receipt_and_rehashes_bytes(tmp
 
     destination.write_bytes(b"tampered cached bytes")
     with pytest.raises(binance_archive.DataError, match="verified source receipt"):
+        binance_archive.fetch_archive(relative_url, destination)
+
+
+def test_fetch_archive_rejects_duplicate_cached_receipt_keys(tmp_path):
+    relative_url = "daily/klines/ETHUSDT/1m/ETHUSDT-1m-2024-04-15.zip"
+    destination = tmp_path / "ETHUSDT-1m-2024-04-15.zip"
+    destination.write_bytes(b"cached bytes")
+    receipt = destination.with_suffix(".zip.source.json")
+    receipt.write_text(
+        '{"schema":"rles.binance-archive-source.v1",'
+        f'"url":"{binance_archive.BASE + relative_url}",'
+        '"sha256":"' + sha256(b"cached bytes").hexdigest() + '",'
+        '"sha256":"' + "0" * 64 + '"}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(binance_archive.DataError, match="source receipt is unreadable"):
         binance_archive.fetch_archive(relative_url, destination)
 
 

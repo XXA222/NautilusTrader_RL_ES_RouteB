@@ -112,6 +112,21 @@ def test_final_retrain_resume_checkpoint_uses_latest_completed_supported_stage(t
     assert _latest_final_retrain_checkpoint(run_root, "A4").name == "step-000000000032"
 
 
+@pytest.mark.parametrize("manifest_text", [
+    '{"schema":"rles.historical-run.v1","schema":"other"}',
+    "{" + "\"nested\":" * 130 + "null" + "}" * 130,
+])
+def test_final_retrain_resume_rejects_ambiguous_or_deep_run_manifest(
+    tmp_path: Path, manifest_text: str,
+) -> None:
+    from rles_orchestrator.wfo_application import _latest_final_retrain_checkpoint
+
+    (tmp_path / "run.json").write_text(manifest_text, encoding="utf-8")
+
+    with pytest.raises(DataError, match="invalid application run manifest"):
+        _latest_final_retrain_checkpoint(tmp_path, "A0")
+
+
 def test_dsr_trial_count_evidence_limits_claim_to_frozen_protocol_candidates() -> None:
     from rles_research.statistics import candidate_set_sha256
 

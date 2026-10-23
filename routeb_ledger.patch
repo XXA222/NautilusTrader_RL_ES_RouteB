@@ -1,0 +1,404 @@
+diff --git a/packages/research/src/rles_research/access.py b/packages/research/src/rles_research/access.py
+--- a/packages/research/src/rles_research/access.py
++++ b/packages/research/src/rles_research/access.py
+@@ -100,6 +100,19 @@ class ProjectResearchRegistry:
+             c.execute("""CREATE TRIGGER IF NOT EXISTS access_no_delete
+                 BEFORE DELETE ON access BEGIN
+                 SELECT RAISE(ABORT,'project access records are append-only'); END""")
++            c.execute("""CREATE TABLE IF NOT EXISTS development_result (
++                access_key TEXT PRIMARY KEY, status TEXT NOT NULL,
++                report_sha TEXT NOT NULL, detail_json TEXT NOT NULL,
++                recorded REAL NOT NULL,
++                FOREIGN KEY(access_key) REFERENCES access(access_key))""")
++            c.execute("""CREATE TRIGGER IF NOT EXISTS development_result_no_update
++                BEFORE UPDATE ON development_result BEGIN
++                SELECT RAISE(ABORT,'development result receipts are append-only'); END""")
++            c.execute("""CREATE TRIGGER IF NOT EXISTS development_result_no_delete
++                BEFORE DELETE ON development_result BEGIN
++                SELECT RAISE(ABORT,'development result receipts are append-only'); END""")
+             c.execute("CREATE TABLE IF NOT EXISTS inventory_import (sha TEXT PRIMARY KEY)")
+             c.execute("""CREATE TABLE IF NOT EXISTS trial_attempt (
+                 attempt_key TEXT PRIMARY KEY, protocol_id TEXT NOT NULL,
+@@ -477,6 +490,55 @@ class ProjectResearchRegistry:
+             if row != ("completed", report_sha):
+                 raise ResearchLockError("report differs from its project completion receipt")
+ 
++    def record_development_result(self, *, key: str, identity: dict,
++                                  status: str, report_sha: str,
++                                  detail: dict | None = None) -> None:
++        """Append one terminal report receipt to an exact development access.
++
++        Development reads are charged immediately and remain in the historical
++        ``recorded`` state. This separate receipt binds the immutable access
++        identity to its terminal report without making a failed read reusable.
++        """
++        if (not isinstance(key, str) or not key
++                or status not in {"completed", "failed"}
++                or not isinstance(report_sha, str) or len(report_sha) != 64
++                or any(ch not in "0123456789abcdef" for ch in report_sha)
++                or not isinstance(identity, dict)
++                or (detail is not None and not isinstance(detail, dict))):
++            raise ValueError("valid development result receipt required")
++        try:
++            encoded = json.dumps(identity, sort_keys=True, separators=(",", ":"),
++                                 allow_nan=False)
++            detail_json = json.dumps(detail or {}, sort_keys=True,
++                                     separators=(",", ":"), allow_nan=False)
++        except (TypeError, ValueError, RecursionError) as exc:
++            raise ValueError("development result receipt must be finite JSON data") from exc
++        expected = (status, report_sha, detail_json)
++        with self._tx() as c:
++            access = c.execute(
++                "SELECT purpose,identity,state FROM access WHERE access_key=?", (key,),
++            ).fetchone()
++            if access != ("development", encoded, "recorded"):
++                raise ResearchLockError(
++                    "development result differs from its exact recorded access"
++                )
++            previous = c.execute(
++                "SELECT status,report_sha,detail_json FROM development_result "
++                "WHERE access_key=?", (key,),
++            ).fetchone()
++            if previous is not None:
++                if previous != expected:
++                    raise ResearchLockError("development result receipt changed")
++                return
++            c.execute(
++                "INSERT INTO development_result VALUES(?,?,?,?,strftime('%s','now'))",
++                (key, *expected),
++            )
++
++    def development_result(self, key: str) -> dict | None:
++        with self._tx() as c:
++            row = c.execute(
++                "SELECT status,report_sha,detail_json FROM development_result "
++                "WHERE access_key=?", (key,),
++            ).fetchone()
++        if row is None:
++            return None
++        return {"status": row[0], "report_sha256": row[1],
++                "detail": json.loads(row[2])}
++
+     def register_trial_attempt(self, *, attempt_key: str, protocol_id: str,
+                                candidate_id: str, recipe: dict,
+                                feature_sha: str, seed: int) -> None:
+diff --git a/packages/orchestrator/src/rles_orchestrator/research_access.py b/packages/orchestrator/src/rles_orchestrator/research_access.py
+--- a/packages/orchestrator/src/rles_orchestrator/research_access.py
++++ b/packages/orchestrator/src/rles_orchestrator/research_access.py
+@@ -75,10 +75,10 @@ def record_development(config: dict, window: dict, *, label: str,
+     )
+ 
+ 
+-def reserve_routeb_fresh_fold(config: dict, window: dict, *, label: str,
+-                              fold_sha256: str, repository_commit: str,
+-                              source_code_sha256: str, source_identity: dict) -> None:
+-    """Freeze a fresh Route B fold scope before any curated payload is decoded."""
++def _routeb_fresh_fold_access_record(config: dict, window: dict, *, label: str,
++                                     fold_sha256: str, repository_commit: str,
++                                     source_code_sha256: str,
++                                     source_identity: dict) -> tuple[str, str, dict]:
+     environment = config.get("environment")
+     if (not isinstance(environment, dict)
+             or not isinstance(environment.get("market_path"), str)
+@@ -125,12 +125,100 @@ def reserve_routeb_fresh_fold(config: dict, window: dict, *, label: str,
+     }
+     owner = digest(["routeb-world-model-b0", market_key(environment["instrument"]), fold_sha256])
+     key = digest([owner, label, window, source_identity])
+-    project_registry().reserve_fresh_development(
++    return key, owner, identity
++
++
++def reserve_routeb_fresh_fold(config: dict, window: dict, *, label: str,
++                              fold_sha256: str, repository_commit: str,
++                              source_code_sha256: str, source_identity: dict) -> dict:
++    """Freeze a fresh Route B fold scope before any curated payload is decoded."""
++    key, owner, identity = _routeb_fresh_fold_access_record(
++        config, window, label=label, fold_sha256=fold_sha256,
++        repository_commit=repository_commit, source_code_sha256=source_code_sha256,
++        source_identity=source_identity,
++    )
++    token = project_registry().reserve_fresh_development(
+         key=key, owner=owner, market=market_key(environment["instrument"]),
+         family=DATA_FAMILY, start_ns=window["start_ns"], end_ns=window["end_ns"],
+         identity=identity,
+     )
++    return {"access_key": key, "token": token, "identity": identity}
++
++
++def routeb_fresh_fold_access_key(config: dict, window: dict, *, label: str,
++                                 fold_sha256: str, repository_commit: str,
++                                 source_code_sha256: str,
++                                 source_identity: dict) -> str:
++    key, _, _ = _routeb_fresh_fold_access_record(
++        config, window, label=label, fold_sha256=fold_sha256,
++        repository_commit=repository_commit, source_code_sha256=source_code_sha256,
++        source_identity=source_identity,
++    )
++    return key
++
++
++def complete_routeb_fresh_fold(config: dict, window: dict, *, label: str,
++                               fold_sha256: str, repository_commit: str,
++                               source_code_sha256: str, source_identity: dict,
++                               report_sha256: str, detail: dict | None = None) -> dict:
++    """Bind a completed aggregate report to its exact fresh-fold access."""
++    key, _, identity = _routeb_fresh_fold_access_record(
++        config, window, label=label, fold_sha256=fold_sha256,
++        repository_commit=repository_commit, source_code_sha256=source_code_sha256,
++        source_identity=source_identity,
++    )
++    project_registry().record_development_result(
++        key=key, identity=identity, status="completed",
++        report_sha=report_sha256, detail=detail,
++    )
++    return {
++        "schema": "routeb.development-result-receipt.v1",
++        "access_key": key,
++        "status": "completed",
++        "report_sha256": report_sha256,
++    }
++
++
++def register_routeb_candidate_attempt(*, label: str, candidate_id: str,
++                                      configuration: dict, fold_sha256: str,
++                                      feature_sha256: str, seed: int) -> str:
++    if (not isinstance(label, str) or not label.startswith("routeb-fold-")
++            or candidate_id not in {"E1", "E2"}
++            or not isinstance(configuration, dict)):
++        raise ValueError("invalid Route B candidate attempt")
++    require_hash(fold_sha256)
++    require_hash(feature_sha256)
++    protocol_id = f"routeb-r2:{label}"
++    recipe = {
++        "candidate": candidate_id,
++        "configuration": configuration,
++        "fold_sha256": fold_sha256,
++    }
++    attempt_key = digest([
++        "routeb-world-model-candidate-v1", protocol_id, candidate_id,
++        seed, feature_sha256, recipe,
++    ])
++    project_registry().register_trial_attempt(
++        attempt_key=attempt_key, protocol_id=protocol_id,
++        candidate_id=candidate_id, recipe=recipe,
++        feature_sha=feature_sha256, seed=seed,
++    )
++    return attempt_key
++
++
++def record_routeb_candidate_event(attempt_key: str, *, event_key: str,
++                                  status: str, detail: dict) -> None:
++    project_registry().record_trial_attempt_event(
++        attempt_key, event_key=event_key, status=status, detail=detail,
++    )
+ 
+ 
+ def read_registered_fold_window(config: dict, window: dict, *, marker_sha256: str,
+diff --git a/qa/world_model/run_registered_fold_ensemble.py b/qa/world_model/run_registered_fold_ensemble.py
+--- a/qa/world_model/run_registered_fold_ensemble.py
++++ b/qa/world_model/run_registered_fold_ensemble.py
+@@ -13,6 +13,11 @@ import numpy as np
+ 
+ from rles_data.core import DAY_NS
+ from rles_data.io import curated_event_time_bounds, curated_source_identity
++from rles_orchestrator.research_access import (
++    complete_routeb_fresh_fold, record_routeb_candidate_event,
++    register_routeb_candidate_attempt, routeb_fresh_fold_access_key,
++)
+ from rles_world_model.baselines import score_baselines
+ from rles_world_model.cli import (
+     _fold, _read_json, _registered_fold_baseline, _routeb_code_identity,
+@@ -158,6 +163,22 @@ def main(argv: list[str] | None = None) -> int:
+         timeout_seconds=args.timeout_seconds,
+     ))
+     worker_environment = worker.preflight()
++    configurations_by_seed: dict[int, dict[str, dict]] = {}
++    attempt_keys: dict[tuple[int, str], str] = {}
++    for model_seed in seeds:
++        training = asdict(e1_training)
++        training['seed'] = model_seed
++        configurations = {
++            'E1': {'model': e1_model, 'training': training},
++            'E2': {'model': e2_model, 'training': training},
++        }
++        configurations_by_seed[model_seed] = configurations
++        for candidate, configuration in configurations.items():
++            attempt_keys[(model_seed, candidate)] = register_routeb_candidate_attempt(
++                label=registered['label'], candidate_id=candidate,
++                configuration=configuration, fold_sha256=fold.hash,
++                feature_sha256=fold.feature_hash, seed=model_seed,
++            )
+     seed_reports: dict[str, dict] = {}
+     e1_paths: list[np.ndarray] = []
+     e2_paths: list[np.ndarray] = []
+@@ -165,20 +186,35 @@ def main(argv: list[str] | None = None) -> int:
+     per_seed_provenance: dict[str, dict[str, dict]] = {}
+     receipt, fold, replay = _registered_fold_baseline(str(args.registered_fold_config), code_identity)
++    access_window = {'start_ns': fold.train.warmup_start_ns,
++                     'end_ns': fold.validation.score_end_ns}
++    access_key = routeb_fresh_fold_access_key(
++        registered['config'], access_window, label=receipt['label'],
++        fold_sha256=fold.hash, repository_commit=code_identity['repository_commit'],
++        source_code_sha256=code_identity['source_code_sha256'],
++        source_identity=source_identity,
++    )
++    for (model_seed, candidate), attempt_key in attempt_keys.items():
++        record_routeb_candidate_event(
++            attempt_key, event_key='started', status='started',
++            detail={'access_key': access_key, 'seed': model_seed,
++                    'candidate': candidate, 'test_payload_decoded': False},
++        )
+     receipt_payload = {
+         'schema': 'routeb.registered-fold-receipt.v1',
+         'reservation_label': receipt['label'], 'marker_sha256': receipt['marker_sha256'],
+-        'dataset_hash': fold.dataset_hash, 'fold_hash': fold.hash, **code_identity,
++        'dataset_hash': fold.dataset_hash, 'fold_hash': fold.hash,
++        'access_key': access_key, **code_identity,
+         'read_scope': {'start_ns': fold.train.warmup_start_ns,
+                        'end_ns': fold.validation.score_end_ns, 'includes_test': False},
+     }
+     _fresh_json(output / 'registration_receipt.json', receipt_payload)
+ 
+     for model_seed in seeds:
+-        training = asdict(e1_training)
+-        training['seed'] = model_seed
+-        configurations = {
+-            'E1': {'model': e1_model, 'training': training},
+-            'E2': {'model': e2_model, 'training': training},
+-        }
++        configurations = configurations_by_seed[model_seed]
+         seed_dir = output / f'seed-{model_seed}'
+         seed_dir.mkdir()
+         _fresh_json(seed_dir / 'registration_receipt.json', receipt_payload)
+-        run_report = run_fold_experiment(
+-            replay=replay, fold=fold, train_scope_id=receipt['label'],
+-            candidate_configurations=configurations, worker=worker, output_dir=seed_dir,
+-            repository_commit=code_identity['repository_commit'],
+-            source_code_sha256=code_identity['source_code_sha256'],
+-            marker_sha256=receipt['marker_sha256'], reservation_label=receipt['label'],
+-            forecast_seed=args.forecast_seed + model_seed,
+-            forecast_paths=args.paths_per_seed, horizons=horizons,
+-            anchor_interval_minutes=args.anchor_interval_minutes,
+-            context_lookback=args.context_lookback,
+-            volatility_window=args.volatility_window, block_length=args.block_length,
+-            bootstrap_replicates=args.bootstrap_replicates, seed=args.seed,
+-        )
+-        if not verify_fold_experiment_report_digest(run_report):
+-            raise ValueError(f'seed {model_seed} report digest verification failed')
++        try:
++            run_report = run_fold_experiment(
++                replay=replay, fold=fold, train_scope_id=receipt['label'],
++                candidate_configurations=configurations, worker=worker, output_dir=seed_dir,
++                repository_commit=code_identity['repository_commit'],
++                source_code_sha256=code_identity['source_code_sha256'],
++                marker_sha256=receipt['marker_sha256'], reservation_label=receipt['label'],
++                forecast_seed=args.forecast_seed + model_seed,
++                forecast_paths=args.paths_per_seed, horizons=horizons,
++                anchor_interval_minutes=args.anchor_interval_minutes,
++                context_lookback=args.context_lookback,
++                volatility_window=args.volatility_window, block_length=args.block_length,
++                bootstrap_replicates=args.bootstrap_replicates, seed=args.seed,
++            )
++            if not verify_fold_experiment_report_digest(run_report):
++                raise ValueError(f'seed {model_seed} report digest verification failed')
++        except Exception as exc:
++            for candidate in configurations:
++                record_routeb_candidate_event(
++                    attempt_keys[(model_seed, candidate)], event_key='failed', status='failed',
++                    detail={'error': type(exc).__name__, 'detail': str(exc),
++                            'test_payload_decoded': False},
++                )
++            raise
+         seed_reports[str(model_seed)] = run_report
++        for candidate in configurations:
++            candidate_run = run_report['candidate_training_runs'][candidate]
++            record_routeb_candidate_event(
++                attempt_keys[(model_seed, candidate)], event_key='completed',
++                status='completed',
++                detail={'seed_report_sha256': run_report['report_sha256'],
++                        'checkpoint_sha256': candidate_run['checkpoint_sha256'],
++                        'optimizer_updates': candidate_run['optimizer_updates'],
++                        'test_payload_decoded': False},
++            )
+         e1_anchors, one_e1, _ = _read_forecasts(seed_dir, 'E1')
+         e2_anchors, one_e2, _ = _read_forecasts(seed_dir, 'E2')
+@@ -282,6 +318,10 @@ def main(argv: list[str] | None = None) -> int:
+         'marker_sha256': receipt['marker_sha256'], 'reservation_label': receipt['label'],
+         'source_identity': source_identity, 'footer_time_bounds': footer_bounds,
++        'research_access': {
++            'access_key': access_key,
++            'completion_protocol': 'routeb.development-result-receipt.v1',
++        },
+         'read_scope': {'start_ns': fold.train.warmup_start_ns,
+                        'end_ns': fold.validation.score_end_ns, 'includes_test': False},
+@@ -311,6 +351,19 @@ def main(argv: list[str] | None = None) -> int:
+     }
+     _seal_report_digest(aggregate)
+     _fresh_json(output / 'multi_seed_fold_experiment_report.json', aggregate)
++    completion_receipt = complete_routeb_fresh_fold(
++        registered['config'], access_window, label=receipt['label'],
++        fold_sha256=fold.hash, repository_commit=code_identity['repository_commit'],
++        source_code_sha256=code_identity['source_code_sha256'],
++        source_identity=source_identity,
++        report_sha256=aggregate['report_sha256'],
++        detail={
++            'report_schema': aggregate['schema'],
++            'test_payload_decoded': False,
++            'economic_certification': False,
++        },
++    )
++    _fresh_json(output / 'research_completion_receipt.json', completion_receipt)
+     print(json.dumps({'status': aggregate['status'], 'report': str(output / 'multi_seed_fold_experiment_report.json'),
+                       'training_seeds': list(seeds), 'anchors': len(common_anchors),
+diff --git a/tests/test_routeb_fresh_fold_access.py b/tests/test_routeb_fresh_fold_access.py
+--- a/tests/test_routeb_fresh_fold_access.py
++++ b/tests/test_routeb_fresh_fold_access.py
+@@ -30,6 +30,55 @@ def test_fresh_development_reservation_is_one_shot_and_rejects_any_overlap(tmp_path):
+     assert isinstance(adjacent, str)
+ 
+ 
++def test_development_result_is_append_only_and_bound_to_exact_access(tmp_path):
++    registry = ProjectResearchRegistry(tmp_path / "fresh.sqlite")
++    identity = {"fold_sha256": "a" * 64, "source_sha256": "b" * 64}
++    args = dict(
++        key="routeb-fold-result", owner="routeb-owner", market="ETHUSDT",
++        family="perpetual-market-v1", start_ns=100, end_ns=200,
++        identity=identity,
++    )
++    registry.reserve_fresh_development(**args)
++    registry.record_development_result(
++        key=args["key"], identity=identity, status="completed",
++        report_sha="c" * 64, detail={"test_payload_decoded": False},
++    )
++    assert registry.development_result(args["key"]) == {
++        "status": "completed", "report_sha256": "c" * 64,
++        "detail": {"test_payload_decoded": False},
++    }
++    registry.record_development_result(
++        key=args["key"], identity=identity, status="completed",
++        report_sha="c" * 64, detail={"test_payload_decoded": False},
++    )
++    with pytest.raises(ResearchLockError, match="receipt changed"):
++        registry.record_development_result(
++            key=args["key"], identity=identity, status="completed",
++            report_sha="d" * 64, detail={"test_payload_decoded": False},
++        )
++    with pytest.raises(ResearchLockError, match="exact recorded access"):
++        registry.record_development_result(
++            key=args["key"], identity={**identity, "extra": True},
++            status="completed", report_sha="c" * 64,
++        )
++
++
++def test_development_result_requires_existing_development_access(tmp_path):
++    registry = ProjectResearchRegistry(tmp_path / "fresh.sqlite")
++    with pytest.raises(ResearchLockError, match="exact recorded access"):
++        registry.record_development_result(
++            key="missing", identity={"fold_sha256": "a" * 64},
++            status="failed", report_sha="b" * 64,
++        )
++
++
+ def test_fresh_development_reservation_rejects_existing_query_intent(tmp_path):
+     registry = ProjectResearchRegistry(tmp_path / "intent.sqlite")
+     registry.reserve_query_intent(

@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+from qa.source_manifest import build_manifest
+
 
 _GENERATOR = Path(__file__).resolve().parents[1] / "qa" / "source_manifest.py"
 
@@ -34,6 +36,14 @@ def test_source_identity_tracks_workspace_inputs_and_ignores_generated_reports(t
     (tmp_path / "packages" / "demo" / ".venv-runtime" / "Scripts" / "python.exe").write_bytes(
         b"generated interpreter placeholder",
     )
+    for generated_dir in (
+        ".uv-cache", ".artifacts", ".ruff_cache", ".rles-python",
+        ".codex-remote-attachments", "__pycache__", "outputs", "runs",
+        "checkpoints", "models",
+    ):
+        generated_file = tmp_path / "packages" / "demo" / generated_dir / "generated.py"
+        generated_file.parent.mkdir()
+        generated_file.write_text("VALUE = 'generated output'\n", encoding="utf-8")
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_demo.py").write_text("def test_demo(): pass\n", encoding="utf-8")
     (tmp_path / "qa" / "reports").mkdir(parents=True)
@@ -97,3 +107,67 @@ def test_source_identity_tracks_workspace_inputs_and_ignores_generated_reports(t
     (tmp_path / "packages" / "demo" / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
     changed = _generate(tmp_path, manifest_path)
     assert changed["source_identity_sha256"] != first["source_identity_sha256"]
+
+
+def test_source_identity_ignores_untracked_upstream_paths_and_runtime_details(tmp_path: Path) -> None:
+    upstream = tmp_path / "nautilus_trader"
+    upstream.mkdir()
+    subprocess.run(["git", "init", str(upstream)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(upstream), "config", "user.email", "routeb-test@example.invalid"],
+                   check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(upstream), "config", "user.name", "RouteB test"],
+                   check=True, capture_output=True)
+    tracked = upstream / "tracked.py"
+    tracked.write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(upstream), "add", "tracked.py"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(upstream), "commit", "-m", "fixture"],
+                   check=True, capture_output=True)
+
+    first = build_manifest(tmp_path, generated_at_utc="2026-01-01T00:00:00+00:00")
+    private = upstream / "private-local-fixture-path.txt"
+    private.write_text("machine-specific artifact\n", encoding="utf-8")
+    second = build_manifest(tmp_path, generated_at_utc="2026-01-02T00:00:00+00:00")
+
+    assert first["schema"] == "rles.source-manifest.v3"
+    assert "runtime" not in first
+    assert "status_entries" not in first["upstream_nautilus"]
+    assert first["source_identity_sha256"] == second["source_identity_sha256"]
+    assert "private-local-fixture-path.txt" not in json.dumps(second)
+
+    tracked.write_text("VALUE = 2\n", encoding="utf-8")
+    changed = build_manifest(tmp_path, generated_at_utc="2026-01-03T00:00:00+00:00")
+    assert changed["source_identity_sha256"] != second["source_identity_sha256"]
+    assert changed["upstream_nautilus"]["tracked_worktree_clean"] is False
+
+
+def test_source_identity_normalizes_git_text_checkout_line_endings(tmp_path: Path) -> None:
+    (tmp_path / "packages" / "demo").mkdir(parents=True)
+    source = tmp_path / "packages" / "demo" / "module.py"
+    source.write_bytes(b"VALUE = 1\n\n")
+    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+
+    first = build_manifest(tmp_path, generated_at_utc="2026-01-01T00:00:00+00:00")
+    source.write_bytes(b"VALUE = 1\r\n\r\n")
+    second = build_manifest(tmp_path, generated_at_utc="2026-01-02T00:00:00+00:00")
+
+    assert first["source_identity_sha256"] == second["source_identity_sha256"]
+    file_entry = next(item for item in second["files"] if item["path"] == "packages/demo/module.py")
+    assert file_entry["size_bytes"] == len(b"VALUE = 1\n\n")
+
+
+def test_source_identity_preserves_files_marked_as_exact_bytes(tmp_path: Path) -> None:
+    (tmp_path / "tests" / "fixtures").mkdir(parents=True)
+    (tmp_path / ".gitattributes").write_text(
+        "tests/fixtures/** -text\n", encoding="utf-8",
+    )
+    fixture = tmp_path / "tests" / "fixtures" / "manifest.json"
+    fixture.write_bytes(b'{"value": 1}\n')
+    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+
+    first = build_manifest(tmp_path, generated_at_utc="2026-01-01T00:00:00+00:00")
+    fixture.write_bytes(b'{"value": 1}\r\n')
+    second = build_manifest(tmp_path, generated_at_utc="2026-01-02T00:00:00+00:00")
+
+    assert first["source_identity_sha256"] != second["source_identity_sha256"]
+    entry = next(item for item in second["files"] if item["path"] == "tests/fixtures/manifest.json")
+    assert entry["size_bytes"] == len(b'{"value": 1}\r\n')

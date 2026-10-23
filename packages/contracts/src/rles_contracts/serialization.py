@@ -22,6 +22,59 @@ from .frozen import FrozenFields
 from .schema import CONTRACT_VERSION, require_current_version
 
 MAX_METADATA_BYTES = 8 * 1024 * 1024
+MAX_JSON_DEPTH = 128
+
+
+def _unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key {key!r}")
+        result[key] = value
+    return result
+
+
+def _check_json_depth(text: str, *, context: str) -> None:
+    depth = 0
+    in_string = False
+    escaped = False
+    for character in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+        elif character in "[{":
+            depth += 1
+            if depth > MAX_JSON_DEPTH:
+                raise ValueError(f"{context} exceeds JSON nesting limit {MAX_JSON_DEPTH}")
+        elif character in "]}":
+            depth -= 1
+
+
+def strict_json_loads(value: str | bytes, *, context: str = "JSON input") -> Any:
+    """Decode bounded-depth UTF-8 JSON with duplicate keys/constants rejected."""
+    try:
+        text = value.decode("utf-8") if isinstance(value, bytes) else value
+        if not isinstance(text, str):
+            raise TypeError("JSON input must be text or UTF-8 bytes")
+        _check_json_depth(text, context=context)
+        return json.loads(
+            text,
+            object_pairs_hook=_unique_pairs,
+            parse_constant=lambda token: (_ for _ in ()).throw(
+                ValueError(f"nonstandard JSON constant: {token}")),
+        )
+    except (UnicodeError, json.JSONDecodeError, RecursionError, TypeError, ValueError) as exc:
+        if isinstance(exc, ValueError) and str(exc).startswith((
+                "duplicate JSON key ", "nonstandard JSON constant:", f"{context} exceeds JSON nesting")):
+            raise
+        raise ValueError(f"invalid {context}") from exc
 
 # Do not expose a mutable registration hook: incoming wire tags must never be
 # allowed to instantiate dataclasses from plug-ins or user-imported modules.
@@ -94,15 +147,6 @@ def canonical_bytes(value: Any) -> bytes:
 
 def canonical_hash(value: Any) -> str:
     return hashlib.sha256(canonical_bytes(value)).hexdigest()
-
-
-def _no_duplicate_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for k, v in pairs:
-        if k in result:
-            raise ValueError(f"duplicate JSON key {k!r}")
-        result[k] = v
-    return result
 
 
 def _decode(value: Any) -> Any:
@@ -198,8 +242,7 @@ def from_canonical_bytes(blob: bytes) -> Any:
         raise TypeError("canonical input must be bytes")
     if len(blob) > MAX_METADATA_BYTES:
         raise ValueError("canonical metadata exceeds 8 MiB limit")
-    payload = json.loads(blob.decode("ascii"), parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)),
-                         object_pairs_hook=_no_duplicate_pairs)
+    payload = strict_json_loads(blob, context="canonical metadata")
     obj = _decode(payload)
     if canonical_bytes(obj) != blob:
         raise ValueError("not canonical JSON (ordering, normalization, or numeric representation)")

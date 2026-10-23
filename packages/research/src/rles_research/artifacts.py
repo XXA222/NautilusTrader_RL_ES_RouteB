@@ -8,6 +8,8 @@ import os
 import re
 from collections.abc import Mapping
 
+from .json_utils import loads_unique_json
+
 _ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$')
 _EXT = {'.json','.safetensors','.npz','.arrow','.parquet','.txt','.bin','.zip'}
 _HASH_FIELDS = {'data_hash','code_hash','config_hash','seed_hash','deps_hash',
@@ -147,8 +149,8 @@ class ArtifactStore:
             raise ArtifactError('attempt is not committed')
         try:
             index_data=(directory/'integrity.json').read_bytes()
-            record=json.loads(index_data)
-            marker=json.loads((directory/'COMPLETED').read_bytes())
+            record=loads_unique_json(index_data)
+            marker=loads_unique_json((directory/'COMPLETED').read_bytes())
         except (OSError,ValueError) as exc:
             raise ArtifactError('invalid marker/index') from exc
         if marker!={'integrity_sha256':_digest(index_data),'state':'COMPLETED'}:
@@ -191,7 +193,7 @@ class ArtifactStore:
         if record.get('manifest_sha256')!=files['manifest.json']:
             raise ArtifactError('L1 manifest digest mismatch')
         try:
-            manifest=json.loads((directory/'manifest.json').read_bytes())
+            manifest=loads_unique_json((directory/'manifest.json').read_bytes())
         except (OSError,ValueError) as exc:
             raise ArtifactError('unreadable L1 experiment manifest') from exc
         if not isinstance(manifest,dict) or not _HASH_FIELDS.issubset(manifest) or any(

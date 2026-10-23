@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from decimal import Decimal
+import hashlib
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -12,7 +14,12 @@ from rles_research.metrics import (
     from_account_facts,
     series_metrics,
 )
-from rles_research.native_metrics import account_rows, native_report, reconcile_linear_equity
+from rles_research.native_metrics import (
+    NativeReportAccumulator,
+    account_rows,
+    native_report,
+    reconcile_linear_equity,
+)
 from rles_research.statistics import (
     deflated_sharpe, deflated_sharpe_trial_count_sensitivity,
 )
@@ -138,6 +145,43 @@ def test_disk_backed_tail_selection_avoids_fraction_sized_heap(monkeypatch) -> N
         returns.close()
 
 
+def test_in_memory_tail_heap_uses_fixed_cap_and_spills_larger_exact_tails(monkeypatch) -> None:
+    values = [((index * 37) % 101 - 50) / 100 for index in range(257)]
+    expected = series_metrics(values, periods_per_year=1, tail_quantile=0.3)
+    monkeypatch.setattr(research_metrics, "_TAIL_HEAP_MAX_COUNT", 2)
+    monkeypatch.setattr(research_metrics, "_TAIL_SORT_CHUNK", 3)
+    monkeypatch.setattr(research_metrics, "_TAIL_MERGE_FAN_IN", 2)
+
+    def reject_uncapped_heap(*_args, **_kwargs):
+        pytest.fail("tail larger than the fixed heap cap must use external selection")
+
+    monkeypatch.setattr(research_metrics.heapq, "nsmallest", reject_uncapped_heap)
+
+    actual = series_metrics(values, periods_per_year=1, tail_quantile=0.3)
+
+    assert actual == expected
+
+
+def test_in_memory_tail_heap_keeps_small_selection_within_fixed_cap(monkeypatch) -> None:
+    values = [-0.2, 0.1, -0.1, 0.3, 0.0, 0.2]
+    expected = series_metrics(values, periods_per_year=1, tail_quantile=0.1)
+    original = research_metrics.heapq.nsmallest
+    requested_counts = []
+
+    def bounded_heap(count, iterable):
+        requested_counts.append(count)
+        assert count <= 2
+        return original(count, iterable)
+
+    monkeypatch.setattr(research_metrics, "_TAIL_HEAP_MAX_COUNT", 2)
+    monkeypatch.setattr(research_metrics.heapq, "nsmallest", bounded_heap)
+
+    actual = series_metrics(values, periods_per_year=1, tail_quantile=0.1)
+
+    assert actual == expected
+    assert requested_counts == [1]
+
+
 def test_account_return_limit_rejects_before_advancing_accumulator_state() -> None:
     accumulator = AccountFactsAccumulator(sample_interval_ns=1, max_return_count=1)
     facts = (
@@ -155,6 +199,85 @@ def test_account_return_limit_rejects_before_advancing_accumulator_state() -> No
     assert accumulator.count == 2
     assert accumulator.last_ts == second["ts_ns"]
     assert len(accumulator.returns) == 1
+
+
+@pytest.mark.parametrize("field", ["external_cashflow", "fee"])
+def test_account_aggregate_overflow_rejects_before_advancing_accumulator_state(field) -> None:
+    accumulator = AccountFactsAccumulator(sample_interval_ns=1)
+    first = {"ts_ns": 0, "equity": 1e308, "external_cashflow": 0.0,
+             "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+             "slippage_cost": 0.0}
+    second = {"ts_ns": 1, "equity": 1e308, "external_cashflow": 0.0,
+              "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+              "slippage_cost": 0.0}
+    third = {"ts_ns": 2, "equity": 1e308, "external_cashflow": 0.0,
+             "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+             "slippage_cost": 0.0}
+    second[field] = third[field] = 1e308
+    accumulator.add(first)
+    accumulator.add(second)
+    spool_bytes = len(accumulator.returns) * accumulator.returns._FLOAT_BYTES
+
+    label = field.replace("_", " ")
+    with pytest.raises(MetricsError, match=f"{label} aggregate"):
+        accumulator.add(third)
+
+    assert accumulator.count == 2
+    assert accumulator.last_ts == second["ts_ns"]
+    assert accumulator.external_cashflow == (1e308 if field == "external_cashflow" else 0.0)
+    assert accumulator.totals["fee"] == (1e308 if field == "fee" else 0.0)
+    assert len(accumulator.returns) * accumulator.returns._FLOAT_BYTES == spool_bytes
+
+
+def test_account_turnover_ratio_overflow_is_rejected() -> None:
+    facts = (
+        {"ts_ns": 0, "equity": 1e-308, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+         "slippage_cost": 0.0},
+        {"ts_ns": 1, "equity": 1e-308, "external_cashflow": 0.0,
+         "turnover_notional": 1e308, "fee": 0.0, "funding": 0.0,
+         "slippage_cost": 0.0},
+    )
+
+    with pytest.raises(MetricsError, match="turnover increment"):
+        from_account_facts(facts, periods_per_year=1, sample_interval_ns=1)
+
+
+def test_gross_return_overflow_is_rejected_at_report_boundary() -> None:
+    facts = (
+        {"ts_ns": 0, "equity": 1e-308, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+         "slippage_cost": 0.0},
+        {"ts_ns": 1, "equity": 1e-308, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 1e308, "funding": 0.0,
+         "slippage_cost": 0.0},
+        {"ts_ns": 2, "equity": 1e-308, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+         "slippage_cost": 0.0},
+    )
+
+    with pytest.raises(MetricsError, match="gross return before reported costs"):
+        from_account_facts(facts, periods_per_year=1, sample_interval_ns=1)
+
+
+def test_series_metrics_rejects_nonfinite_risk_adjusted_ratio() -> None:
+    with pytest.raises(MetricsError, match="series metrics produced a nonfinite result"):
+        series_metrics([0.1, 0.2], periods_per_year=1, risk_free_per_period=1e308)
+
+
+def test_trade_profit_factor_rejects_overflowing_pnl_aggregates() -> None:
+    facts = tuple(
+        {"ts_ns": index, "equity": 1_000.0, "external_cashflow": 0.0,
+         "turnover_notional": 0.0, "fee": 0.0, "funding": 0.0,
+         "slippage_cost": 0.0}
+        for index in range(3)
+    )
+
+    with pytest.raises(MetricsError, match="gross profit aggregate"):
+        from_account_facts(
+            facts, periods_per_year=1, sample_interval_ns=1,
+            realized_trade_pnls=(1e308, 1e308, -1.0),
+        )
 
 
 def test_quote_execution_can_report_realized_price_improvement_as_signed_slippage() -> None:
@@ -399,6 +522,81 @@ def test_linear_ledger_reconciles_every_flat_barrier_without_double_costs() -> N
     assert {k: v for k, v in check.items() if k != "rows"} == compact["equity_reconciliation"]
 
 
+def test_native_report_streams_all_detail_rows_to_atomic_checksummed_jsonl(tmp_path) -> None:
+    snapshots, references = _linear_ledger()
+    output = tmp_path / "account-details.jsonl"
+
+    report = native_report(
+        snapshots, fill_references=references, sample_interval_ns=10,
+        linear_equity_rounding=Decimal(0), account_rows_path=output,
+    )
+    records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    account = [{key: value for key, value in row.items() if key != "record_type"}
+               for row in records if row["record_type"] == "account_row"]
+    reconciliation = [{key: value for key, value in row.items() if key != "record_type"}
+                      for row in records if row["record_type"] == "equity_reconciliation_row"]
+    materialized = native_report(
+        snapshots, fill_references=references, sample_interval_ns=10,
+        linear_equity_rounding=Decimal(0),
+    )
+
+    assert report["metrics"] == materialized["metrics"]
+    assert report["equity_reconciliation"] == {
+        key: value for key, value in materialized["equity_reconciliation"].items()
+        if key != "rows"
+    }
+    assert "account_rows" not in report
+    assert report["account_rows_streamed"] == len(materialized["account_rows"]) == 4
+    assert report["account_rows_artifact"] == {
+        "file": output.name,
+        "format": "rles.native-report-rows.jsonl.v1",
+        "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+        "account_row_count": 4,
+        "equity_reconciliation_row_count": 4,
+    }
+    assert account == materialized["account_rows"]
+    assert reconciliation == materialized["equity_reconciliation"]["rows"]
+
+
+def test_native_report_row_output_never_overwrites_or_leaves_partial_artifact(tmp_path) -> None:
+    snapshots, references = _linear_ledger()
+    destination = tmp_path / "rows.jsonl"
+    destination.write_text("keep", encoding="utf-8")
+    with pytest.raises(MetricsError, match="already exists"):
+        native_report(snapshots, fill_references=references, sample_interval_ns=10,
+                      account_rows_path=destination)
+    assert destination.read_text(encoding="utf-8") == "keep"
+
+    destination.unlink()
+    with pytest.raises(MetricsError, match="reference"):
+        native_report(snapshots, fill_references={}, sample_interval_ns=10,
+                      account_rows_path=destination)
+    assert not destination.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_native_report_row_output_fails_if_destination_appears_during_publish(
+    tmp_path, monkeypatch,
+) -> None:
+    import rles_research.native_metrics as native_metrics
+
+    snapshots, references = _linear_ledger()
+    destination = tmp_path / "rows.jsonl"
+    link = native_metrics.os.link
+
+    def concurrent_create(source, target):
+        destination.write_text("owned by concurrent writer", encoding="utf-8")
+        return link(source, target)
+
+    monkeypatch.setattr(native_metrics.os, "link", concurrent_create)
+    with pytest.raises(MetricsError, match="could not publish account rows output"):
+        native_report(snapshots, fill_references=references, sample_interval_ns=10,
+                      account_rows_path=destination)
+
+    assert destination.read_text(encoding="utf-8") == "owned by concurrent writer"
+    assert list(path.name for path in tmp_path.iterdir()) == ["rows.jsonl"]
+
+
 def test_native_ledger_reconciles_explicit_source_identified_deposit_and_withdrawal() -> None:
     base = dict(currency="USDT", fills=(), funding=(), positions=(), orders=(),
                 liquidation_capability=True, liquidation_orders=())
@@ -452,6 +650,42 @@ def test_native_ledger_rejects_unverifiable_or_ambiguous_external_cashflow_facts
                            snapshots[2])
     with pytest.raises(MetricsError, match="duplicate native barriers"):
         account_rows(duplicate_timestamp, fill_references={}, external_cashflows=(flow,))
+
+
+@pytest.mark.parametrize(
+    "amount", [1.25, True, " 1", "1_0", "1e3", "01.0", "1.", ".1", "+1"],
+)
+def test_external_cashflow_amount_rejects_float_and_noncanonical_decimal_text(amount) -> None:
+    base = dict(currency="USDT", fills=(), funding=(), positions=(), orders=(),
+                liquidation_capability=True, liquidation_orders=())
+    snapshots = (
+        SimpleNamespace(decision_ts_ns=1, equity=Decimal("1000"), **base),
+        SimpleNamespace(decision_ts_ns=11, equity=Decimal("1001"), **base),
+    )
+    flow = {"event_id": "transfer-1", "decision_ts_ns": 11, "currency": "USDT",
+            "kind": "DEPOSIT", "amount": amount, "source_id": "statement",
+            "source_sha256": "e" * 64}
+    with pytest.raises(MetricsError, match="decimal text"):
+        account_rows(snapshots, fill_references={}, external_cashflows=(flow,))
+    with pytest.raises(MetricsError, match="decimal text"):
+        NativeReportAccumulator(
+            sample_interval_ns=10, max_return_count=5, contract_multiplier=Decimal(1),
+            external_cashflows=(flow,),
+        )
+
+
+def test_external_cashflow_source_identity_rejects_surrounding_whitespace() -> None:
+    base = dict(currency="USDT", fills=(), funding=(), positions=(), orders=(),
+                liquidation_capability=True, liquidation_orders=())
+    snapshots = (
+        SimpleNamespace(decision_ts_ns=1, equity=Decimal("1000"), **base),
+        SimpleNamespace(decision_ts_ns=11, equity=Decimal("1000"), **base),
+    )
+    flow = {"event_id": "transfer-1", "decision_ts_ns": 11, "currency": "USDT",
+            "kind": "DEPOSIT", "amount": "1", "source_id": " statement ",
+            "source_sha256": "f" * 64}
+    with pytest.raises(MetricsError, match="source identity must be canonical"):
+        account_rows(snapshots, fill_references={}, external_cashflows=(flow,))
 
 
 @pytest.mark.parametrize("kind", [[], {}, None, 1, "TRANSFER"])

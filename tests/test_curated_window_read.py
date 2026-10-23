@@ -50,6 +50,20 @@ def test_curated_source_identity_reads_marker_without_decoding_payload(monkeypat
     }
 
 
+@pytest.mark.parametrize("marker_text", [
+    '{"schema_version":"0.4.1","schema_version":"0.4.0"}',
+    "{" + "\"nested\":" * 130 + "null" + "}" * 130,
+])
+def test_curated_marker_rejects_ambiguous_or_deep_json(tmp_path: Path,
+                                                        marker_text: str) -> None:
+    path = tmp_path / "market.parquet"
+    path.write_bytes(b"placeholder parquet marker target")
+    path.with_name(path.name + ".COMPLETED.json").write_text(marker_text, encoding="utf-8")
+
+    with pytest.raises(DataError, match="invalid curated commit metadata"):
+        curated_source_identity(path)
+
+
 def test_curated_window_reads_only_fully_contained_verified_row_groups(tmp_path: Path) -> None:
     path = tmp_path / "market.parquet"
     source = _store()

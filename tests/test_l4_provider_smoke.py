@@ -8,10 +8,28 @@ import torch
 
 from rles_rl_sb3.config import PolicySpec, RLConfig, SeedSpec, TransitionFingerprint
 from rles_rl_sb3.checkpoint import Boundary, checkpoint_episode_replays
-from rles_rl_sb3.errors import ContractError
+from rles_rl_sb3.errors import ArtifactError, ContractError
 from rles_rl_sb3.provider import RLProvider
 
 pytestmark = pytest.mark.algorithm_smoke
+
+
+def test_stage_checkpoint_parser_rejects_duplicate_json_fields(tmp_path):
+    from rles_rl_sb3.checkpoint import _load_json_artifact
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"schema":"rles.l4.stage.v4","schema":"other"}', encoding="utf-8")
+    with pytest.raises(ArtifactError, match="invalid L1 checkpoint manifest"):
+        _load_json_artifact(manifest, "L1 checkpoint manifest")
+
+
+def test_l0_actor_parser_rejects_duplicate_json_fields(tmp_path):
+    from rles_rl_sb3.actor import _load_json_artifact
+
+    manifest = tmp_path / "actor.json"
+    manifest.write_text('{"schema":"rles.l4.inference.v1","schema":"other"}', encoding="utf-8")
+    with pytest.raises(ArtifactError, match="invalid L0 actor manifest"):
+        _load_json_artifact(manifest, "L0 actor manifest")
 
 
 def _small_pretraining_provider(*, normalize=False):

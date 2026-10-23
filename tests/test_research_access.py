@@ -38,6 +38,73 @@ def test_project_registry_rejects_malformed_scope_purpose(tmp_path, purpose):
         )
 
 
+@pytest.mark.parametrize(("field", "value"), [
+    ("market", "ethusdt"),
+    ("market", "ETHUSDT "),
+    ("family", "perpetual-market-v1 "),
+    ("family", "Perpetual-Market-V1"),
+])
+def test_project_registry_rejects_noncanonical_overlap_namespace(tmp_path, field, value):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    reserve(registry, purpose="development")
+    scope = dict(
+        key="alias", owner="another-owner", market="ETHUSDT",
+        family="perpetual-market-v1", start_ns=100, end_ns=200,
+        purpose="development", identity={},
+    )
+    scope[field] = value
+    with pytest.raises(ValueError, match="valid research scope"):
+        registry.reserve(**scope)
+
+
+def test_research_json_parser_normalizes_excessive_nesting() -> None:
+    from rles_research.json_utils import loads_unique_json
+
+    payload = "[" * 20_000 + "0" + "]" * 20_000
+    with pytest.raises(ValueError, match="JSON nesting limit"):
+        loads_unique_json(payload)
+
+    assert loads_unique_json('{"brackets":"[[[\\\"]]]"}') == {"brackets": "[[[\"]]]"}
+    with pytest.raises(ValueError, match="duplicate JSON key"):
+        loads_unique_json('{"a":1,"a":2}')
+    with pytest.raises(ValueError, match="nonstandard JSON constant"):
+        loads_unique_json('{"a":NaN}')
+    with pytest.raises(ValueError, match="invalid research JSON data"):
+        loads_unique_json(b'\xef\xbb\xbf{"a":1}')
+
+
+def test_legacy_inventory_import_normalizes_excessive_nesting(tmp_path) -> None:
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    payload = b"[" * 20_000 + b"0" + b"]" * 20_000
+    with pytest.raises(ValueError, match="JSON nesting limit"):
+        registry.import_inventory(payload)
+
+
+def test_project_registry_fails_closed_on_corrupted_formal_identity(tmp_path) -> None:
+    import sqlite3
+
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    identity = {"protocol_id": "protocol-a", "query_id": "query-a", "component": "policy"}
+    registry.reserve(
+        key="first", owner="run-a", market="ETHUSDT", family="perpetual-market-v1",
+        start_ns=100, end_ns=200, purpose="test", identity=identity,
+    )
+    with sqlite3.connect(registry.path) as connection:
+        connection.execute("DROP TRIGGER access_identity_immutable")
+        connection.execute(
+            "UPDATE access SET identity=? WHERE access_key=?",
+            ('{"protocol_id":"protocol-a","protocol_id":"protocol-b",'
+             '"query_id":"query-a","component":"policy"}', "first"),
+        )
+
+    with pytest.raises(ResearchLockError, match="corrupted prior formal reservation identity"):
+        registry.reserve(
+            key="disjoint-query-reuse", owner="run-a", market="ETHUSDT",
+            family="perpetual-market-v1", start_ns=300, end_ns=400,
+            purpose="test", identity=identity,
+        )
+
+
 def test_wfo_development_reservation_freezes_curated_source_identity_before_payload_read(
     tmp_path, monkeypatch,
 ):
@@ -165,11 +232,49 @@ def test_wfo_query_intent_is_frozen_before_read_and_later_binds_selected_candida
             family="perpetual-market-v1", start_ns=320, end_ns=330,
             purpose="development", identity={"window": "reused"},
         )
+    with pytest.raises(ResearchLockError, match="formal query intent blocks development"):
+        registry.reserve(
+            key="same-owner-new-development", owner="wfo-owner", market="ETHUSDT",
+            family="perpetual-market-v1", start_ns=320, end_ns=330,
+            purpose="development", identity={"window": "reused"},
+        )
     with pytest.raises(ResearchLockError, match="formal query intent blocks evaluation"):
         registry.reserve(
             key="unintended-evaluation", owner="other-owner", market="ETHUSDT",
             family="perpetual-market-v1", start_ns=320, end_ns=330,
             purpose="test", identity={"protocol_id": "other-protocol", "query_id": "other-test"},
+        )
+
+
+def test_query_intent_restore_rejects_string_candidate_inventory(tmp_path):
+    import json
+    import sqlite3
+
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    intent = {
+        "protocol_id": "protocol", "query_id": "query",
+        "source_sha256": "a" * 64, "candidate_ids": ["candidate-a"],
+    }
+    registry.reserve_query_intent(
+        protocol_id="protocol", intent_id="query", owner="owner", market="ETHUSDT",
+        family="perpetual-market-v1", start_ns=300, end_ns=400, purpose="test",
+        identity=intent,
+    )
+    registry.start_query_intents(protocol_id="protocol", owner="owner",
+                                 intent_ids=("query",))
+    corrupted = {**intent, "candidate_ids": "candidate-a"}
+    with sqlite3.connect(registry.path) as connection:
+        connection.execute("DROP TRIGGER query_intent_identity_immutable")
+        connection.execute(
+            "UPDATE query_intent SET identity=? WHERE protocol_id='protocol' AND intent_id='query'",
+            (json.dumps(corrupted),),
+        )
+
+    with pytest.raises(ResearchLockError, match="corrupted formal query intent identity"):
+        registry.verify_query_intent(
+            protocol_id="protocol", intent_id="query", owner="owner", market="ETHUSDT",
+            family="perpetual-market-v1", start_ns=300, end_ns=400, purpose="test",
+            source_sha256="a" * 64, candidate_id="candidate-a",
         )
 
 
@@ -203,6 +308,49 @@ def test_project_trial_attempts_are_append_only_idempotent_and_report_seed_featu
             connection.execute("UPDATE trial_attempt SET seed=18 WHERE attempt_key='attempt-a'")
         with pytest.raises(sqlite3.IntegrityError, match="append-only"):
             connection.execute("DELETE FROM trial_attempt_event WHERE attempt_key='attempt-a'")
+
+
+def test_project_trial_summary_rejects_restored_recipe_sha_drift(tmp_path):
+    import sqlite3
+
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    registry.register_trial_attempt(
+        attempt_key="attempt-a", protocol_id="protocol-a", candidate_id="candidate-a",
+        recipe={"lr": "0.001"}, feature_sha="a" * 64, seed=17,
+    )
+    with sqlite3.connect(registry.path) as connection:
+        connection.execute("DROP TRIGGER trial_attempt_no_update")
+        connection.execute(
+            "UPDATE trial_attempt SET recipe_json=? WHERE attempt_key='attempt-a'",
+            ('{"lr":"0.002"}',),
+        )
+
+    with pytest.raises(ResearchLockError, match="corrupted project trial recipe identity"):
+        registry.trial_attempt_summary("protocol-a")
+
+
+@pytest.mark.parametrize("corrupt_event_sql", [
+    "UPDATE trial_attempt_event SET status='completed' WHERE attempt_key='attempt-a'",
+    "UPDATE trial_attempt_event SET detail_json='[]' WHERE attempt_key='attempt-a'",
+    "DELETE FROM trial_attempt_event WHERE attempt_key='attempt-a'",
+])
+def test_project_trial_summary_rejects_restored_lifecycle_event_drift(
+    tmp_path, corrupt_event_sql,
+):
+    import sqlite3
+
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    registry.register_trial_attempt(
+        attempt_key="attempt-a", protocol_id="protocol-a", candidate_id="candidate-a",
+        recipe={"lr": "0.001"}, feature_sha="a" * 64, seed=17,
+    )
+    with sqlite3.connect(registry.path) as connection:
+        connection.execute("DROP TRIGGER trial_event_no_update")
+        connection.execute("DROP TRIGGER trial_event_no_delete")
+        connection.execute(corrupt_event_sql)
+
+    with pytest.raises(ResearchLockError, match="corrupted project trial lifecycle events"):
+        registry.trial_attempt_summary("protocol-a")
 
 
 @pytest.mark.parametrize("status", [[], {}, None, 7, "unknown"])
@@ -463,7 +611,16 @@ def test_formal_holdout_authorization_requires_matching_retrain_and_single_use_s
     ledger.create("p", "r", validation_budget=1, hpo_budget=0, es_evaluation_budget=0)
     args = dict(protocol_id="p", query_id="final-holdout", owner="owner", market="ETHUSDT",
                 family="perpetual-market-v1", start_ns=100, end_ns=200, split="holdout",
-                source_sha="a" * 64, bundle_sha="b" * 64)
+                source_sha="a" * 64, bundle_sha="b" * 64,
+                intent_id="final-holdout", candidate_id="candidate-a")
+    registry.reserve_query_intent(
+        protocol_id="p", intent_id="final-holdout", owner="owner", market="ETHUSDT",
+        family="perpetual-market-v1", start_ns=100, end_ns=200, purpose="holdout",
+        identity={"protocol_id": "p", "query_id": "final-holdout",
+                  "source_sha256": "a" * 64, "candidate_ids": ["candidate-a"]},
+    )
+    registry.start_query_intents(protocol_id="p", owner="owner",
+                                 intent_ids=("final-holdout",))
     with pytest.raises(ResearchLockError, match="registered retrain"):
         authorize_evaluation(registry, ledger, **args)
     ledger.freeze_recipe("p", recipe_sha="c" * 64, code_sha="d" * 64, selection_spec_sha="e" * 64)
@@ -472,6 +629,10 @@ def test_formal_holdout_authorization_requires_matching_retrain_and_single_use_s
                         reviewer_approval_sha="f" * 64, holdout_start_ns=100)
     with pytest.raises(ResearchLockError, match="matching one-shot"):
         authorize_evaluation(registry, ledger, **{**args, "end_ns": 201})
+    with pytest.raises(ResearchLockError, match="pre-read query intent"):
+        authorize_evaluation(registry, ledger, **{**args, "intent_id": "unregistered-intent"})
+    with pytest.raises(ResearchLockError, match="candidate"):
+        authorize_evaluation(registry, ledger, **{**args, "candidate_id": "candidate-b"})
     access = authorize_evaluation(registry, ledger, **args)
     consume = dict(bundle_sha="b" * 64, split="holdout", start_ns=100, end_ns=200,
                    market="ETHUSDT", mode="base")
@@ -481,6 +642,32 @@ def test_formal_holdout_authorization_requires_matching_retrain_and_single_use_s
     restored = authorize_evaluation(registry, ledger, **args)
     with pytest.raises(ResearchLockError, match="already started"):
         restored.consume(**consume)
+
+
+def test_formal_test_authorization_binds_candidate_and_fold_to_query_intent(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    ledger = ResearchLedger(tmp_path / "run.sqlite")
+    ledger.create("p", "r", validation_budget=1, hpo_budget=0, es_evaluation_budget=0)
+    ledger.freeze_recipe("p", recipe_sha="c" * 64, code_sha="d" * 64,
+                         selection_spec_sha="e" * 64)
+    ledger.record_query("p", "test-query", "test", "candidate-a", "fold-1")
+    registry.reserve_query_intent(
+        protocol_id="p", intent_id="fold-1-test", owner="owner", market="ETHUSDT",
+        family="perpetual-market-v1", start_ns=100, end_ns=200, purpose="test",
+        identity={"protocol_id": "p", "query_id": "fold-1-test",
+                  "source_sha256": "a" * 64,
+                  "candidate_ids": ["candidate-a", "candidate-b"], "fold_id": "fold-1"},
+    )
+    registry.start_query_intents(protocol_id="p", owner="owner",
+                                 intent_ids=("fold-1-test",))
+    args = dict(
+        protocol_id="p", query_id="test-query", owner="owner", market="ETHUSDT",
+        family="perpetual-market-v1", start_ns=100, end_ns=200, split="test",
+        source_sha="a" * 64, bundle_sha="b" * 64,
+        intent_id="fold-1-test", candidate_id="candidate-b",
+    )
+    with pytest.raises(ResearchLockError, match="durable query"):
+        authorize_evaluation(registry, ledger, **args)
 
 
 def test_development_entry_cannot_relabel_previously_reserved_holdout(tmp_path, monkeypatch):
@@ -505,9 +692,10 @@ def test_registry_path_does_not_depend_on_output_or_cwd(tmp_path, monkeypatch):
     from types import SimpleNamespace
     monkeypatch.setattr(module, "ProjectResearchRegistry",
                         lambda path: SimpleNamespace(path=path, import_inventory=lambda *_: None))
+    workspace_root = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("RLES_WORKSPACE_ROOT", str(workspace_root))
     monkeypatch.chdir(tmp_path)
     registry = module.project_registry()
-    workspace_root = Path(__file__).resolve().parents[1]
     assert registry.path == workspace_root / ".artifacts" / "research-access.sqlite"
 
 
@@ -608,6 +796,8 @@ def test_frozen_test_query_cannot_be_reopened_for_another_window_or_output(tmp_p
 
 
 def test_historical_inventory_records_overlap_atomically_without_authorizing_reads(tmp_path):
+    import hashlib
+    import json
     import sqlite3
 
     registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
@@ -615,20 +805,110 @@ def test_historical_inventory_records_overlap_atomically_without_authorizing_rea
                     start_ns=100, end_ns=200, purpose="development", identity={}),
                dict(key="old-holdout", market="ETHUSDT", family="perpetual-market-v1",
                     start_ns=150, end_ns=250, purpose="holdout", identity={})]
-    registry.import_inventory(entries, "a" * 64)
-    registry.import_inventory(entries, "a" * 64)
+    content = json.dumps({"schema": "rles.legacy-research-access.v1", "entries": entries,
+                          "unresolved": []}, sort_keys=True, separators=(",", ":")).encode()
+    registry.import_inventory(content)
+    registry.import_inventory(content)
     with sqlite3.connect(registry.path) as connection:
+        assert hashlib.sha256(content).hexdigest() == connection.execute(
+            "SELECT sha FROM inventory_import",
+        ).fetchone()[0]
         rows = connection.execute("SELECT access_key,state FROM access ORDER BY access_key").fetchall()
     assert rows == [("old-dev", "recorded"), ("old-holdout", "recorded")]
     with pytest.raises(ResearchLockError, match="interval already"):
         reserve(registry, key="fresh", start=200, end=250)
     bad = [{**entries[0], "key": "would-be-partial"},
            {**entries[1], "key": "invalid", "end_ns": 0}]
+    bad_content = json.dumps({"schema": "rles.legacy-research-access.v1", "entries": bad,
+                              "unresolved": []}, sort_keys=True,
+                             separators=(",", ":")).encode()
     with pytest.raises(ValueError, match="scope"):
-        registry.import_inventory(bad, "b" * 64)
+        registry.import_inventory(bad_content)
     with sqlite3.connect(registry.path) as connection:
         assert connection.execute("SELECT COUNT(*) FROM access").fetchone()[0] == 2
         assert connection.execute("SELECT COUNT(*) FROM inventory_import").fetchone()[0] == 1
+
+
+def test_historical_inventory_rejects_ambiguous_or_unresolved_json(tmp_path):
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    with pytest.raises(ValueError, match="duplicate inventory JSON key"):
+        registry.import_inventory(
+            b'{"schema":"rles.legacy-research-access.v1","schema":"other",'
+            b'"entries":[],"unresolved":[]}'
+        )
+    with pytest.raises(ValueError, match="schema or resolution"):
+        registry.import_inventory(
+            b'{"schema":"rles.legacy-research-access.v1","entries":[],'
+            b'"unresolved":[{"reason":"unknown scope"}]}'
+        )
+
+
+def test_historical_wfo_test_import_promotes_nested_query_identity(tmp_path):
+    import hashlib
+    import json
+    import sqlite3
+
+    registry = ProjectResearchRegistry(tmp_path / "project.sqlite")
+    identity = {
+        "database": "legacy/research.sqlite", "protocol_id": "legacy-protocol",
+        "source_sha": "a" * 64,
+        "evidence": {
+            "query_id": "test-0-candidate-a", "protocol_id": "legacy-protocol",
+            "kind": "test", "candidate": "candidate-a", "fold_id": "fold-0000",
+        },
+    }
+    entry = {
+        "key": "legacy-test", "market": "ETHUSDT", "family": "perpetual-market-v1",
+        "start_ns": 100, "end_ns": 200, "purpose": "test", "identity": identity,
+    }
+    content = json.dumps(
+        {"schema": "rles.legacy-research-access.v1", "entries": [entry], "unresolved": []},
+        sort_keys=True, separators=(",", ":"),
+    ).encode()
+    registry.import_inventory(content)
+    with sqlite3.connect(registry.path) as connection:
+        imported = json.loads(connection.execute(
+            "SELECT identity FROM access WHERE access_key='legacy-test'",
+        ).fetchone()[0])
+    assert imported["query_id"] == "test-0-candidate-a"
+    assert imported["evidence"] == identity["evidence"]
+
+    with pytest.raises(ResearchLockError, match="query identity already reserved"):
+        registry.reserve(
+            key="new-disjoint-copy", owner="new-run", market="ETHUSDT",
+            family="perpetual-market-v1", start_ns=300, end_ns=400, purpose="test",
+            identity={"protocol_id": "legacy-protocol", "query_id": "test-0-candidate-a"},
+        )
+
+    # Simulate a registry imported by the previous implementation: the frozen
+    # inventory SHA is present but the immutable access row has no mapping.
+    legacy_registry = ProjectResearchRegistry(tmp_path / "legacy.sqlite")
+    encoded = json.dumps(identity, sort_keys=True, separators=(",", ":"))
+    with sqlite3.connect(legacy_registry.path) as connection:
+        connection.execute(
+            "INSERT INTO access VALUES(?,?,?,?,?,?,?,?,?,?,NULL)",
+            (entry["key"], "legacy-inventory", entry["market"], entry["family"],
+             entry["start_ns"], entry["end_ns"], entry["purpose"], encoded,
+             "legacy-token", "recorded"),
+        )
+        connection.execute("INSERT INTO inventory_import VALUES(?)",
+                           (hashlib.sha256(content).hexdigest(),))
+    legacy_registry.import_inventory(content)
+    with sqlite3.connect(legacy_registry.path) as connection:
+        assert connection.execute(
+            "SELECT protocol_id,query_id FROM legacy_query_identity WHERE access_key=?",
+            (entry["key"],),
+        ).fetchone() == ("legacy-protocol", "test-0-candidate-a")
+        # The original row remains immutable; compatibility lives in its sidecar.
+        assert "query_id" not in json.loads(connection.execute(
+            "SELECT identity FROM access WHERE access_key=?", (entry["key"],),
+        ).fetchone()[0])
+    with pytest.raises(ResearchLockError, match="query identity already reserved"):
+        legacy_registry.reserve(
+            key="new-disjoint-copy", owner="new-run", market="ETHUSDT",
+            family="perpetual-market-v1", start_ns=300, end_ns=400, purpose="test",
+            identity={"protocol_id": "legacy-protocol", "query_id": "test-0-candidate-a"},
+        )
 
 
 def test_fresh_development_reservation_is_one_shot_and_rejects_any_overlap(tmp_path):

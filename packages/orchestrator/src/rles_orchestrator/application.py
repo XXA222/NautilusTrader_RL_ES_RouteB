@@ -33,6 +33,7 @@ from rles_execution import resolve_scenario
 from rles_gym_bridge.historical import HistoricalEnvironmentFactory, load_rules
 from rles_research.ledger import ResearchLedger, SelectionLedger
 from rles_research.access import EvaluationAccess
+from rles_research.json_utils import loads_unique_json
 from rles_research.native_metrics import NativeReportAccumulator, native_report
 from rles_rl_sb3.actor import InferenceActor
 from rles_rl_sb3.config import PolicySpec, RLConfig, SeedSpec, TransitionFingerprint
@@ -43,6 +44,21 @@ from .research_access import (begin_application_trial, finish_application_trial,
                               read_registered_train_window, record_development, market_key)
 from .rl_stage import RLStageExecutor
 from .workflow import Orchestrator, ProviderBackedStageRunner, Route, RunSpec, STAGES, StageBudget
+
+
+def _load_json_text(value: str | bytes, *, context: str) -> Any:
+    """Parse bounded, unambiguous JSON from a config or frozen worker value."""
+    try:
+        return loads_unique_json(value)
+    except (TypeError, ValueError) as exc:
+        raise DataError(f"invalid {context}") from exc
+
+
+def _load_json_artifact(path: Path, *, context: str) -> Any:
+    try:
+        return _load_json_text(path.read_bytes(), context=context)
+    except OSError as exc:
+        raise DataError(f"invalid {context}") from exc
 
 
 def _write(path: Path, value: Any) -> None:
@@ -204,8 +220,8 @@ def _persist_e1_stage_actor(path: Path, spec: ActorGenomeSpec, genome: np.ndarra
     payload = json.loads(json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False))
     if path.exists():
         try:
-            existing = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+            existing = _load_json_artifact(path, context="existing E1 stage actor artifact")
+        except DataError as exc:
             raise DataError("existing E1 stage actor artifact is unreadable") from exc
         if not isinstance(existing, dict) or existing != payload:
             changed = (", ".join(sorted(key for key in payload if not isinstance(existing, dict)
@@ -223,24 +239,38 @@ def _persist_e1_stage_actor(path: Path, spec: ActorGenomeSpec, genome: np.ndarra
 
 
 def _persist_backtest_report(config: dict, bundle_path: str | Path, report: dict, *,
-                             train_diagnostic: bool = False) -> dict:
+                             train_diagnostic: bool = False,
+                             account_rows_path: str | os.PathLike[str] | None = None) -> dict:
     """Publish an immutable, checksummed CLI backtest report artifact."""
     bundle_root = Path(bundle_path).resolve()
     bundle_sha = _verify_file(bundle_root / "bundle.json")
+    account_rows_artifact = report.get("account_rows_artifact")
+    if account_rows_path is not None:
+        rows_path = Path(account_rows_path)
+        if (rows_path.is_symlink() or not rows_path.is_file()
+                or not isinstance(account_rows_artifact, dict)
+                or account_rows_artifact.get("file") != rows_path.name
+                or account_rows_artifact.get("sha256") != _file_hash(rows_path)):
+            raise DataError("account rows output does not match its report identity")
+    elif account_rows_artifact is not None:
+        raise DataError("account rows artifact requires its output path")
     output = _backtest_output_path(config)
     schema = "rles.train-diagnostic.v1" if train_diagnostic else "rles.backtest-cli.v1"
     output.mkdir(parents=True)
     try:
         report_sha = _write_verified(output / "report.json", report)
-        _write(output / "COMPLETED.json", {
+        completed: dict[str, Any] = {
             "schema": schema,
             "bundle_sha256": bundle_sha,
             "report_sha256": report_sha,
-        })
+        }
+        if account_rows_artifact is not None:
+            completed["account_rows_artifact"] = account_rows_artifact
+        _write(output / "COMPLETED.json", completed)
     except Exception as exc:
         _write(output / "FAILED.json", {"error": type(exc).__name__, "detail": str(exc)[:1000]})
         raise
-    return {
+    result = {
         "schema": schema,
         "output": str(output),
         "bundle_sha256": bundle_sha,
@@ -251,6 +281,12 @@ def _persist_backtest_report(config: dict, bundle_path: str | Path, report: dict
         "terminal_flat": report.get("terminal_flat"),
         "liquidations": report.get("liquidations"),
     }
+    if account_rows_artifact is not None:
+        assert account_rows_path is not None
+        result["account_rows_artifact"] = {
+            **account_rows_artifact, "path": str(Path(account_rows_path).resolve()),
+        }
+    return result
 
 
 def _backtest_output_path(config: dict) -> Path:
@@ -284,7 +320,9 @@ class _HistoricalRLEnvFactory:
                 or phase not in {"train", "eval"}
                 or self.replay_json and len(self.replay_json) != self.num_envs):
             raise DataError("invalid frozen historical R1 environment request")
-        replay = (EpisodeReplay.from_dict(json.loads(self.replay_json[rank]))
+        replay = (EpisodeReplay.from_dict(_load_json_text(
+            self.replay_json[rank], context="frozen R1 replay",
+        ))
                   if phase == "train" and self.replay_json else None)
         if (phase == "train" and self.shared_factory is not None and self.num_envs == 1
                 and replay is None):
@@ -292,15 +330,17 @@ class _HistoricalRLEnvFactory:
                 self.transition_hash, episode_rank=rank, episode_count=self.num_envs,
                 episode_steps=self.episode_steps,
             )
-        recipe = json.loads(self.recipe_json)
-        scaler_values = json.loads(self.scaler_json)
+        recipe = _load_json_text(self.recipe_json, context="frozen R1 recipe")
+        scaler_values = _load_json_text(self.scaler_json, context="frozen R1 scaler")
         if not isinstance(recipe, dict) or not isinstance(scaler_values, dict):
             raise DataError("frozen historical R1 recipe is not a JSON object")
         scaler_values["mean"] = tuple(scaler_values["mean"])
         scaler_values["std"] = tuple(scaler_values["std"])
         prepared_store = None
         if self.train_access_json is not None:
-            access_config = json.loads(self.train_access_json)
+            access_config = _load_json_text(
+                self.train_access_json, context="frozen R1 Train access",
+            )
             if not isinstance(access_config, dict):
                 raise DataError("frozen R1 Train access is not a JSON object")
             prepared_store = _read_registered_train_store(access_config)
@@ -315,7 +355,7 @@ class _HistoricalRLEnvFactory:
 
 def load_config(path: str | Path) -> dict:
     source = Path(path).resolve()
-    config = json.loads(source.read_text(encoding="utf-8"))
+    config = _load_json_artifact(source, context="application configuration")
     allowed = {"environment", "evaluation", "route", "algorithm", "steps", "population", "generations",
                "seed", "hidden_layers", "normalize_observation", "hyperparameters", "output", "distillation",
                "checkpoint_interval_steps", "wfo", "resume_checkpoint", "rl_device", "rl_gpu_memory_fraction", "es_input_scaling",
@@ -541,9 +581,11 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
             episode_count: int = 1, episode_steps: int | None = None,
             reset_options: dict | None = None,
             include_account_rows: bool = True,
+            account_rows_path: str | os.PathLike[str] | None = None,
             include_execution_trace: bool = False) -> tuple[dict, np.ndarray]:
-    if type(include_execution_trace) is not bool:
-        raise DataError("include_execution_trace must be Boolean")
+    if (type(include_execution_trace) is not bool or type(include_account_rows) is not bool
+            or (account_rows_path is not None and not include_account_rows)):
+        raise DataError("invalid account row or execution trace output option")
     env_options: dict[str, Any] = {"soft_multipliers": soft_parameters}
     if episode_rank != 0 or episode_count != 1 or episode_steps is not None:
         env_options.update(episode_rank=episode_rank, episode_count=episode_count,
@@ -570,7 +612,7 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
     action_feature_response = _ActionFeatureResponse(tuple(schema_names[i] for i in market_indices))
     summary_accumulator = None
     report_snapshot_consumer = None
-    original_compact_report_snapshots = factory.compact_report_snapshots
+    original_compact_report_snapshots = getattr(factory, "compact_report_snapshots", False)
     if not include_account_rows:
         summary_accumulator = NativeReportAccumulator(
             sample_interval_ns=MINUTE_NS,
@@ -727,6 +769,7 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
                 allow_price_improvement=factory.execution.fill(factory.mode).data_granularity == "quote",
                 include_account_rows=include_account_rows,
                 linear_equity_rounding=Decimal("0.00000001"),
+                account_rows_path=account_rows_path,
             )
         else:
             report = summary_accumulator.finish()
@@ -897,7 +940,8 @@ def rollout(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
     finally:
         if env is not None:
             env.close()
-        factory.compact_report_snapshots = original_compact_report_snapshots
+        if not include_account_rows:
+            factory.compact_report_snapshots = original_compact_report_snapshots
 
 
 def _fixed_observation_corpus(factory: HistoricalEnvironmentFactory, predict, *, seed: int,
@@ -979,7 +1023,7 @@ def _training_actor_spec(training: HistoricalEnvironmentFactory, hidden: tuple[i
     legacy_resume = False
     manifest_path = Path(config["output"]) / "run.json"
     if config.get("resume_checkpoint") is not None and manifest_path.is_file():
-        saved = json.loads(manifest_path.read_text(encoding="utf-8"))
+        saved = _load_json_artifact(manifest_path, context="application run manifest")
         legacy_resume = isinstance(saved, dict) and "actor_spec" not in saved
     scaling = config.get("es_input_scaling", "none" if legacy_resume or "E1" not in STAGES[route]
                          else "account_units")
@@ -1170,7 +1214,7 @@ def train(config: dict, *, evaluate: bool = True,
     canonical_ppo_output = actor_spec.version == 2 and algorithm == "PPO" and "E1" in STAGES[route]
     previous_manifest = Path(config["output"]) / "run.json"
     if config.get("resume_checkpoint") is not None and previous_manifest.is_file():
-        previous = json.loads(previous_manifest.read_text(encoding="utf-8"))
+        previous = _load_json_artifact(previous_manifest, context="application run manifest")
         canonical_ppo_output = previous.get("canonical_ppo_output", False)
         if type(canonical_ppo_output) is not bool:
             raise DataError("saved PPO output bridge flag must be Boolean")
@@ -1289,7 +1333,7 @@ def train(config: dict, *, evaluate: bool = True,
                 raise DataError(f"R1 resume checkpoint failed integrity validation: {exc}") from exc
             if rl_manifest.get("num_timesteps") != steps:
                 raise DataError("existing R1 actor can only be reused from a full-budget checkpoint")
-        saved_run = json.loads(run_manifest_path.read_text(encoding="utf-8"))
+        saved_run = _load_json_artifact(run_manifest_path, context="application run manifest")
         allowed_manifest_sets = (
                     {"schema", "run_id", "attempt_id", "recipe_hash", "run_fingerprint"},
                     {"schema", "run_id", "attempt_id", "recipe_hash", "run_fingerprint", "actor_spec"},
@@ -1423,7 +1467,9 @@ def train(config: dict, *, evaluate: bool = True,
             "transition_hash": fingerprint.hash,
         }
         if frozen_train_access_json is not None:
-            worker_env_config["registered_train_access"] = json.loads(frozen_train_access_json)
+            worker_env_config["registered_train_access"] = _load_json_text(
+                frozen_train_access_json, context="frozen worker Train access",
+            )
         worker_config = {
             "candidate_kind": "actor" if stage == "E1" else "soft_risk",
             "env_factory_ref": "rles_orchestrator.native_es_worker:make_registered_historical_es_env",
@@ -1570,7 +1616,9 @@ def train(config: dict, *, evaluate: bool = True,
         e1_stage_actor_path = output / "E1-selected-actor.json"
         if e1_stage_actor_path.is_file():
             e1_stage_actor_hash = _verify_file(e1_stage_actor_path)
-            e1_stage_actor = json.loads(e1_stage_actor_path.read_text(encoding="utf-8"))
+            e1_stage_actor = _load_json_artifact(
+                e1_stage_actor_path, context="persisted E1 stage actor",
+            )
             e1_lineage = next((artifact for artifact in lineage if artifact.stage == "E1"), None)
             if (not isinstance(e1_stage_actor, dict)
                     or e1_stage_actor.get("schema") != "rles.selected-stage-actor.v1"
@@ -1651,6 +1699,7 @@ def train(config: dict, *, evaluate: bool = True,
 def backtest(config: dict, bundle_path: str | Path, *, factory: HistoricalEnvironmentFactory | None = None,
              allow_execution_stress: bool = False, summary_only: bool = False,
              evaluation_access: EvaluationAccess | None = None,
+             account_rows_path: str | os.PathLike[str] | None = None,
              include_execution_trace: bool = False) -> dict:
     if "train_data_access" in config:
         access_identity = digest([config.get("environment"), config["train_data_access"]])
@@ -1661,6 +1710,8 @@ def backtest(config: dict, bundle_path: str | Path, *, factory: HistoricalEnviro
         raise DataError("execution stress authorization must be an explicit boolean")
     if type(summary_only) is not bool:
         raise DataError("summary-only report flag must be Boolean")
+    if account_rows_path is not None and summary_only:
+        raise DataError("account rows file output cannot be combined with summary-only mode")
     if type(include_execution_trace) is not bool:
         raise DataError("execution trace flag must be Boolean")
     requested = (config.get("evaluation", {}).get("split", "test") if factory is None
@@ -1672,7 +1723,7 @@ def backtest(config: dict, bundle_path: str | Path, *, factory: HistoricalEnviro
         raise DataError("unknown evaluation split")
     root = Path(bundle_path).resolve()
     bundle_sha = _verify_file(root / "bundle.json")
-    bundle = json.loads((root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = _load_json_artifact(root / "bundle.json", context="backtest bundle")
     raw_scaler = dict(bundle["preprocessing"]["scaler"])
     raw_scaler["mean"], raw_scaler["std"] = tuple(raw_scaler["mean"]), tuple(raw_scaler["std"])
     if formal:
@@ -1753,6 +1804,7 @@ def backtest(config: dict, bundle_path: str | Path, *, factory: HistoricalEnviro
     report, _ = rollout(factory, predict, seed=config.get("seed", 31),
                         soft_parameters=bundle["soft_multipliers"], collect_observations=False,
                         include_account_rows=not summary_only,
+                        account_rows_path=account_rows_path,
                         include_execution_trace=include_execution_trace)
     report["dataset_quality"] = asdict(factory.quality)
     report["execution_mode"] = factory.mode
@@ -1794,7 +1846,7 @@ def diagnose_train(config: dict, bundle_path: str | Path, *,
         raise DataError("Train diagnostics reject Evaluation configuration")
     root = Path(bundle_path).resolve()
     _verify_file(root / "bundle.json")
-    bundle = json.loads((root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = _load_json_artifact(root / "bundle.json", context="backtest bundle")
     environment = bundle["environment"]
     if _json_identity(config["environment"]) != _json_identity(environment):
         raise DataError("Train diagnostics may not replace the trained environment recipe")
@@ -1832,6 +1884,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--bundle")
     parser.add_argument("--execution-trace", action="store_true",
                         help="include per-decision native order and fill attribution in reports")
+    parser.add_argument("--account-rows-output", metavar="PATH",
+                        help="stream detailed native account and reconciliation rows to a new JSONL file")
     parser.add_argument("--train-only", action="store_true",
                         help="run frozen Train stages and persist diagnostics without querying Validation")
     parser.add_argument("--resume", action="store_true",
@@ -1842,6 +1896,8 @@ def main(argv: list[str] | None = None) -> int:
             raise DataError("--resume is supported only by the WFO command")
         if args.train_only and args.command != "train":
             raise DataError("--train-only is supported only by the train command")
+        if args.account_rows_output is not None and args.command != "backtest":
+            raise DataError("--account-rows-output is supported only by backtest")
         config = load_config(args.config)
         if ("train_data_access" in config
                 and args.command not in {"validate", "train", "diagnose-train"}):
@@ -1861,13 +1917,20 @@ def main(argv: list[str] | None = None) -> int:
                 raise DataError(f"{args.command} requires --bundle")
             _backtest_output_path(config)
             train_diagnostic = args.command == "diagnose-train"
-            report = (diagnose_train(config, args.bundle,
-                                     include_execution_trace=args.execution_trace)
-                      if train_diagnostic else
-                      backtest(config, args.bundle,
-                               include_execution_trace=args.execution_trace))
+            if train_diagnostic:
+                report = diagnose_train(config, args.bundle,
+                                        include_execution_trace=args.execution_trace)
+            else:
+                backtest_options: dict[str, Any] = {
+                    "include_execution_trace": args.execution_trace,
+                }
+                if args.account_rows_output is not None:
+                    backtest_options["account_rows_path"] = args.account_rows_output
+                report = backtest(config, args.bundle, **backtest_options)
             result = _persist_backtest_report(config, args.bundle, report,
-                                              train_diagnostic=train_diagnostic)
+                                              train_diagnostic=train_diagnostic,
+                                              account_rows_path=(None if train_diagnostic
+                                                                 else args.account_rows_output))
         print(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False))
         return 0
     except Exception as exc:

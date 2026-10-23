@@ -79,6 +79,20 @@ def test_config_loader_accepts_es_scale_and_rejects_other_unknown_keys(tmp_path)
         application.load_config(path)
 
 
+@pytest.mark.parametrize("payload", [
+    b'{"output":"first","output":"second"}',
+    b'{"nested":' + b"[" * 130 + b"0" + b"]" * 130 + b"}",
+])
+def test_config_loader_rejects_ambiguous_or_deep_json(tmp_path, payload):
+    from rles_data.core import DataError
+
+    path = tmp_path / "config.json"
+    path.write_bytes(payload)
+
+    with pytest.raises(DataError, match="invalid application configuration"):
+        application.load_config(path)
+
+
 def test_train_only_cli_skips_validation_and_is_limited_to_train_command(monkeypatch, capsys):
     config = {"output": "diagnostic-only-output"}
     calls = []
@@ -465,8 +479,10 @@ def test_rollout_reports_requested_and_post_guard_action_diagnostics(
         execution = SimpleNamespace(fill=lambda _mode: SimpleNamespace(data_granularity="bar"))
 
         @staticmethod
-        def make_env(*, soft_multipliers: dict | None) -> Environment:
+        def make_env(*, soft_multipliers: dict | None,
+                     report_snapshot_consumer=None) -> Environment:
             assert soft_multipliers is None
+            assert report_snapshot_consumer is None
             return Environment()
 
     monkeypatch.setattr(application, "native_report", lambda *_args, **_kwargs: {"metrics": {}})
@@ -725,6 +741,65 @@ def test_public_backtest_cli_refuses_to_overwrite_output(
     assert application.main([command, "--config", "unused.json", "--bundle", str(bundle)]) == 2
     assert not called
     assert (output / "keep.txt").read_text(encoding="utf-8") == "immutable"
+
+
+def test_backtest_cli_persists_verified_streamed_account_rows(tmp_path: Path,
+                                                              monkeypatch: pytest.MonkeyPatch,
+                                                              capsys: pytest.CaptureFixture[str]) -> None:
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    bundle_json = bundle / "bundle.json"
+    bundle_json.write_text('{"schema":"test-bundle"}', encoding="utf-8")
+    bundle_sha = hashlib.sha256(bundle_json.read_bytes()).hexdigest()
+    bundle_json.with_suffix(".json.sha256").write_text(bundle_sha, encoding="ascii")
+    output = tmp_path / "backtest-output"
+    rows_path = tmp_path / "account-rows.jsonl"
+    rows_path.write_text('{"record_type":"account_row","equity":1000}\n', encoding="utf-8")
+    rows_artifact = {
+        "file": rows_path.name,
+        "format": "rles.native-report-rows.jsonl.v1",
+        "sha256": hashlib.sha256(rows_path.read_bytes()).hexdigest(),
+        "account_row_count": 1,
+        "equity_reconciliation_row_count": 0,
+    }
+    report = {"metrics": {"net_return": 0.0}, "terminal_flat": True,
+              "liquidations": 0, "account_rows_artifact": rows_artifact}
+    monkeypatch.setattr(application, "load_config",
+                        lambda _path: {"output": str(output), "evaluation": {"split": "test"}})
+    options = {}
+
+    def fake_backtest(_config: dict, _bundle: str, **kwargs: object) -> dict:
+        options.update(kwargs)
+        return report
+
+    monkeypatch.setattr(application, "backtest", fake_backtest)
+
+    assert application.main([
+        "backtest", "--config", "unused.json", "--bundle", str(bundle),
+        "--account-rows-output", str(rows_path),
+    ]) == 0
+
+    assert options == {"include_execution_trace": False, "account_rows_path": str(rows_path)}
+    expected_report_sha = hashlib.sha256((output / "report.json").read_bytes()).hexdigest()
+    completed = json.loads((output / "COMPLETED.json").read_text(encoding="utf-8"))
+    assert completed == {
+        "schema": "rles.backtest-cli.v1",
+        "bundle_sha256": bundle_sha,
+        "report_sha256": expected_report_sha,
+        "account_rows_artifact": rows_artifact,
+    }
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["account_rows_artifact"]["path"] == str(rows_path.resolve())
+    assert summary["account_rows_artifact"]["sha256"] == rows_artifact["sha256"]
+
+
+@pytest.mark.parametrize("command", ["train", "diagnose-train"])
+def test_account_rows_output_flag_is_rejected_for_non_backtest_commands(
+    tmp_path: Path, command: str,
+) -> None:
+    assert application.main([
+        command, "--config", "unused.json", "--account-rows-output", str(tmp_path / "rows.jsonl"),
+    ]) == 2
 
 
 def test_execution_attribution_preserves_partial_risk_coverage():

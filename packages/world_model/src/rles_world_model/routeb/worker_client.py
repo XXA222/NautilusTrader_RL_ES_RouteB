@@ -4,12 +4,13 @@ The caller MUST have already registered the Train access and exported approved
 Train-only NPZ; this client grants no access permission and reads no raw data.
 """
 from __future__ import annotations
-import json
 import hashlib
 import os
 from pathlib import Path
 import subprocess
 from dataclasses import dataclass
+from rles_data.io import strict_json_loads
+from rles_data.core import DataError
 
 @dataclass(frozen=True)
 class WorkerConfig:
@@ -44,8 +45,8 @@ class WorkerClient:
         if proc.returncode!=0:
             raise WorkerFailure(f"worker failed with exit {proc.returncode}: {proc.stderr[-1500:]}")
         try:
-            result=json.loads(proc.stdout)
-        except json.JSONDecodeError as exc:
+            result=strict_json_loads(proc.stdout, context='Route B worker response')
+        except DataError as exc:
             raise WorkerFailure("worker stdout is not a single JSON result") from exc
         if not isinstance(result,dict) or result.get('kind') not in {
             'TRAIN_DIAGNOSTIC_ONLY', 'F1_PRIOR_PATHS', 'E2_NEXT_DISTRIBUTION',

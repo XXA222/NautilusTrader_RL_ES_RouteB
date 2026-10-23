@@ -206,6 +206,54 @@ def test_train_npz_rejects_tamper_and_wrong_scaler(tmp_path):
                           upstream_sha=UPSTREAM)
 
 
+def test_train_npz_rejects_ambiguous_or_deep_manifest(tmp_path):
+    _, seq, scaler = prepared()
+    batch = make_windows(seq, scaler=scaler, length=16, burn_in=4, stride=8)
+    path = tmp_path / 'train.npz'
+    export_train_sequences(path, batch, scaler, snapshot_sha=SNAPSHOT,
+                           upstream_sha=UPSTREAM, train_scope_id='train-reserved')
+    manifest = path.with_suffix('.json')
+    manifest.write_text(
+        '{"schema":"routeb.train-sequences.v1","schema":"other"}',
+        encoding='utf-8',
+    )
+    with pytest.raises(ValueError, match='duplicate JSON key'):
+        load_worker_batch(path, expected_scope='train-reserved', snapshot_sha=SNAPSHOT,
+                          upstream_sha=UPSTREAM)
+
+
+def test_worker_cli_rejects_ambiguous_configuration_json(tmp_path, capsys):
+    import rles_world_model.routeb.worker_cli as cli
+    configuration = tmp_path / 'config.json'
+    configuration.write_text(
+        '{"model":{},"model":{},"training":{}}', encoding='utf-8',
+    )
+    result = cli.main([
+        'train', '--sequences', str(tmp_path / 'sequences.npz'), '--scope', 'train-test',
+        '--checkout', str(tmp_path), '--checkpoint', str(tmp_path / 'checkpoint.npz'),
+        '--configuration', str(configuration),
+    ])
+    assert result == 2
+    assert 'duplicate JSON key' in capsys.readouterr().err
+
+
+def test_worker_client_rejects_ambiguous_json_response(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    import rles_world_model.routeb.worker_client as client
+    worker = client.WorkerClient(client.WorkerConfig(
+        python_executable=Path(sys.executable), upstream_checkout=tmp_path,
+    ))
+    monkeypatch.setattr(
+        client.subprocess, 'run',
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0, stdout='{"status":"COMPLETED","status":"BLOCKED"}', stderr='',
+        ),
+    )
+    with pytest.raises(client.WorkerFailure, match='worker stdout is not a single JSON result'):
+        worker._run([])
+
+
 def test_total_path_returns_count_gaps_with_real_anchor():
     # Two bars: open jumps 100 -> 110, closes 121, next opens 132, closes 145.2.
     p = np.array([[[[110, 122, 109, 121, 10],

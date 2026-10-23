@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Mapping
+from rles_contracts.serialization import strict_json_loads
 
 from .errors import ComputeProtocolError
 
@@ -56,7 +57,10 @@ def small_json(value: object) -> object:
         raise ComputeProtocolError('invalid JSON payload') from exc
     if len(raw) > MAX_BYTES:
         raise ComputeProtocolError('large payload rejected; use readonly data refs')
-    return json.loads(raw)
+    try:
+        return strict_json_loads(raw, context='compute worker payload')
+    except ValueError as exc:
+        raise ComputeProtocolError('invalid or excessively nested compute worker payload') from exc
 
 
 def enforce_response(request_key: Mapping[str, object], response: Mapping[str, object]) -> object:

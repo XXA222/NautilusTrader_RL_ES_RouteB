@@ -16,6 +16,7 @@ import shutil
 import tempfile
 from typing import Mapping
 from types import MappingProxyType
+from rles_contracts.serialization import strict_json_loads
 
 _ALLOWED_COMPONENTS = frozenset({"distribution", "optimizer", "population",
                                  "rng_torch", "rng_numpy", "rng_python", "rng_evotorch",
@@ -124,7 +125,7 @@ class ESCheckpointStore:
         data = manifest.read_bytes()
         if marker.read_text(encoding="ascii") != sha256(data).hexdigest():
             raise RuntimeError("checkpoint metadata integrity violation")
-        payload = json.loads(data)
+        payload = strict_json_loads(data, context="native ES checkpoint manifest")
         expected_headers = {"version", "algorithm", "attempt_id", "actor_signature", "dataset_hash",
                             "config_hash", "generation", "evaluations", "data_cursor", "native_codec_id",
                             "components"}

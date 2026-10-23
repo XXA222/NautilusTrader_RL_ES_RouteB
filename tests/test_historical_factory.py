@@ -403,6 +403,15 @@ def recipe(tmp_path, *, price_jump=False, bar_count=20, start_minute=6):
                 fit_scaler=True)
 
 
+def test_historical_rules_loader_rejects_ambiguous_manifest(tmp_path):
+    from rles_gym_bridge.historical import load_rules
+
+    path = tmp_path / "rules.json"
+    path.write_text('{"sources":[],"sources":[],"events":[]}', encoding="utf-8")
+    with pytest.raises(DataError, match="invalid historical instrument rules manifest"):
+        load_rules(path)
+
+
 def test_causal_mtf_profile_adds_regime_features_without_future_leakage():
     maximum_age = {"mark": 60 * MINUTE_NS, "index": 60 * MINUTE_NS,
                    "funding_update": 60 * MINUTE_NS}

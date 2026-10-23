@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sqlite3
 import sys
+from rles_contracts.serialization import strict_json_loads
 
 from .errors import ComputeError
 from .resources import Lease, ResourceQuota
@@ -32,7 +33,7 @@ def inspect_quota(path: str | Path) -> dict:
             lease['recovery_state'] = (enrolled if enrolled in {'application_preparing', 'application_ready'}
                                        else 'unsupported_gpu' if lease['gpu_count']
                                        else enrolled or 'unmanaged_or_legacy')
-        recovered = ([json.loads(row[0]) for row in
+        recovered = ([strict_json_loads(row[0], context='lease recovery receipt') for row in
                       connection.execute('SELECT receipt_json FROM lease_recovery_log ORDER BY recovered')]
                      if 'lease_recovery_log' in tables else [])
         return {'schema': 'rles.quota-inspection.v1', 'database': str(database),

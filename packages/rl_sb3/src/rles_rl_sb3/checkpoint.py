@@ -6,7 +6,6 @@ from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
-import json
 import os
 import random
 import shutil
@@ -16,6 +15,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from rles_contracts.serialization import strict_json_loads
 
 from .config import RLConfig, canonical_json
 from .errors import ArtifactError, ContractError, ReplayMismatch
@@ -29,6 +29,13 @@ def sha_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _load_json_artifact(path: Path, context: str) -> Any:
+    try:
+        return strict_json_loads(path.read_bytes(), context=context)
+    except (OSError, ValueError) as exc:
+        raise ArtifactError(f"invalid {context}") from exc
 
 
 def _json_dump(path: Path, payload: Any):
@@ -139,7 +146,7 @@ def checkpoint_episode_replays(path: Path, cfg: RLConfig, *, trusted_source: boo
     manifest = checkpoint_verify(path, cfg, trusted_source=trusted_source)
     boundary = Boundary.parse(manifest["boundary"])
     boundary.check(cfg.num_envs)
-    values = json.loads((Path(path) / "episode_replays.json").read_bytes())
+    values = _load_json_artifact(Path(path) / "episode_replays.json", "L3 replay journal")
     return tuple(_episode_replays_from_snapshot(values, cfg, boundary))
 
 
@@ -269,7 +276,7 @@ def checkpoint_verify(path: Path, cfg: RLConfig, *, trusted_source: bool) -> dic
         raise ArtifactError("Missing checkpoint COMPLETED/manifest marker")
     if marker.read_text(encoding="ascii") != sha_file(manifest_path):
         raise ArtifactError("Checkpoint manifest digest mismatch")
-    raw = json.loads(manifest_path.read_bytes())
+    raw = _load_json_artifact(manifest_path, "L1 checkpoint manifest")
     required = {"schema", "attempt_id", "algorithm", "config_hash", "transition_hash", "transition", "policy", "seed_tree", "boundary", "sb3_version", "torch_version", "numeric_profile", "num_timesteps", "files"}
     if set(raw) != required or raw["schema"] != "rles.l4.stage.v4":
         raise ArtifactError("Unknown or incomplete checkpoint schema")
@@ -304,18 +311,18 @@ def checkpoint_load(path: Path, cfg: RLConfig, train_vec, *, trusted_source: boo
     if boundary != expected_boundary:
         raise ReplayMismatch("L3 boundary tokens/cursor not externally restored exactly")
     saved_replays = tuple(_episode_replays_from_snapshot(
-        json.loads((Path(path) / "episode_replays.json").read_bytes()), cfg, boundary,
+        _load_json_artifact(Path(path) / "episode_replays.json", "L3 replay journal"), cfg, boundary,
     ))
     restored_replays = tuple(_episode_replays(train_vec, cfg, boundary))
     if saved_replays != restored_replays:
         raise ReplayMismatch("Restored L3 action journals differ from the saved checkpoint")
     import stable_baselines3
     root = Path(path)
-    stats = json.loads((root / "normalization.json").read_bytes())
+    stats = _load_json_artifact(root / "normalization.json", "L1 normalization state")
     if (stats is None) != (not cfg.normalize_observation):
         raise ArtifactError("Normalizer presence differs from frozen config")
     vec = apply_stats(train_vec, stats, training=True)
-    schedules = json.loads((root / "seed_schedule.json").read_bytes())
+    schedules = _load_json_artifact(root / "seed_schedule.json", "L1 seed schedule")
     if not isinstance(schedules, list) or len(schedules) != cfg.num_envs:
         raise ArtifactError("environment seed-schedule checkpoint count mismatch")
     checked_schedules = []
@@ -367,13 +374,13 @@ def checkpoint_load(path: Path, cfg: RLConfig, train_vec, *, trusted_source: boo
     # checkpoint field in this mode and must not be used as a second proof.
     if cfg.algorithm != "PPO":
         model.load_replay_buffer(str(root / "replay.pkl"), truncate_last_traj=False)
-    noise_state = json.loads((root / "noise.json").read_bytes())
+    noise_state = _load_json_artifact(root / "noise.json", "L1 action-noise state")
     # Rebuild a seedable noise object (SB3 zip may serialize it, but this makes it explicit).
     if cfg.algorithm in ("DDPG", "TD3"):
         from .noise import make_noise
         model.action_noise = make_noise(cfg.noise_sigma, cfg.seeds.noise, cfg.num_envs)
     restore_noise_state(getattr(model, "action_noise", None), noise_state)
-    restore_rng(json.loads((root / "rng.json").read_bytes()))
+    restore_rng(_load_json_artifact(root / "rng.json", "L1 random-generator state"))
     if (int(manifest["num_timesteps"]) != expected_boundary.step_cursor * cfg.num_envs
             or int(manifest["num_timesteps"]) <= 0):
         raise ReplayMismatch("Boundary cursor and sample count disagree")

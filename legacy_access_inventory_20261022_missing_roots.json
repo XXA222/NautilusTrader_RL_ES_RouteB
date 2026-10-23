@@ -1,0 +1,29 @@
+{
+  "schema": "rles.legacy-research-access.v1",
+  "date": "2026-10-16",
+  "scope": [
+    ".tmp/real-ethusdt-scenario",
+    ".tmp/wfo-validation-recovery-20261013"
+  ],
+  "market_data_loaded": false,
+  "legacy_databases_modified": false,
+  "discovery_exit_code": 2,
+  "limitations": "Known WFO roots only; unledgered historical accesses cannot be inferred.",
+  "databases": [],
+  "standalone_reports": [],
+  "entries": [],
+  "unresolved": [
+    {
+      "path": ".tmp/real-ethusdt-scenario",
+      "reason": "legacy research root missing; historical access coverage unresolved"
+    },
+    {
+      "path": ".tmp/wfo-validation-recovery-20261013",
+      "reason": "legacy research root missing; historical access coverage unresolved"
+    },
+    {
+      "reason": "legacy WFO manifest discovery failed; historical access coverage unresolved",
+      "discovery_exit_code": 2
+    }
+  ]
+}

@@ -21,7 +21,7 @@ from uuid import uuid4
 from zipfile import ZipFile
 
 from .core import Availability, CuratedStore, DataError, Event, MINUTE_NS
-from .io import write_curated, write_fact_json
+from .io import _strict_json_loads, write_curated, write_fact_json
 
 BASE = "https://data.binance.vision/data/futures/um/"
 
@@ -85,8 +85,10 @@ def fetch_archive(relative_url: str, destination: Path) -> dict:
         if not destination.is_file() or not source_receipt.is_file():
             raise DataError("cached archive source receipt has no regular archive file")
         try:
-            saved = json.loads(source_receipt.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            saved = _strict_json_loads(
+                source_receipt.read_bytes(), context="cached Binance archive receipt",
+            )
+        except (OSError, DataError) as exc:
             raise DataError("cached archive source receipt is unreadable") from exc
         if (not isinstance(saved, dict) or set(saved) != {"schema", "url", "sha256"}
                 or saved["schema"] != "rles.binance-archive-source.v1"
@@ -342,8 +344,8 @@ def funding_api_events(content: bytes, *, symbol: str, instrument: str, source_u
     if sha256(content).hexdigest() != expected_sha256:
         raise DataError("funding API response changed after capture")
     try:
-        rows = json.loads(content)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        rows = _strict_json_loads(content, context="funding API response")
+    except DataError as exc:
         raise DataError("funding API response is not valid JSON") from exc
     if not isinstance(rows, list) or not rows:
         raise DataError("funding API response must contain at least one settlement")
@@ -396,8 +398,10 @@ def fetch_funding_api(symbol: str, month: date, end_day: date, raw: Path) -> tup
         if not destination.is_file() or not receipt_path.is_file():
             raise DataError("cached funding API source receipt has no response file")
         try:
-            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            receipt = _strict_json_loads(
+                receipt_path.read_bytes(), context="cached funding API source receipt",
+            )
+        except (OSError, DataError) as exc:
             raise DataError("cached funding API source receipt is unreadable") from exc
         content = destination.read_bytes()
         digest = sha256(content).hexdigest()

@@ -12,6 +12,8 @@ from bisect import bisect_left, bisect_right
 from hashlib import sha256
 import json
 import math
+import os
+from pathlib import Path
 import re
 from typing import Any, Iterable, Mapping, TYPE_CHECKING, cast
 
@@ -28,6 +30,41 @@ HASH_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 class DataError(ValueError):
     """Fail-closed data, timeline or protocol violation."""
+
+
+def routeb_workspace_root(module_file: str | Path, *, cwd: Path | None = None) -> Path | None:
+    """Resolve the RouteB workspace for code running from source or an installed wheel.
+
+    Installed wheels live under ``.venv/.../site-packages`` and cannot infer the
+    checkout from ``__file__`` alone. ``RLES_WORKSPACE_ROOT`` is authoritative
+    when set; otherwise search the module and current-directory ancestors.
+    """
+    configured = os.environ.get("RLES_WORKSPACE_ROOT")
+    if configured is not None:
+        candidate = Path(configured).expanduser().resolve()
+        metadata = candidate / "pyproject.toml"
+        try:
+            if "[tool.uv.workspace]" in metadata.read_text(encoding="utf-8"):
+                return candidate
+        except OSError:
+            pass
+        return None
+
+    module_path = Path(module_file).resolve()
+    current = (Path.cwd() if cwd is None else cwd).resolve()
+    candidates = (*module_path.parents, current, *current.parents)
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        metadata = candidate / "pyproject.toml"
+        try:
+            if "[tool.uv.workspace]" in metadata.read_text(encoding="utf-8"):
+                return candidate
+        except OSError:
+            continue
+    return None
 
 
 class FrozenDict(dict):

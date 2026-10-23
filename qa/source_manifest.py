@@ -5,11 +5,9 @@ import argparse
 import hashlib
 import json
 import os
-import platform
 import subprocess
 import sys
 from datetime import datetime, timezone
-from importlib.metadata import distributions
 from pathlib import Path
 from typing import Any
 
@@ -35,12 +33,62 @@ _ROOT_FILES = (
     "qa/analyze_m13_stage_contribution.py",
     "qa/research_trial_inventory.py",
 )
-_EXCLUDED_PARTS = {"__pycache__", "build", "dist", ".pytest_cache", ".mypy_cache", ".tmp"}
+_EXCLUDED_PARTS = {
+    "__pycache__", "build", "dist", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    ".tmp", ".uv-cache", ".rles-python", ".artifacts", ".codex-remote-attachments",
+    "outputs", "runs", "checkpoints", "models",
+}
 _EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
 
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _text_attributes(root: Path, paths: list[Path]) -> dict[str, str]:
+    """Read Git's text attribute for all manifest paths in one invocation."""
+    if not paths:
+        return {}
+    names = [path.relative_to(root).as_posix() for path in paths]
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "check-attr", "-z", "--stdin", "text"],
+            input=("\0".join(names) + "\0").encode("utf-8"),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return {}
+    fields = result.stdout.split(b"\0")
+    if fields and fields[-1] == b"":
+        fields.pop()
+    if len(fields) % 3:
+        return {}
+    return {
+        os.fsdecode(fields[index]): os.fsdecode(fields[index + 2])
+        for index in range(0, len(fields), 3)
+        if fields[index + 1] == b"text"
+    }
+
+
+def _canonical_source_bytes(data: bytes, text_attribute: str | None) -> bytes:
+    """Normalize checkout EOLs, except files explicitly marked -text."""
+    if text_attribute == "unset":
+        return data
+    if text_attribute in {"set", "auto"}:
+        return data.replace(b"\r\n", b"\n")
+    if text_attribute is None or text_attribute == "unspecified":
+        # In temporary/non-Git trees, normalize UTF-8 text conservatively.
+        # Exact-byte fixtures are marked -text in the workspace attributes.
+        if b"\0" not in data:
+            try:
+                data.decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+            else:
+                return data.replace(b"\r\n", b"\n")
+    return data
 
 
 def _source_files(root: Path) -> list[Path]:
@@ -89,35 +137,29 @@ def _upstream_identity(root: Path) -> dict[str, Any] | None:
 
     commit = git("rev-parse", "HEAD").decode("ascii").strip()
     status = git("status", "--porcelain", "--untracked-files=all").decode("utf-8").splitlines()
+    tracked_status = [row for row in status if not row.startswith("??")]
     tracked_diff = git("diff", "HEAD", "--binary")
     return {
         "path": "nautilus_trader",
         "commit": commit,
-        "tracked_worktree_clean": not any(not row.startswith("??") for row in status),
+        "tracked_worktree_clean": not tracked_status,
         "tracked_diff_sha256": _sha256(tracked_diff),
-        "status_entries": status,
     }
 
 
 def build_manifest(root: Path, *, generated_at_utc: str | None = None) -> dict[str, Any]:
     root = root.resolve()
+    source_paths = _source_files(root)
+    text_attributes = _text_attributes(root, source_paths)
     files = [
-        {
-            "path": path.relative_to(root).as_posix(),
-            "size_bytes": path.stat().st_size,
-            "sha256": _sha256(path.read_bytes()),
-        }
-        for path in _source_files(root)
+        _manifest_file(root, path, text_attributes)
+        for path in source_paths
     ]
     upstream = _upstream_identity(root)
     identity = {"files": files, "upstream_nautilus": upstream}
     identity_sha = _sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode())
-    installed = sorted(
-        ({"name": dist.metadata.get("Name", ""), "version": dist.version} for dist in distributions()),
-        key=lambda item: (item["name"].casefold(), item["version"]),
-    )
     return {
-        "schema": "rles.source-manifest.v1",
+        "schema": "rles.source-manifest.v3",
         "generated_at_utc": generated_at_utc or datetime.now(timezone.utc).isoformat(),
         "source_identity_sha256": identity_sha,
         "scope": {
@@ -125,16 +167,15 @@ def build_manifest(root: Path, *, generated_at_utc: str | None = None) -> dict[s
                          "qa/source_manifest.py", "qa/wheel_manifest.py"],
             "excluded_generated": [".tmp", ".venv*", "data", "dist*", "docs/audit reports", "qa/reports"],
         },
-        "runtime": {
-            "python": sys.version.split()[0],
-            "platform": platform.platform(),
-            "machine": platform.machine(),
-            "os_name": os.name,
-            "installed_distributions": installed,
-        },
         "upstream_nautilus": upstream,
         "files": files,
     }
+
+
+def _manifest_file(root: Path, path: Path, text_attributes: dict[str, str]) -> dict[str, Any]:
+    relative = path.relative_to(root).as_posix()
+    canonical = _canonical_source_bytes(path.read_bytes(), text_attributes.get(relative))
+    return {"path": relative, "size_bytes": len(canonical), "sha256": _sha256(canonical)}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -152,7 +193,8 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         previous = json.loads(output.read_text(encoding="utf-8"))
         matches = (
-            previous.get("source_identity_sha256") == fresh["source_identity_sha256"]
+            previous.get("schema") == fresh["schema"]
+            and previous.get("source_identity_sha256") == fresh["source_identity_sha256"]
             and previous.get("files") == fresh["files"]
             and previous.get("upstream_nautilus") == fresh["upstream_nautilus"]
         )

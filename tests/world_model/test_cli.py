@@ -1,7 +1,9 @@
 import json
+from pathlib import Path
 import subprocess
 
 import numpy as np
+import pytest
 from rles_data.core import DAY_NS
 from rles_data.core import FoldManifest, Window, MINUTE_NS
 from rles_world_model.baselines import BaselineScore
@@ -10,7 +12,12 @@ import rles_world_model.cli as world_model_cli
 from rles_world_model.contracts import MarketFrame, MarketReplay
 
 
+pytestmark = pytest.mark.unit
+
+
 def test_code_identity_falls_back_to_explicit_snapshot_commit(monkeypatch):
+    monkeypatch.setenv("RLES_WORKSPACE_ROOT", str(Path(__file__).resolve().parents[2]))
+
     def no_git_commit(*_args, **_kwargs):
         raise subprocess.CalledProcessError(128, "git rev-parse HEAD")
 
@@ -18,6 +25,36 @@ def test_code_identity_falls_back_to_explicit_snapshot_commit(monkeypatch):
     identity = world_model_cli._routeb_code_identity()
     assert identity["repository_commit"] == "c24d1bc4a47584f91a4c4db93bf77117d4e8341c"
     assert len(identity["source_code_sha256"]) == 64
+
+
+def test_code_identity_rejects_ambiguous_snapshot_marker(tmp_path, monkeypatch):
+    def no_git_commit(*_args, **_kwargs):
+        raise subprocess.CalledProcessError(128, "git rev-parse HEAD")
+
+    monkeypatch.setattr(world_model_cli.subprocess, "run", no_git_commit)
+    marker = tmp_path / "docs/world_model/REPO_BASELINE.json"
+    marker.parent.mkdir(parents=True)
+    marker.write_text(
+        '{"schema_version":"rles.routeb.repository_base.v0",'
+        f'"repository_commit":"{"d" * 40}","repository_commit":"{"e" * 40}"}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(world_model_cli.DataError, match="cannot freeze Route B repository"):
+        world_model_cli._routeb_code_identity(tmp_path)
+
+
+@pytest.mark.parametrize("payload", [
+    '{"schema_version":"x","schema_version":"y"}',
+    '{"x":' + "[" * 129 + "0" + "]" * 129 + '}',
+])
+def test_world_model_cli_rejects_ambiguous_or_deep_json(tmp_path, payload):
+    target = tmp_path / "input.json"
+    target.write_text(payload, encoding="utf-8")
+    with pytest.raises(
+        world_model_cli.DataError,
+        match="duplicate JSON key|world-model CLI input exceeds",
+    ):
+        world_model_cli._read_json(str(target))
 
 
 def test_code_identity_binds_nested_routeb_sources(tmp_path, monkeypatch):

@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import statistics
 from time import time_ns
-from typing import Callable, cast
+from typing import Any, Callable, cast
 
 import numpy as np
 
@@ -27,6 +27,7 @@ from rles_gym_bridge.historical import (
 from rles_research.baselines import BaselinePolicy, BaselineSpec
 from rles_research.ledger import ResearchLedger
 from rles_research.access import authorize_evaluation
+from rles_research.json_utils import loads_unique_json
 from rles_research.native_metrics import NATIVE_LIQUIDATION_COUNTS_AVAILABLE
 from rles_research.selection import SelectionSpec, choose
 from rles_research.statistics import (
@@ -47,6 +48,14 @@ _CANDIDATE_FIELDS = {
     "seed", "hidden_layers", "normalize_observation", "hyperparameters", "distillation",
     "deadband", "es_input_scaling", "feature_profile", "zero_target_policy",
 }
+
+
+def _load_json_artifact(path: Path, *, context: str) -> Any:
+    """Read a bounded, unambiguous JSON artifact used by WFO or recovery."""
+    try:
+        return loads_unique_json(path.read_bytes())
+    except (OSError, TypeError, ValueError) as exc:
+        raise DataError(f"invalid {context}") from exc
 
 
 def _dsr_trial_count_evidence(candidate_ids: list[str], ledger_summary: dict,
@@ -361,7 +370,7 @@ def _source_tree_hash(root: Path) -> str:
 
 def _scaler(bundle_root: Path) -> Scaler:
     _verify_file(bundle_root / "bundle.json")
-    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = _load_json_artifact(bundle_root / "bundle.json", context="candidate bundle")
     values = dict(bundle["preprocessing"]["scaler"])
     values["mean"], values["std"] = tuple(values["mean"]), tuple(values["std"])
     return Scaler(**values)
@@ -371,7 +380,7 @@ def _stress_validation_report(run: dict, bundle_root: Path, *, start_ns: int, en
                               coverage_policy: dict) -> dict:
     """Replay a completed candidate on the same Validation bars under frozen stress costs."""
     _verify_file(bundle_root / "bundle.json")
-    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = _load_json_artifact(bundle_root / "bundle.json", context="candidate bundle")
     environment = bundle.get("environment")
     if not isinstance(environment, dict):
         raise DataError("stress validation bundle lacks its frozen environment")
@@ -388,7 +397,7 @@ def _stress_validation_report(run: dict, bundle_root: Path, *, start_ns: int, en
 
 
 def _baseline_reports(config: dict, bundle_root: Path, *, seed: int) -> dict[str, dict]:
-    bundle = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))
+    bundle = _load_json_artifact(bundle_root / "bundle.json", context="candidate bundle")
     scaler = _scaler(bundle_root)
     factory = HistoricalEnvironmentFactory(**{
         **bundle["environment"], **config["evaluation"], "fit_scaler": False,
@@ -445,7 +454,7 @@ def _latest_final_retrain_checkpoint(run_root: Path, route: str) -> Path | None:
     manifest_path = run_root / "run.json"
     if manifest_path.is_symlink() or not manifest_path.is_file():
         raise DataError("partial final retrain has no durable application run manifest")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = _load_json_artifact(manifest_path, context="application run manifest")
     attempt_id = manifest.get("attempt_id") if isinstance(manifest, dict) else None
     if (not isinstance(manifest, dict)
             or manifest.get("schema") != "rles.historical-run.v1"
@@ -563,19 +572,13 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                           component: str = "policy", *, intent_id: str,
                           candidate_id: str):
         window = run["evaluation"]
-        registry.verify_query_intent(
-            protocol_id=protocol_id, intent_id=intent_id, owner=owner,
-            market=research_access.market_key(instrument), family=research_access.DATA_FAMILY,
-            start_ns=window["start_ns"], end_ns=window["end_ns"],
-            purpose=window["split"], source_sha256=market_source_identity["snapshot_hash"],
-            candidate_id=candidate_id,
-        )
         return authorize_evaluation(
             registry, ledger, protocol_id=protocol_id, query_id=query_id, owner=owner,
             market=research_access.market_key(instrument), family=research_access.DATA_FAMILY,
             start_ns=window["start_ns"], end_ns=window["end_ns"], split=window["split"],
             source_sha=market_source_identity["snapshot_hash"],
             bundle_sha=_verify_file(bundle_root / "bundle.json"),
+            intent_id=intent_id, candidate_id=candidate_id,
             mode=window.get("mode", "base"), component=component,
         )
 
@@ -733,7 +736,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
         ledger = ResearchLedger(root / "research.sqlite")
         manifest_path = root / "wfo-run.json"
         _verify_file(manifest_path)
-        saved_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        saved_manifest = _load_json_artifact(manifest_path, context="WFO resume manifest")
         if saved_manifest != resume_manifest:
             raise DataError("WFO resume configuration, source, data, features, or folds changed")
         protocol_state = ledger.state(protocol_id)["state"]
@@ -748,7 +751,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
         completed_report = root / "wfo-report.json"
         if protocol_state == "CLOSED" and completed_report.exists():
             _verify_file(completed_report)
-            report = json.loads(completed_report.read_text(encoding="utf-8"))
+            report = _load_json_artifact(completed_report, context="closed WFO report")
             if (report.get("protocol_id") != protocol_id
                     or report.get("dataset_hash") != store.snapshot_hash
                     or report.get("feature_hash") != protocol_feature_hash
@@ -756,7 +759,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                 raise DataError("closed WFO report differs from the frozen protocol identity")
             holdout_path = root / "holdout-report.json"
             _verify_file(holdout_path)
-            holdout = json.loads(holdout_path.read_text(encoding="utf-8"))
+            holdout = _load_json_artifact(holdout_path, context="closed Holdout report")
             if digest(report.get("holdout")) != digest(holdout) or not ledger.verify_audit_chain():
                 raise DataError("closed WFO Holdout artifact or ledger audit chain is inconsistent")
             registry.verify_report(access_key("final-holdout"), _verify_file(holdout_path))
@@ -849,7 +852,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                     report_hash, bundle_hash = _verify_file(report_path), _verify_file(bundle_path)
                     if not completed_path.is_file():
                         raise DataError("resumed WFO Validation training has no completion receipt")
-                    completed = json.loads(completed_path.read_text(encoding="utf-8"))
+                    completed = _load_json_artifact(completed_path, context="Validation completion receipt")
                     if (completed.get("report_sha256") != report_hash
                             or completed.get("bundle_sha256") != bundle_hash):
                         raise DataError("WFO Validation completion receipt does not match its artifacts")
@@ -861,7 +864,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                     trained = train_fn(run)
                 report_path = Path(trained["output"]) / "report.json"
                 _verify_file(report_path)
-                report = json.loads(report_path.read_text(encoding="utf-8"))
+                report = _load_json_artifact(report_path, context="Validation report")
                 if cost_stress_validation and report.get("execution_mode") != "base":
                     raise DataError("paired cost validation requires a base-mode Validation report")
                 validation[candidate_id].append(report)
@@ -884,8 +887,8 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                             raise DataError("reserved stress Validation may have been consumed; refusing to replay")
                         stress_report_hash = _verify_file(stress_report_path)
                         _verify_file(stress_receipt_path)
-                        stress_report = json.loads(stress_report_path.read_text(encoding="utf-8"))
-                        stress_receipt = json.loads(stress_receipt_path.read_text(encoding="utf-8"))
+                        stress_report = _load_json_artifact(stress_report_path, context="stress Validation report")
+                        stress_receipt = _load_json_artifact(stress_receipt_path, context="stress Validation receipt")
                         expected_receipt = {
                             "schema": "rles.wfo-stress-validation.v1", "protocol_id": protocol_id,
                             "fold_id": fold_id, "candidate_id": candidate_id,
@@ -1069,7 +1072,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
         selection_path = root / "selection.json"
         if selection_path.exists():
             _verify_file(selection_path)
-            saved_selection = json.loads(selection_path.read_text(encoding="utf-8"))
+            saved_selection = _load_json_artifact(selection_path, context="WFO selection receipt")
             if saved_selection != selection_payload:
                 raise DataError("WFO frozen selection artifact differs from Validation evidence")
         else:
@@ -1095,7 +1098,9 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
             manifest = candidate_manifests[selected_id][fold_index]
             bundle_root = bundles[(fold_index, selected_id)]
             run = _candidate(config, selected_values, bundle_root)
-            run["environment"] = json.loads((bundle_root / "bundle.json").read_text(encoding="utf-8"))["environment"]
+            run["environment"] = _load_json_artifact(
+                bundle_root / "bundle.json", context="candidate bundle",
+            )["environment"]
             run["evaluation"] = {
                 "start_ns": manifest.test.score_start_ns, "end_ns": manifest.test.score_end_ns,
                 "split": "test", "coverage_policy": _coverage(
@@ -1115,7 +1120,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                 if not test_root.is_dir():
                     raise DataError("WFO Test was reserved without a durable report; one-shot Test cannot be replayed")
                 _verify_file(report_path)
-                report = json.loads(report_path.read_text(encoding="utf-8"))
+                report = _load_json_artifact(report_path, context="Test report")
                 registry.verify_report(access_key(query_id), _verify_file(report_path))
             else:
                 if test_root.exists():
@@ -1130,7 +1135,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
             tests.append(report)
             if baseline_path.exists():
                 _verify_file(baseline_path)
-                baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+                baseline = _load_json_artifact(baseline_path, context="Test baseline report")
                 registry.verify_report(access_key(query_id, "baselines"), _verify_file(baseline_path))
             else:
                 access = evaluation_access(
@@ -1193,7 +1198,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
         def verify_final_retrain() -> str:
             """Validate a completed final-train artifact before it can open Holdout."""
             bundle_hash = _verify_file(final_bundle_path)
-            bundle = json.loads(final_bundle_path.read_text(encoding="utf-8"))
+            bundle = _load_json_artifact(final_bundle_path, context="final retrain bundle")
             if digest(bundle.get("environment")) != digest(final_run["environment"]):
                 raise DataError("final retrain bundle does not match the frozen pre-Holdout run")
             if bundle.get("training_end_ns") != holdout_start:
@@ -1202,13 +1207,13 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                     or not isinstance(bundle.get("lineage"), list)):
                 raise DataError("final retrain bundle lacks actor or stage lineage")
             app_receipt_path = final_root / "COMPLETED.json"
-            app_receipt = json.loads(app_receipt_path.read_text(encoding="utf-8"))
+            app_receipt = _load_json_artifact(app_receipt_path, context="application completion receipt")
             if (app_receipt.get("bundle_sha256") != bundle_hash
                     or app_receipt.get("route") != final_run.get("route")
                     or app_receipt.get("algorithm") != final_run.get("algorithm")):
                 raise DataError("final retrain completion receipt does not match its bundle")
             run_manifest_path = final_root / "run.json"
-            run_manifest = json.loads(run_manifest_path.read_text(encoding="utf-8"))
+            run_manifest = _load_json_artifact(run_manifest_path, context="final retrain run manifest")
             recipe = {key: value for key, value in final_run.items()
                       if key not in {"output", "resume_checkpoint"}}
             if (run_manifest.get("schema") != "rles.historical-run.v1"
@@ -1217,7 +1222,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
                 raise DataError("final retrain run manifest differs from the frozen run recipe")
             if final_receipt_path.exists():
                 _verify_file(final_receipt_path)
-                saved = json.loads(final_receipt_path.read_text(encoding="utf-8"))
+                saved = _load_json_artifact(final_receipt_path, context="final retrain receipt")
                 if saved != {
                     "schema": "rles.wfo-final-retrain.v1",
                     "protocol_id": protocol_id,
@@ -1291,7 +1296,7 @@ def _run_wfo(config: dict, *, train_fn: Callable[..., dict],
             if protocol_state not in {"HOLDOUT_OPENED", "CLOSED"}:
                 raise DataError("Holdout report exists without a durable one-shot ledger reservation")
             holdout_hash = _verify_file(holdout_path)
-            holdout = json.loads(holdout_path.read_text(encoding="utf-8"))
+            holdout = _load_json_artifact(holdout_path, context="Holdout report")
             registry.verify_report(access_key("final-holdout"), holdout_hash)
         else:
             if protocol_state == "CLOSED":

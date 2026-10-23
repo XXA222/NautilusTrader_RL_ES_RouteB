@@ -7,19 +7,20 @@ from bisect import bisect_left
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+import re
 from typing import Any
+from rles_contracts.serialization import strict_json_loads
 
 from .metrics import MetricsError
 
 
-def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    """Reject duplicate keys so raw response bytes have one unambiguous meaning."""
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise MetricsError("Binance income-history JSON contains a duplicate object key")
-        result[key] = value
-    return result
+def _parse_binance_json(value: bytes, *, context: str) -> Any:
+    try:
+        return strict_json_loads(value, context=context)
+    except ValueError as exc:
+        if "duplicate JSON key" in str(exc):
+            raise MetricsError(f"{context} contains a duplicate object key") from exc
+        raise MetricsError(f"invalid {context}") from exc
 
 
 @dataclass(frozen=True)
@@ -68,10 +69,7 @@ def import_binance_usdm_transfer_income(
     if not isinstance(payload, (bytes, str)):
         raise MetricsError("Binance transfer payload must preserve exact source bytes")
     raw_bytes = payload if isinstance(payload, bytes) else payload.encode("utf-8")
-    try:
-        document = json.loads(raw_bytes, object_pairs_hook=_unique_json_object)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise MetricsError("invalid Binance income-history JSON payload") from exc
+    document = _parse_binance_json(raw_bytes, context="Binance income-history JSON payload")
     if not isinstance(document, list):
         raise MetricsError("Binance income-history payload must be a JSON array")
     if not sample_barriers_ns or any(type(value) is not int or value < 0 for value in sample_barriers_ns):
@@ -100,8 +98,12 @@ def import_binance_usdm_transfer_income(
         timestamp_ms = row.get("time")
         if type(timestamp_ms) is not int or timestamp_ms < 0:
             raise MetricsError("Binance transfer requires a nonnegative integer time")
+        raw_amount = row.get("income")
+        if (not isinstance(raw_amount, str)
+                or re.fullmatch(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", raw_amount) is None):
+            raise MetricsError("Binance transfer income must be canonical exact decimal text")
         try:
-            amount = Decimal(str(row.get("income")))
+            amount = Decimal(raw_amount)
         except (InvalidOperation, ValueError, TypeError) as exc:
             raise MetricsError("invalid Binance transfer amount") from exc
         if not amount.is_finite() or amount == 0:
@@ -186,10 +188,9 @@ def import_binance_usdm_transfer_income_pages(
             raise MetricsError("income page limit must be between 1 and Binance's maximum of 1000")
         if not isinstance(page.payload, bytes):
             raise MetricsError("income page must preserve exact response bytes")
-        try:
-            page_rows = json.loads(page.payload, object_pairs_hook=_unique_json_object)
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise MetricsError("invalid Binance income-history page JSON") from exc
+        page_rows = _parse_binance_json(
+            page.payload, context="Binance income-history page JSON",
+        )
         if not isinstance(page_rows, list):
             raise MetricsError("Binance income-history page must be a JSON array")
         if len(page_rows) >= page.limit:

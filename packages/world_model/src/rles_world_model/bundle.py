@@ -11,6 +11,7 @@ from typing import Any, cast
 import numpy as np
 
 from rles_data.core import DataError
+from rles_data.io import strict_json_loads
 
 from .upstream import UPSTREAM_COMMIT
 from .learner import FORECAST_SUPPORT
@@ -95,10 +96,12 @@ def load_bundle(path: str | Path, learner: Any, *, expected_feature_spec_hash: s
     """Restore parameters and optimizer into an initialized compatible worker."""
     root = Path(path).resolve()
     try:
-        manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+        manifest = strict_json_loads(
+            (root / "manifest.json").read_bytes(), context="Route B model bundle manifest",
+        )
         weights_path = root / "state.npz"
         raw = weights_path.read_bytes()
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+    except (OSError, DataError) as exc:
         raise DataError("bundle manifest or state archive is unreadable") from exc
     if (not isinstance(manifest, dict) or manifest.get("schema_version") != BUNDLE_SCHEMA
             or manifest.get("upstream_commit") != UPSTREAM_COMMIT
