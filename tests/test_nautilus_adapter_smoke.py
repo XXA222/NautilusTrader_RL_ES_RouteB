@@ -526,6 +526,53 @@ def test_b4_imagined_market_reversal_matches_native_account(sign: int) -> None:
         session.close()
 
 @pytest.mark.parametrize("sign", [1, -1])
+def test_b4_imagined_partial_reduction_matches_native_account(sign: int) -> None:
+    fee = Decimal("0.001")
+    session = _native_order_session(_submitter(), fee_taker=fee)
+    imagined = ImaginedAccount(initial_equity=100_000, fee_maker=.001, fee_taker=float(fee), equity_precision=2)
+
+    def candle(number: int, price: float) -> Candle:
+        close_ns = number * MINUTE_NS
+        return Candle(close_ns, close_ns, str(_instrument().id), price, price, price, price, 100)
+
+    try:
+        initial = session.bootstrap((_order_batch(1, "95"),), decision_ts_ns=MINUTE_NS)
+        imagined.on_bar(candle(1, 95))
+        imagined.submit(target_qty=float(sign), decision_ns=MINUTE_NS)
+        native_entry = session.advance(
+            _order_plan(f"b4-partial-entry-{sign}", str(sign)),
+            batches=(_order_batch(2, "100"),), next_decision_ts_ns=2 * MINUTE_NS,
+        )
+        assert imagined.on_bar(candle(2, 100)) is not None
+        assert imagined.equity == pytest.approx(float(native_entry.equity), rel=0, abs=1e-8)
+
+        reduced_qty = Decimal("0.5") * sign
+        imagined.submit(target_qty=float(reduced_qty), decision_ns=2 * MINUTE_NS)
+        native_reduction = session.advance(
+            _order_plan(f"b4-partial-reduce-{sign}", str(-Decimal("0.5") * sign)),
+            batches=(_order_batch(3, "105"),), next_decision_ts_ns=3 * MINUTE_NS,
+        )
+        reduction_fill = imagined.on_bar(candle(3, 105))
+        assert reduction_fill is not None
+        assert len(native_reduction.positions) == 1
+        assert Decimal(native_reduction.positions[0]["signed_qty"]) == reduced_qty
+        assert imagined.qty == pytest.approx(float(reduced_qty))
+        assert imagined.equity == pytest.approx(float(native_reduction.equity), rel=0, abs=1e-8)
+
+        imagined.submit(target_qty=0, decision_ns=3 * MINUTE_NS)
+        assert imagined.on_bar(candle(4, 95)) is not None
+        native_terminal = session.drain_and_close(
+            "force_flatten_with_cost", flatten_plan=_order_plan(f"b4-partial-exit-{sign}", str(-reduced_qty)),
+            drain_batches=(_order_batch(4, "95"),), terminal_ts_ns=4 * MINUTE_NS,
+        )
+        assert native_terminal.positions == native_terminal.orders == ()
+        assert imagined.qty == pytest.approx(0)
+        assert imagined.equity == pytest.approx(float(native_terminal.equity), rel=0, abs=1e-8)
+        assert native_terminal.equity == initial.equity - Decimal("0.20")
+    finally:
+        session.close()
+
+@pytest.mark.parametrize("sign", [1, -1])
 def test_native_hard_risk_partial_reduction_is_reduce_only(sign: int) -> None:
     from dataclasses import replace
 

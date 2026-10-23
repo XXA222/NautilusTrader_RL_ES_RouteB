@@ -9,6 +9,7 @@
     "long and short position reversal: enter 1 unit at 100, reverse by 2 units at 105, flatten at 90",
     "long and short 0.0001 BTC/USD round-trip with USD quote precision 2 and sub-cent commissions",
     "long and short positive fees and negative rebates at USD half-cent commission boundaries 0.005, 0.015, 0.025, and 0.035",
+    "long and short entry, half-position reduction at 105, and terminal flatten at 95 with realized/unrealized PnL and per-fill USD fees",
     "synthetic resting-limit maker rebate: buy limit 99.5 touched intrabar"
   ],
   "costs": "Native and imagined market paths use matched signed taker rates. Fee notional is multiplied using Decimal(str(value)) and quantized per fill to the selected quote-currency precision with ROUND_HALF_EVEN, matching Nautilus Money on exact half-minor-unit cases. USD precision 2 drops a $0.00001 fee to $0.00, while internal cash still accumulates realized PnL. Separate ImaginedAccount maker-touch regression verifies signed maker rebate arithmetic; no native limit-maker differential is claimed.",
@@ -18,6 +19,7 @@
     "A two-unit reversing market order produces matching net position and fee-adjusted equity in both paths.",
     "USD sub-cent fees round identically per fill while exact realized cash is retained internally.",
     "Exact half-minor-unit fee values match Nautilus ties-to-even rounding for both position signs and charges/rebates.",
+    "A half-position close matches Native net quantity/equity after realized PnL while the residual position carries matching mark-to-market PnL; final fees reconcile to terminal equity.",
     "Both paths flatten with no open order/position after round trips.",
     "A resting synthetic limit touch is classified maker and credits the configured maker rebate."
   ],
@@ -93,6 +95,18 @@
     {
       "command": "RouteB .venv-win-app: python qa/source_manifest.py --output qa/reports/source_manifest_current.json --verify",
       "result": "verified 605 files; identity ff193c572db6f43345c8dc0103a8ffb1067e63f95e93b69617e37c8beaf74bc2"
+    },
+    {
+      "command": "RouteB .venv-win-app source PYTHONPATH: pytest tests/test_nautilus_adapter_smoke.py::test_b4_imagined_partial_reduction_matches_native_account",
+      "result": "2 passed in 2.65s"
+    },
+    {
+      "command": "RouteB .venv-win-app source PYTHONPATH: pytest tests/test_nautilus_adapter_smoke.py tests/world_model/test_routeb_additive.py tests/world_model/test_routeb_quality_v2.py",
+      "result": "126 passed, 5 JAX-only skipped (JAX unavailable in app venv)"
+    },
+    {
+      "command": "RouteB .venv-win-app: python qa/source_manifest.py --output qa/reports/source_manifest_current.json --verify",
+      "result": "verified 605 files; identity 233c1576ad8cbfe1ebdc2c037e120775ffaa32f3405ac3b3aa1325f94ddc1398"
     }
   ],
   "data_access": "Synthetic deterministic bars only; no market, account, Train, Validation, Test, or Holdout data accessed.",

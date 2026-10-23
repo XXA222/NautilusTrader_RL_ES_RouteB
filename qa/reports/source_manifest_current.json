@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-23T06:15:59.350126+00:00",
-  "source_identity_sha256": "ff193c572db6f43345c8dc0103a8ffb1067e63f95e93b69617e37c8beaf74bc2",
+  "generated_at_utc": "2026-10-23T06:18:59.408474+00:00",
+  "source_identity_sha256": "233c1576ad8cbfe1ebdc2c037e120775ffaa32f3405ac3b3aa1325f94ddc1398",
   "scope": {
     "included": [
       ".gitattributes",
@@ -2738,8 +2738,8 @@
     },
     {
       "path": "tests/test_nautilus_adapter_smoke.py",
-      "size_bytes": 56083,
-      "sha256": "6b1d55ccde576df8ea3a9f7ba0d797a65b6d0e126b653fa66918f20e897e3e53"
+      "size_bytes": 58607,
+      "sha256": "0f88424cb0298fb64c9ce8f9737f022a79dd02f43ddf38b082fea0863574ad8a"
     },
     {
       "path": "tests/test_orchestrator_workflow.py",

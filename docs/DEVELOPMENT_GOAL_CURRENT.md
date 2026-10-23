@@ -621,3 +621,9 @@ Added a second long/short native differential: after opening one unit, a two-uni
 **Verification:** new native differential selector **16 passed**; adapter + WorldModel selectors **124 passed, 5 JAX-only skipped**; Ruff passed; MyPy passed for **226 files**; the **605-file** source manifest self-verifies as `ff193c572db6f43345c8dc0103a8ffb1067e63f95e93b69617e37c8beaf74bc2`. Detailed evidence: `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.
 
 **Next:** continue exact native parity at supported execution boundaries. B4 quote/depth, partial fills, funding, margin/leverage, liquidation, fee tiers, intrabar sequencing and independent economic certification remain open; external A01–A14 provenance/authorization/Validation gates remain unchanged.
+
+### B4 continuation — partial reduction ledger parity — 2026-10-23
+
+Added a Native-versus-Imagined long/short scenario that enters one unit at 100, reduces half at 105, and flattens the remaining half at 95. At the reduction barrier, both paths agree on the remaining signed quantity and equity including realized PnL, residual mark-to-market PnL, and fees. Both finish flat at initial equity less `$0.20` in per-fill USD fees. Focused selector: **2 passed**; adapter + WorldModel selectors: **126 passed, 5 JAX-only skipped**; Ruff and MyPy (226 files) pass; 605-file manifest identity `233c1576ad8cbfe1ebdc2c037e120775ffaa32f3405ac3b3aa1325f94ddc1398`. Evidence remains in `docs/audit_evidence/20261023/b4_imagined_account_native_market_parity_20261023.json`.
+
+Next: continue auditing B4 supported account paths for multiple fills within one bar, order cancellation/expiry, and exact native fee classifications, alongside remaining implementation-ready A01–A14 work. Do not widen economic claims beyond synthetic Native scenarios.
