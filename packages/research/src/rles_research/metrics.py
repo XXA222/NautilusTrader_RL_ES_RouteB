@@ -91,6 +91,7 @@ def _number(v, name: str) -> float:
 
 _TAIL_SORT_CHUNK = 8_192
 _TAIL_MERGE_FAN_IN = 32
+_TAIL_HEAP_MAX_COUNT = 8_192
 
 
 def _iter_float_file(path: Path) -> Generator[float, None, None]:
@@ -136,7 +137,7 @@ def _merge_float_runs(runs: Sequence[tuple[Path, int]], output: Path,
     return written
 
 
-def _disk_backed_tail(returns: _DiskBackedFloatSequence, count: int) -> tuple[float, float]:
+def _external_tail(returns: Iterable[float], count: int) -> tuple[float, float]:
     """Select exact VaR/CVaR with fixed-size sorted runs and bounded fan-in."""
     with tempfile.TemporaryDirectory(prefix="rles-vartail-") as directory:
         root = Path(directory)
@@ -253,8 +254,8 @@ def series_metrics(returns: Sequence[float], *, periods_per_year: float,
     sharpe = ((mean - risk_free_per_period) / sd
               * math.sqrt(periods_per_year) if sd > 0 else None)
     count = max(1, math.ceil(len(r) * tail_quantile))
-    if isinstance(r, _DiskBackedFloatSequence):
-        threshold, tail_mean = _disk_backed_tail(r, count)
+    if isinstance(r, _DiskBackedFloatSequence) or count > _TAIL_HEAP_MAX_COUNT:
+        threshold, tail_mean = _external_tail(r, count)
     else:
         worst = heapq.nsmallest(count, r)
         threshold = worst[-1]
@@ -375,3 +376,4 @@ def from_account_facts(facts: Iterable[Mapping[str, object]], *,
         accumulator.add(fact)
     return accumulator.result(periods_per_year=periods_per_year,
                               realized_trade_pnls=realized_trade_pnls)
+
