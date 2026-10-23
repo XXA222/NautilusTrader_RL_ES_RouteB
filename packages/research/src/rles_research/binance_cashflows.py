@@ -103,8 +103,8 @@ def import_binance_usdm_transfer_income(
             raise MetricsError("Binance transfer requires a nonnegative integer time")
         raw_amount = row.get("income")
         if (not isinstance(raw_amount, str)
-                or re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)", raw_amount) is None):
-            raise MetricsError("Binance transfer income must be exact decimal text")
+                or re.fullmatch(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", raw_amount) is None):
+            raise MetricsError("Binance transfer income must be canonical exact decimal text")
         try:
             amount = Decimal(raw_amount)
         except (InvalidOperation, ValueError, TypeError) as exc:
@@ -254,3 +254,4 @@ def import_binance_usdm_transfer_income_pages(
         query_time_range_ms=(query_start_ms, query_end_ms),
         page_sha256=tuple(page_hashes),
     )
+

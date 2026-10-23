@@ -58,6 +58,11 @@ def test_binance_transfer_export_maps_to_native_cashflow_facts_and_reconciles() 
     b'[{"incomeType":"COMMISSION","income":"-1","asset":"USDT","time":15,"tranId":1}]',
     b'[{"incomeType":"TRANSFER","income":"1","asset":"BTC","time":15,"tranId":1}]',
     b'[{"incomeType":"TRANSFER","income":0.12345678901234567890,"asset":"USDT","time":15,"tranId":1}]',
+    b'[{"incomeType":"TRANSFER","income":"1e3","asset":"USDT","time":15,"tranId":1}]',
+    b'[{"incomeType":"TRANSFER","income":"01.0","asset":"USDT","time":15,"tranId":1}]',
+    b'[{"incomeType":"TRANSFER","income":"1.","asset":"USDT","time":15,"tranId":1}]',
+    b'[{"incomeType":"TRANSFER","income":".1","asset":"USDT","time":15,"tranId":1}]',
+    b'[{"incomeType":"TRANSFER","income":"+1","asset":"USDT","time":15,"tranId":1}]',
     b'[{"incomeType":"TRANSFER","income":"0","asset":"USDT","time":15,"tranId":1}]',
     b'[{"incomeType":"TRANSFER","income":"1","asset":"USDT","time":5,"tranId":1}]',
 ])
@@ -167,3 +172,4 @@ def test_binance_paged_import_rejects_duplicate_json_object_keys() -> None:
             account_scope_id="account", currency="USDT",
             sample_barriers_ns=(10, 20_000_000, 30_000_000),
         )
+
