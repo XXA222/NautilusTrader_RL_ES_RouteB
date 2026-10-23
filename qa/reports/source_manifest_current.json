@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-23T08:54:19.556251+00:00",
-  "source_identity_sha256": "916c92fc521dd8f931b9f1581fe9e7254c1d945cc48bd21a69b0b66406538596",
+  "generated_at_utc": "2026-10-23T09:08:58.932792+00:00",
+  "source_identity_sha256": "1e71cd34c7f82a90deb092c86c6fb138b0dac8cb3d557114fcbb85c5f1ef2c8f",
   "scope": {
     "included": [
       ".gitattributes",
@@ -68,13 +68,13 @@
     },
     {
       "path": "ci/l6/src/l6_ci_release/attestation.py",
-      "size_bytes": 6593,
-      "sha256": "56def0c59000074d90bbe58fe1ae173769a28cf57f673821a743cd781986a9d7"
+      "size_bytes": 6693,
+      "sha256": "cd075ca29bd99af00cbde2601354b6534a0d8968c70d5f1ff5d62dc96033fbfc"
     },
     {
       "path": "ci/l6/src/l6_ci_release/gates.py",
-      "size_bytes": 5094,
-      "sha256": "108866953eedd4e88e902038aa3bcf6be60534cae3e3fc4bb31fd2732a534da2"
+      "size_bytes": 5126,
+      "sha256": "499431e8aa7b079b4ba064ea128bfc789e212bc2b7613e927d5784b2e36bc92e"
     },
     {
       "path": "ci/l6/src/l6_ci_release/matrix.py",
@@ -2678,8 +2678,8 @@
     },
     {
       "path": "tests/test_l6_attestation_json_integrity.py",
-      "size_bytes": 3384,
-      "sha256": "11f46f3f230801663a6a230affe91d7715c0f52bab951801044f8863af3d079c"
+      "size_bytes": 3801,
+      "sha256": "8ec7f2dca51b0ddb9ed67e21fbca93a3fb332574c6384e75bec022e00980ac8f"
     },
     {
       "path": "tests/test_l6_ci_workflow_lane.py",

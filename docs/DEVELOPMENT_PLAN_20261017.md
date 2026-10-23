@@ -2341,3 +2341,11 @@ Added long and short Native-versus-Imagined cases for a non-marketable limit ord
 **Verification:** focused selector **2 passed**; adapter smoke file **64 passed**; Ruff passes; manifest: 606 files, identity `916c92fc521dd8f931b9f1581fe9e7254c1d945cc48bd21a69b0b66406538596`. Evidence: `docs/audit_evidence/20261023/b4_imagined_limit_cancel_native_parity_20261023.json`.
 
 **Next:** continue B4 lifecycle checks that are observable from supported synthetic inputs. Hosted CI for this commit remains pending; this case does not validate exchange queue or intrabar sequence behavior.
+
+## 2026-10-23 A10 L6 attestation reader depth boundary
+
+Added the shared structural-depth check to L6's externally supplied gate report and trusted-producer JSON parser. Expanded MyPy to include `ci` and found/fixed the missing `_reports` dictionary annotation.
+
+**Verification:** joint L6 attestation and adapter selectors **70 passed**; MyPy `packages ci qa` covers **235 source files** with no issues; Ruff passes; 606-file manifest identity `1e71cd34c7f82a90deb092c86c6fb138b0dac8cb3d557114fcbb85c5f1ef2c8f`. Evidence: `docs/audit_evidence/20261023/a10_l6_attestation_json_depth_20261023.json`.
+
+**Next:** publish to the RouteB-only snapshot and await Hosted Linux/Windows/JAX CPU validation. B4 pending-limit cancellation already passed all three Hosted jobs in run `39928798741`.
