@@ -63,3 +63,7 @@ exclude = "(?x)(^|[\\\\/])build[\\\\/]"
 [[tool.mypy.overrides]]
 module = ["nautilus_trader.*", "evotorch.*", "psutil", "pyarrow.*", "cloudpickle"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["rles_world_model.*"]
+follow_imports = "skip"

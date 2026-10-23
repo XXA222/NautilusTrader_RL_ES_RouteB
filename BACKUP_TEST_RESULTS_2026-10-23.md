@@ -1,20 +1,21 @@
-# RouteB backup verification — 2026-10-23
+# RouteB independent backup and verification — 2026-10-23
 
-RouteB-only source and test snapshot in the independent public repository `XXA222/NautilusTrader_RL_ES_RouteB`, branch `backup/routeb-code-test-backup-20261023`.
+This is a RouteB-only snapshot in the independent public repository `XXA222/NautilusTrader_RL_ES_RouteB`, branch `backup/routeb-code-test-backup-20261023`. It does not update the upstream NautilusTrader_RL_ES repository or RouteA.
 
-## Verification
+## Current local verification
 
-- A04 access-ledger and WFO regression suites: **112 passed** (`tests/test_research_access.py`, `tests/test_research_wfo.py`) after strict historical-inventory import and candidate/fold authorization binding.
-- A08 cashflow and native-report regression suites: **123 passed** (`tests/test_research_metrics.py`, `tests/test_binance_cashflows.py`, `tests/test_native_report_accumulator_parity.py`) including exact cashflow parsing, finite aggregate/report outputs, and failure-state atomicity.
-- F7 streamed-detail and bounded-tail regression suite: **138 passed** (`tests/test_research_metrics.py`, `tests/test_native_report_accumulator_parity.py`, `tests/test_application_cli.py`); this is a separate historical run.
-- M0.2 source/wheel manifest regressions: **2 passed** (`tests/test_source_manifest.py`, `tests/test_wheel_manifest.py`). The current Windows build produced **12 wheels and 12 sdists**; the wheel manifest matched every built Python file to the source tree (`all_match=true`).
-- Ruff and MyPy passed for the changed RouteB sources and tests. The reusable CI workflow parses and runs source/wheel manifest validation before wheel installation.
-- Test runtime: Python 3.14.7, RouteB package sources via `PYTHONPATH`; the main-project environment was used read-only.
+- Workspace PR selector on Python 3.14.7: **727 passed, 1 skipped, 253 deselected** (`contracts or unit or micro_golden or algorithm_smoke`). The skip is the CUDA-only provider smoke because CUDA is unavailable.
+- RouteB workspace MyPy: **109 source files, no issues** (world-model sources are checked separately in their locked JAX environment).
+- RouteB world-model JAX CPU suite on Python 3.12.10: **119 passed**; isolated world-model MyPy: **37 source files, no issues**.
+- Full Ruff check: **passed** (`packages ci qa tests`).
+- Current-source distribution build: **12 wheels and 12 sdists**; wheel manifest: **12 wheels, all_match=true**, including the world-model `py.typed` marker.
+- Source manifest: **370 files**; source identity SHA-256 `4abd7dc89f4545abdd3e0249ef66cb7144df30d66e81be638bb41a2221b3fe24`.
+- Git diff whitespace check: **passed**.
 
-## Snapshot scope
+The reusable CI workflow now verifies source/wheel payloads before installation and checks the world model in an isolated Python 3.12/JAX CPU job that runs pytest, MyPy, and B2/B3 mechanism smoke tests. The pinned DreamerV3 checkout smoke still requires the Hosted CI runner.
 
-The snapshot contains changed RouteB implementation and CI files, their regression tests, and this verification summary. It excludes internal planning/audit documents, temporary test outputs, local datasets, access inventories, and exploratory scripts.
+## Snapshot scope and limits
 
-## Evidence limits
+The snapshot contains current changed RouteB implementation, package metadata, CI workflow, regression tests, source manifest, and this verification summary. It excludes internal planning/audit documents, temporary test output, local datasets, access inventories, and exploratory scripts.
 
-Local results do not certify Hosted CI until its jobs finish, or certify authenticated real-account cashflow completeness. No real account credentials or market payloads were used for these checks.
+All current results above are local Windows checks. Hosted Linux/Windows/JAX CI has not yet run on this updated branch. No authenticated account statement or market, Validation, Test, or Holdout payload was read; these engineering tests do not certify cashflow completeness or trading performance.

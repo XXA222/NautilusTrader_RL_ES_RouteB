@@ -629,8 +629,8 @@ def ohlcv_generation_diagnostics(
     real_valid = _ohlcv_valid_mask(realized)
     if not real_valid.all():
         raise ValueError("realized OHLCV contains invalid bars")
-    valid_paths = gen_valid.all(axis=-1)
-    if not valid_paths.any():
+    valid_paths: np.ndarray = np.asarray(np.all(gen_valid, axis=-1), dtype=np.bool_)
+    if not np.any(valid_paths):
         generated_returns = np.empty((0, generated.shape[2]), dtype=np.float64)
     else:
         selected = generated[valid_paths]
@@ -646,7 +646,7 @@ def ohlcv_generation_diagnostics(
         generated_returns, rolling_window, axis=1) ** 2, axis=-1))
         if len(generated_returns) else np.empty((0, generated.shape[2] - rolling_window + 1)))
     touch: dict[str, object] = {}
-    valid_anchor = valid_paths.any(axis=1)
+    valid_anchor: np.ndarray = np.asarray(np.any(valid_paths, axis=1), dtype=np.bool_)
     for threshold in touch_thresholds:
         previous_gen = np.concatenate((np.broadcast_to(anchor[:, None, None],
                                                        (len(anchor), generated.shape[1], 1)),
@@ -666,9 +666,9 @@ def ohlcv_generation_diagnostics(
         key = f"{threshold:.6g}"
         touch[key] = {
             "up_brier": (float(np.mean((up_probability[valid_anchor] - observed_up[valid_anchor]) ** 2))
-                         if valid_anchor.any() else None),
+                         if np.any(valid_anchor) else None),
             "down_brier": (float(np.mean((down_probability[valid_anchor] - observed_down[valid_anchor]) ** 2))
-                           if valid_anchor.any() else None),
+                           if np.any(valid_anchor) else None),
             "up_reliability": (_reliability_bins(up_probability[valid_anchor], observed_up[valid_anchor])
                                if valid_anchor.any() else []),
             "down_reliability": (_reliability_bins(down_probability[valid_anchor], observed_down[valid_anchor])

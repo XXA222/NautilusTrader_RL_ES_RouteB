@@ -124,4 +124,5 @@ def load_checkpoint(path: str | Path, *, params_template, opt_template,
 
         weights = restore('p', lp)
         optimizer = restore('o', lo)
-    return pt.unflatten(weights), ot.unflatten(optimizer), meta['step'], meta['seed']
+    return (jax.tree_util.tree_unflatten(pt, weights),
+            jax.tree_util.tree_unflatten(ot, optimizer), meta['step'], meta['seed'])

@@ -52,7 +52,7 @@ jobs:
           if not expected.is_dir():
               raise SystemExit('BLOCKED: integration owner has not supplied tests/')
       - name: Type check with the locked workspace Python
-        run: uv run --locked --no-sync python -m mypy packages
+        run: uv run --locked --no-sync python -m mypy packages --exclude 'world_model'
       - name: Require native golden and fixed-budget performance cases
         if: ${{ inputs.lane == 'nightly' }}
         shell: python
@@ -82,6 +82,51 @@ jobs:
       - name: Lint workspace packages
         if: ${{ inputs.lane == 'pr' || inputs.lane == 'nightly' || inputs.lane == 'release' }}
         run: uv run --locked --no-sync python -m ruff check packages ci qa tests
+  world-model-jax-cpu:
+    if: ${{ inputs.lane == 'pr' || inputs.lane == 'nightly' || inputs.lane == 'release' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: danijar/dreamerv3
+          ref: e01491fad6434b2245a3b8ca201dd7faedcc458c
+          path: .tmp/dreamerv3-route-b
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+      - uses: astral-sh/setup-uv@v6
+      - name: Install locked Route B JAX CPU environment and test tools
+        run: uv sync --project packages/world_model/environment --locked --python 3.12.10 --group dev
+      - name: Run world-model CPU regression suite
+        env:
+          PYTHONPATH: packages/world_model/src:packages/data/src:packages/contracts/src:packages/orchestrator/src:packages/research/src
+          JAX_PLATFORMS: cpu
+          XLA_PYTHON_CLIENT_PREALLOCATE: 'false'
+        run: uv run --project packages/world_model/environment --locked --group dev python -m pytest -q tests/world_model/ --ignore=tests/world_model/test_cli.py
+      - name: Type check world-model source with its locked dependencies
+        env:
+          PYTHONPATH: packages/world_model/src:packages/data/src:packages/contracts/src:packages/orchestrator/src:packages/research/src
+          MYPYPATH: .tmp/dreamerv3-route-b
+        run: uv run --project packages/world_model/environment --locked --group dev python -m mypy packages/world_model/src/rles_world_model --ignore-missing-imports --cache-dir "$RUNNER_TEMP/mypy-world-model"
+      - name: Run B2 and B3 CPU mechanism smokes
+        env:
+          PYTHONPATH: packages/world_model/src:packages/data/src:packages/contracts/src:packages/orchestrator/src:packages/research/src
+          JAX_PLATFORMS: cpu
+          XLA_PYTHON_CLIENT_PREALLOCATE: 'false'
+        run: |
+          mkdir -p "$RUNNER_TEMP/routeb-world-model-jax-cpu"
+          uv run --project packages/world_model/environment --locked --group dev python qa/world_model/routeb_b2_cpu_smoke.py --checkout "$GITHUB_WORKSPACE/.tmp/dreamerv3-route-b" --output-dir "$RUNNER_TEMP/routeb-world-model-jax-cpu/b2"
+          uv run --project packages/world_model/environment --locked --group dev python qa/world_model/routeb_b3_cpu_smoke.py --checkout "$GITHUB_WORKSPACE/.tmp/dreamerv3-route-b" --output-dir "$RUNNER_TEMP/routeb-world-model-jax-cpu/b3"
+      - name: Preserve B2 and B3 CPU smoke evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: routeb-world-model-jax-cpu-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/routeb-world-model-jax-cpu/b2/result.json
+            ${{ runner.temp }}/routeb-world-model-jax-cpu/b3/result.json
+          if-no-files-found: warn
   gpu:
     if: ${{ inputs.lane == 'gpu' }}
     runs-on: [self-hosted, linux, gpu, rles-approved]

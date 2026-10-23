@@ -2,12 +2,16 @@ import json
 import subprocess
 
 import numpy as np
+import pytest
 from rles_data.core import DAY_NS
 from rles_data.core import FoldManifest, Window, MINUTE_NS
 from rles_world_model.baselines import BaselineScore
 from rles_orchestrator.application import main
 import rles_world_model.cli as world_model_cli
 from rles_world_model.contracts import MarketFrame, MarketReplay
+
+
+pytestmark = pytest.mark.unit
 
 
 def test_code_identity_falls_back_to_explicit_snapshot_commit(monkeypatch):

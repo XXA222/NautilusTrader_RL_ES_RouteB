@@ -36,6 +36,13 @@ def test_wheel_manifest_matches_built_sources_and_detects_drift(tmp_path: Path) 
     source = package / "src" / "demo" / "__init__.py"
     source.parent.mkdir(parents=True)
     source.write_text("VALUE = 1\n", encoding="utf-8")
+    typed_marker = source.parent / "py.typed"
+    typed_marker.write_text("", encoding="utf-8")
+    build_metadata = package / "src" / "demo_pkg.egg-info"
+    build_metadata.mkdir()
+    (build_metadata / "PKG-INFO").write_text(
+        "Metadata-Version: 2.1\nName: demo-pkg\nVersion: 1.0.0\n", encoding="utf-8"
+    )
     package.mkdir(exist_ok=True)
     (package / "pyproject.toml").write_text(
         '[project]\nname = "demo-pkg"\nversion = "1.0.0"\n', encoding="utf-8"
@@ -43,12 +50,21 @@ def test_wheel_manifest_matches_built_sources_and_detects_drift(tmp_path: Path) 
     wheel_dir = tmp_path / "wheels"
     wheel_dir.mkdir()
     wheel = wheel_dir / "demo_pkg-1.0.0-py3-none-any.whl"
-    with zipfile.ZipFile(wheel, "w") as archive:
-        archive.writestr("demo/__init__.py", source.read_bytes())
-        archive.writestr(
-            "demo_pkg-1.0.0.dist-info/METADATA",
-            "Metadata-Version: 2.1\nName: demo-pkg\nVersion: 1.0.0\n",
-        )
+
+    def write_wheel(*, include_typed_marker: bool = True, version: str = "1.0.0",
+                    duplicate_source: bool = False) -> None:
+        with zipfile.ZipFile(wheel, "w") as archive:
+            archive.writestr("demo/__init__.py", source.read_bytes())
+            if include_typed_marker:
+                archive.writestr("demo/py.typed", typed_marker.read_bytes())
+            if duplicate_source:
+                archive.writestr("demo/__init__.py", b"VALUE = 999\n")
+            archive.writestr(
+                "demo_pkg-1.0.0.dist-info/METADATA",
+                f"Metadata-Version: 2.1\nName: demo-pkg\nVersion: {version}\n",
+            )
+
+    write_wheel()
     (tmp_path / "source.json").write_text(
         json.dumps({"source_identity_sha256": "a" * 64}), encoding="utf-8"
     )
@@ -56,7 +72,30 @@ def test_wheel_manifest_matches_built_sources_and_detects_drift(tmp_path: Path) 
     result, report = _run(tmp_path)
     assert result.returncode == 0
     assert report["source_matches_all_wheels"] is True
-    assert report["wheels"][0]["source_file_count"] == 1
+    assert report["schema"] == "rles.wheelhouse-manifest.v2"
+    assert report["wheels"][0]["source_payload_file_count"] == 2
+    assert report["wheels"][0]["wheel_payload_file_count"] == 2
+    assert report["wheels"][0]["wheel_python_file_count"] == 1
+
+    write_wheel(include_typed_marker=False)
+    result, report = _run(tmp_path)
+    assert result.returncode == 1
+    assert report["wheels"][0]["missing"] == ["demo/py.typed"]
+
+    write_wheel(version="0.9.0")
+    result, report = _run(tmp_path)
+    assert result.returncode == 1
+    assert any("project version=1.0.0, wheel metadata version=0.9.0" in error
+               for error in report["errors"])
+
+    with pytest.warns(UserWarning, match="Duplicate name"):
+        write_wheel(duplicate_source=True)
+    result, report = _run(tmp_path)
+    assert result.returncode == 1
+    assert any("duplicate wheel payload paths=['demo/__init__.py']" in error
+               for error in report["errors"])
+
+    write_wheel()
 
     extra_wheel = wheel_dir / "unowned_pkg-1.0.0-py3-none-any.whl"
     with zipfile.ZipFile(extra_wheel, "w") as archive:
