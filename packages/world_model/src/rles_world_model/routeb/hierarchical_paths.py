@@ -35,6 +35,7 @@ class HierarchicalOHLCVPaths:
     """One accepted minute-path ensemble and its path-derived slow candles."""
 
     minute: np.ndarray  # [paths,horizon,5] OHLCV
+    minute_features: np.ndarray  # [paths,horizon,5] sampled, Train-standardized coordinates
     hour: np.ndarray  # [paths,completed future hours,5] OHLCV
     day: np.ndarray  # [paths,completed future days,5] OHLCV
     hour_feedback: np.ndarray  # [paths,completed future hours,5] Train-standardized aggregate features
@@ -46,6 +47,7 @@ class HierarchicalOHLCVPaths:
 
     def __post_init__(self) -> None:
         minute = np.array(self.minute, dtype=np.float64, copy=True)
+        minute_features = np.array(self.minute_features, dtype=np.float32, copy=True)
         hour = np.array(self.hour, dtype=np.float64, copy=True)
         day = np.array(self.day, dtype=np.float64, copy=True)
         hour_feedback = np.array(self.hour_feedback, dtype=np.float32, copy=True)
@@ -54,20 +56,23 @@ class HierarchicalOHLCVPaths:
         day_close = np.array(self.day_close_ns, dtype=np.int64, copy=True)
         if (minute.ndim != 3 or minute.shape[0] < 1 or minute.shape[1] < 1
                 or minute.shape[2] != 5 or hour.shape != (minute.shape[0], len(hour_close), 5)
+                or minute_features.shape != minute.shape
                 or day.shape != (minute.shape[0], len(day_close), 5)
                 or hour_feedback.shape != hour.shape or day_feedback.shape != day.shape
                 or hour_close.ndim != 1 or day_close.ndim != 1
                 or any(not np.isfinite(values).all() for values in
-                       (minute, hour, day, hour_feedback, day_feedback))
+                       (minute, minute_features, hour, day, hour_feedback, day_feedback))
                 or type(self.attempted_paths) is not int
                 or type(self.rejected_paths) is not int
                 or self.attempted_paths < minute.shape[0]
                 or not 0 <= self.rejected_paths <= self.attempted_paths
                 or self.attempted_paths - self.rejected_paths != minute.shape[0]):
             raise ValueError("invalid path ensemble, bucket alignment or rejection accounting")
-        for value in (minute, hour, day, hour_feedback, day_feedback, hour_close, day_close):
+        for value in (minute, minute_features, hour, day, hour_feedback,
+                      day_feedback, hour_close, day_close):
             value.setflags(write=False)
         object.__setattr__(self, "minute", minute)
+        object.__setattr__(self, "minute_features", minute_features)
         object.__setattr__(self, "hour", hour)
         object.__setattr__(self, "day", day)
         object.__setattr__(self, "hour_feedback", hour_feedback)
@@ -159,6 +164,7 @@ def sample_hierarchical_ohlcv_paths(*, minute_mean: np.ndarray,
 
     rng = np.random.default_rng(seed)
     accepted_minute: list[np.ndarray] = []
+    accepted_minute_features: list[np.ndarray] = []
     accepted_hour: list[np.ndarray] = []
     accepted_day: list[np.ndarray] = []
     accepted_hour_feedback: list[np.ndarray] = []
@@ -203,6 +209,7 @@ def sample_hierarchical_ohlcv_paths(*, minute_mean: np.ndarray,
         accepted_minute.append(np.asarray(
             [[bar.open, bar.high, bar.low, bar.close, bar.volume] for bar in simulated],
             dtype=np.float64))
+        accepted_minute_features.append(np.asarray(standardized, dtype=np.float32))
         accepted_hour.append(np.asarray([_ohlcv(bucket) for bucket in hour_buckets],
                                         dtype=np.float64).reshape((-1, 5)))
         accepted_day.append(np.asarray([_ohlcv(bucket) for bucket in day_buckets],
@@ -218,7 +225,47 @@ def sample_hierarchical_ohlcv_paths(*, minute_mean: np.ndarray,
         raise PathSamplingError(requested=paths, attempted=attempted, rejected=rejected)
     assert hour_close_ns is not None and day_close_ns is not None
     return HierarchicalOHLCVPaths(
-        np.stack(accepted_minute), np.stack(accepted_hour), np.stack(accepted_day),
+        np.stack(accepted_minute), np.stack(accepted_minute_features),
+        np.stack(accepted_hour), np.stack(accepted_day),
         np.stack(accepted_hour_feedback), np.stack(accepted_day_feedback),
         hour_close_ns, day_close_ns, attempted, rejected,
     )
+
+
+def align_bucket_feedback(*, close_ns: np.ndarray, feedback: np.ndarray,
+        minute_decisions_ns: np.ndarray, availability_delay_ns: int,
+        expected_events: tuple[bool, ...]) -> np.ndarray:
+    """Place each path-derived slow feature at its causal future event step.
+
+    Forecast event plans are computed from expected close times plus a frozen
+    availability delay. This helper aligns only generated aggregate features;
+    it does not alter the event plan or expose the feature before its event.
+    """
+    closes = np.asarray(close_ns)
+    values = np.asarray(feedback, dtype=np.float32)
+    decisions = np.asarray(minute_decisions_ns)
+    events = np.asarray(expected_events)
+    if (closes.ndim != 1 or closes.dtype.kind not in "iu"
+            or np.any(closes <= 0) or np.any(np.diff(closes) <= 0)
+            or values.ndim != 3 or values.shape[1] != len(closes)
+            or values.shape[2] != 5 or not np.isfinite(values).all()
+            or decisions.ndim != 1 or decisions.dtype.kind not in "iu"
+            or not len(decisions) or np.any(decisions <= 0)
+            or np.any(np.diff(decisions) <= 0)
+            or events.dtype.kind != "b" or events.shape != decisions.shape
+            or type(availability_delay_ns) is not int or availability_delay_ns < 0):
+        raise ValueError("invalid path-feedback alignment inputs")
+    aligned = np.zeros((values.shape[0], len(decisions), 5), dtype=np.float32)
+    assigned = np.zeros(len(decisions), dtype=np.bool_)
+    for index, close in enumerate(closes):
+        available_at = int(close) + availability_delay_ns
+        step = int(np.searchsorted(decisions, available_at, side="left"))
+        if step == len(decisions):
+            continue
+        if not events[step] or assigned[step]:
+            raise ValueError("path-derived slow close does not match its availability event")
+        aligned[:, step] = values[:, index]
+        assigned[step] = True
+    if not np.array_equal(assigned, events):
+        raise ValueError("future slow event plan has no matching path-derived aggregate")
+    return aligned

@@ -123,7 +123,8 @@ def make_hierarchical_model(checkout,*,minute:RSSMConfig,hour:RSSMConfig,day:RSS
 
         def rollout_f2(self,minute_x,hour_x,day_x,hour_index,day_index,
                        future_hour_events,future_day_events,
-                       advance_slow_priors=True):
+                       advance_slow_priors=True,minute_feedback=None,
+                       hour_feedback=None,day_feedback=None):
             """Generate a causal minute path while advancing slow RSSM priors.
 
             Event tuples state when a newly closed hour/day becomes available
@@ -134,6 +135,11 @@ def make_hierarchical_model(checkout,*,minute:RSSMConfig,hour:RSSMConfig,day:RSS
             same trained three-scale model and minute prior rollout, but freeze
             both slow latent carries at their final observed posterior. E4 uses
             the default and advances the slow prior carries at scheduled events.
+            When feedback features are supplied, slow carries observe aggregate-
+            derived generated bars and minute carries observe sampled generated
+            minute features; the next forecast is then conditioned on that
+            simulated past. Without feedback features, the legacy prior-only
+            rollout is retained for compatibility/mechanism comparisons.
             This switch does not make the latent decoder outputs market OHLCV.
             """
             minute_x=jnp.asarray(minute_x,dtype=jnp.float32)
@@ -142,6 +148,22 @@ def make_hierarchical_model(checkout,*,minute:RSSMConfig,hour:RSSMConfig,day:RSS
             hour_index=jnp.asarray(hour_index,dtype=jnp.int32)
             day_index=jnp.asarray(day_index,dtype=jnp.int32)
             B,T,_=minute_x.shape
+            feedback_active=minute_feedback is not None
+            if feedback_active:
+                minute_feedback=jnp.asarray(minute_feedback,dtype=jnp.float32)
+                if (minute_feedback.ndim!=3 or minute_feedback.shape[0]!=B
+                        or minute_feedback.shape[2]!=5
+                        or minute_feedback.shape[1]!=len(future_hour_events)
+                        or hour_feedback is None or day_feedback is None):
+                    raise ValueError("feedback replay requires aligned minute/hour/day feature tensors")
+                hour_feedback=jnp.asarray(hour_feedback,dtype=jnp.float32)
+                day_feedback=jnp.asarray(day_feedback,dtype=jnp.float32)
+                expected_feedback_shape=(B,len(future_hour_events),5)
+                if (hour_feedback.shape!=expected_feedback_shape
+                        or day_feedback.shape!=expected_feedback_shape):
+                    raise ValueError("feedback feature tensors must align to batch and forecast horizon")
+            elif hour_feedback is not None or day_feedback is not None:
+                raise ValueError("slow feedback cannot be provided without minute feedback")
             if (T<2 or hour_x.shape[1]<2 or day_x.shape[1]<2
                     or hour_index.shape!=(B,T) or day_index.shape!=(B,T)
                     or len(future_hour_events)!=len(future_day_events)
@@ -177,7 +199,10 @@ def make_hierarchical_model(checkout,*,minute:RSSMConfig,hour:RSSMConfig,day:RSS
             anchor_scale=jax.nn.softplus(jnp.clip(anchor_raw,-12.,8.))+minute.min_scale
             means=[];scales=[];hour_diagnostics=[];day_diagnostics=[]
             first_prior_mean=None;first_prior_scale=None
+            hour_visible=hour_index[:,-1]>=0
+            day_visible=day_index[:,-1]>=0
             for hour_event,day_event in zip(future_hour_events,future_day_events):
+                step_index=len(means)
                 # The next-bar head is trained on posterior[t] -> x[t+1].
                 # Emit from the current posterior/prior state first. Slow events
                 # at the target close may condition only the following target.
@@ -188,29 +213,63 @@ def make_hierarchical_model(checkout,*,minute:RSSMConfig,hour:RSSMConfig,day:RSS
                 scale=jax.nn.softplus(jnp.clip(raw,-12.,8.))+minute.min_scale
                 means.append(mean);scales.append(scale)
                 if advance_slow_priors and day_event:
-                    dcarry,(dprior,_)=d_dyn.imagine(dcarry,
-                        {"market_dummy":jnp.zeros((B,1),jnp.float32)},1,False,single=True)
-                    dz=jnp.concatenate([dprior['deter'],dprior['stoch'].reshape((B,-1))],-1)
-                    day_diagnostics.append(self.sub('day_reconstruction',nn.Linear,5)(dz))
+                    if feedback_active:
+                        dcarry,_,dfeat=d_dyn.observe(dcarry,day_feedback[:,step_index],
+                            {"market_dummy":jnp.zeros((B,1),jnp.float32)},
+                            jnp.zeros((B,),dtype=jnp.bool_),False,single=True)
+                        dstate=jnp.concatenate([dfeat['deter'],
+                            dfeat['stoch'].reshape((B,-1))],-1)
+                        day_visible=jnp.ones((B,),dtype=jnp.bool_)
+                        day_diagnostics.append(self.sub('day_reconstruction',nn.Linear,5)(dstate))
+                    else:
+                        dcarry,(dprior,_)=d_dyn.imagine(dcarry,
+                            {"market_dummy":jnp.zeros((B,1),jnp.float32)},1,False,single=True)
+                        dz=jnp.concatenate([dprior['deter'],dprior['stoch'].reshape((B,-1))],-1)
+                        day_diagnostics.append(self.sub('day_reconstruction',nn.Linear,5)(dz))
                 else:
                     day_diagnostics.append(jnp.zeros((B,5),jnp.float32))
                 if advance_slow_priors and hour_event:
-                    hcarry,(hprior,_)=h_dyn.imagine(hcarry,
-                        {"market_dummy":jnp.zeros((B,1),jnp.float32)},1,False,single=True)
-                    hz=jnp.concatenate([hprior['deter'],hprior['stoch'].reshape((B,-1))],-1)
-                    hour_diagnostics.append(self.sub('hour_reconstruction',nn.Linear,5)(hz))
+                    if feedback_active:
+                        hcarry,_,hfeat=h_dyn.observe(hcarry,hour_feedback[:,step_index],
+                            {"market_dummy":jnp.zeros((B,1),jnp.float32)},
+                            jnp.zeros((B,),dtype=jnp.bool_),False,single=True)
+                        hstate=jnp.concatenate([hfeat['deter'],
+                            hfeat['stoch'].reshape((B,-1))],-1)
+                        hour_visible=jnp.ones((B,),dtype=jnp.bool_)
+                        hour_diagnostics.append(self.sub('hour_reconstruction',nn.Linear,5)(hstate))
+                    else:
+                        hcarry,(hprior,_)=h_dyn.imagine(hcarry,
+                            {"market_dummy":jnp.zeros((B,1),jnp.float32)},1,False,single=True)
+                        hz=jnp.concatenate([hprior['deter'],hprior['stoch'].reshape((B,-1))],-1)
+                        hour_diagnostics.append(self.sub('hour_reconstruction',nn.Linear,5)(hz))
                 else:
                     hour_diagnostics.append(jnp.zeros((B,5),jnp.float32))
                 hstate=jnp.concatenate([hcarry['deter'],hcarry['stoch'].reshape((B,-1))],-1)
                 dstate=jnp.concatenate([dcarry['deter'],dcarry['stoch'].reshape((B,-1))],-1)
                 context=jnp.concatenate([hstate,dstate],-1)
-                mcarry,(mprior,_)=m_dyn.imagine(mcarry,
-                    {"market_dummy":jnp.zeros((B,1),jnp.float32),
-                     "slow_context":context},1,False,single=True)
-                mstate=mprior
+                minute_action={"market_dummy":jnp.zeros((B,1),jnp.float32),
+                               "slow_context":context}
+                if feedback_active:
+                    joined_feedback=jnp.concatenate([
+                        minute_feedback[:,step_index],hstate,dstate,
+                        hour_visible[:,None].astype(jnp.float32),
+                        day_visible[:,None].astype(jnp.float32)],axis=-1)
+                    feedback_token=self.sub('minute_conditioned',nn.Linear,minute.hidden)(
+                        joined_feedback.astype(nn.COMPUTE_DTYPE))
+                    _,(mprior,_)=m_dyn.imagine(
+                        mcarry,{"market_dummy":jnp.zeros((B,1),jnp.float32),
+                                "slow_context":context},1,False,single=True)
+                    mcarry,_,mfeat=m_dyn.observe(mcarry,feedback_token,minute_action,
+                        jnp.zeros((B,),dtype=jnp.bool_),False,single=True)
+                    mstate=mfeat
+                else:
+                    mcarry,(mprior,_)=m_dyn.imagine(mcarry,
+                        {"market_dummy":jnp.zeros((B,1),jnp.float32),
+                         "slow_context":context},1,False,single=True)
+                    mstate=mprior
                 if first_prior_mean is None:
                     prior_z=jnp.concatenate([
-                        mstate['deter'],mstate['stoch'].reshape((B,-1))],-1)
+                        mprior['deter'],mprior['stoch'].reshape((B,-1))],-1)
                     first_prior_mean=self.sub('next_minute_mean',nn.Linear,5)(prior_z)
                     prior_raw=self.sub('next_minute_scale',nn.Linear,5)(prior_z)
                     first_prior_scale=(jax.nn.softplus(jnp.clip(prior_raw,-12.,8.))+

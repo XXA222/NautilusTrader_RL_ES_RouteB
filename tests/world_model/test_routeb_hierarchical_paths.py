@@ -6,6 +6,7 @@ import pytest
 from rles_world_model.routeb.codec import TrainOnlyStandardizer
 from rles_world_model.routeb.hierarchical_paths import (
     PathSamplingError,
+    align_bucket_feedback,
     sample_hierarchical_ohlcv_paths,
 )
 from rles_world_model.routeb.market import Candle, MINUTE_NS
@@ -38,6 +39,7 @@ def test_sampled_paths_are_legal_and_future_slow_bars_conserve_each_path():
     )
 
     assert result.minute.shape == (3, 90, 5)
+    assert result.minute_features.shape == (3, 90, 5)
     assert result.hour.shape == (3, 2, 5)
     assert result.day.shape == (3, 0, 5)
     assert result.hour_feedback.shape == (3, 2, 5)
@@ -99,3 +101,30 @@ def test_day_bucket_is_derived_from_observed_prefix_and_synthetic_minutes():
             bucket_rows[-1, 3], bucket_rows[:, 4].sum(),
         ))
         np.testing.assert_array_equal(result.day[path_index, 0], expected)
+
+
+def test_path_feedback_aligns_to_first_decision_after_availability_delay():
+    feedback = np.arange(2 * 2 * 5, dtype=np.float32).reshape((2, 2, 5))
+    decisions = np.asarray([60, 61, 120, 121], dtype=np.int64) * MINUTE_NS
+    aligned = align_bucket_feedback(
+        close_ns=np.asarray([60, 120], dtype=np.int64) * MINUTE_NS,
+        feedback=feedback, minute_decisions_ns=decisions,
+        availability_delay_ns=MINUTE_NS,
+        expected_events=(False, True, False, True),
+    )
+
+    assert aligned.shape == (2, 4, 5)
+    np.testing.assert_array_equal(aligned[:, 1], feedback[:, 0])
+    np.testing.assert_array_equal(aligned[:, 3], feedback[:, 1])
+    np.testing.assert_array_equal(aligned[:, (0, 2)], 0)
+
+
+def test_path_feedback_rejects_event_plan_without_matching_generated_bucket():
+    with pytest.raises(ValueError, match="does not match"):
+        align_bucket_feedback(
+            close_ns=np.asarray([60], dtype=np.int64) * MINUTE_NS,
+            feedback=np.ones((1, 1, 5), dtype=np.float32),
+            minute_decisions_ns=np.asarray([60, 61], dtype=np.int64) * MINUTE_NS,
+            availability_delay_ns=MINUTE_NS,
+            expected_events=(True, False),
+        )

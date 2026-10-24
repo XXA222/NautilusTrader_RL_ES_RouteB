@@ -14,7 +14,9 @@ os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 import numpy as np
 from rles_world_model.routeb.hierarchy_dataset import build_train_hierarchy
-from rles_world_model.routeb.hierarchical_paths import sample_hierarchical_ohlcv_paths
+from rles_world_model.routeb.hierarchical_paths import (
+    align_bucket_feedback, sample_hierarchical_ohlcv_paths,
+)
 from rles_world_model.routeb.jax_hierarchy_train import (
     HierarchicalModelConfig, HierarchicalTrainingConfig,
     forecast_hierarchical_f2, hierarchy_tensor_sha256, train_hierarchical,
@@ -22,6 +24,7 @@ from rles_world_model.routeb.jax_hierarchy_train import (
 from rles_world_model.routeb.jax_model import PINNED_UPSTREAM, RSSMConfig
 from rles_world_model.routeb.jax_train import SNAPSHOT_SHA
 from rles_world_model.routeb.clock import MultiScaleClock
+from rles_world_model.routeb.hierarchy import derive_future_scale_events
 from rles_world_model.routeb.market import Candle, MarketSequence, MINUTE_NS
 
 
@@ -190,6 +193,47 @@ def main() -> int:
             or not np.array_equal(e3_paths.minute[:, :3], e4_paths.minute[:, :3])
             or np.array_equal(e3_paths.minute[:, 3], e4_paths.minute[:, 3])):
         raise AssertionError("E3/E4 sampled OHLCV paths failed event-aligned divergence checks")
+    hour_feedback_events, day_feedback_events = derive_future_scale_events(
+        minute_decisions_ns=decisions,
+        hour_available_at_ns=np.asarray(expected_hour_events, dtype=np.int64),
+        day_available_at_ns=np.asarray(expected_day_events, dtype=np.int64))
+    aligned_hour_feedback = align_bucket_feedback(
+        close_ns=e4_paths.hour_close_ns, feedback=e4_paths.hour_feedback,
+        minute_decisions_ns=decisions, availability_delay_ns=0,
+        expected_events=hour_feedback_events)
+    aligned_day_feedback = align_bucket_feedback(
+        close_ns=e4_paths.day_close_ns, feedback=e4_paths.day_feedback,
+        minute_decisions_ns=decisions, availability_delay_ns=0,
+        expected_events=day_feedback_events)
+    e3_feedback_replay = forecast_hierarchical_f2(
+        tensors=tensors, train_scope_id="synthetic-train-only", dataset_id=replay.dataset_id,
+        scaler_sha256=scaler_hash, checkout=args.checkout, checkpoint=resumed,
+        model_config=model_cfg, training_config=two,
+        training_tensor_sha256=tensor_hash, inference_context_sha256=tensor_hash,
+        future_minute_decisions_ns=decisions, hour_availability_delay_ns=0,
+        day_availability_delay_ns=0, forecast_seed=811, advance_slow_priors=False,
+        minute_feedback_features=e4_paths.minute_features,
+        hour_feedback_features=aligned_hour_feedback,
+        day_feedback_features=aligned_day_feedback)
+    e4_feedback_replay = forecast_hierarchical_f2(
+        tensors=tensors, train_scope_id="synthetic-train-only", dataset_id=replay.dataset_id,
+        scaler_sha256=scaler_hash, checkout=args.checkout, checkpoint=resumed,
+        model_config=model_cfg, training_config=two,
+        training_tensor_sha256=tensor_hash, inference_context_sha256=tensor_hash,
+        future_minute_decisions_ns=decisions, hour_availability_delay_ns=0,
+        day_availability_delay_ns=0, forecast_seed=811,
+        minute_feedback_features=e4_paths.minute_features,
+        hour_feedback_features=aligned_hour_feedback,
+        day_feedback_features=aligned_day_feedback)
+    if (e3_feedback_replay["minute_mean"].shape != (4, 5, 5)
+            or e4_feedback_replay["minute_mean"].shape != (4, 5, 5)
+            or not np.array_equal(e3_feedback_replay["minute_mean"][:, 0],
+                                  e4_feedback_replay["minute_mean"][:, 0])
+            or np.array_equal(e3_feedback_replay["minute_mean"][:, 3],
+                              e4_feedback_replay["minute_mean"][:, 3])
+            or not np.any(e4_feedback_replay["hour_latent_diagnostic"][:, 2] != 0)
+            or not np.any(e4_feedback_replay["day_latent_diagnostic"][:, 2] != 0)):
+        raise AssertionError("path feedback replay failed causal E3/E4 slow-update checks")
     last = full[-1]
     gradient_keys = ("grad_minute_dyn_norm", "grad_hour_dyn_norm", "grad_day_dyn_norm")
     if not all(math.isfinite(float(last[key])) and float(last[key]) > 0
@@ -224,6 +268,10 @@ def main() -> int:
         },
         "e3_e4_paths_conserve_completed_slow_ohlcv": True,
         "e3_e4_path_divergence_after_slow_event": True,
+        "feedback_replay_minute_shape": list(e4_feedback_replay["minute_mean"].shape),
+        "feedback_replay_conditions_on_sampled_minute_features": True,
+        "feedback_replay_slow_features_aligned_to_availability": True,
+        "feedback_replay_e3_e4_diverge_after_slow_feedback": True,
         "f2_event_schedule_from_multiscale_clock": True,
         "future_decision_ns": decisions.tolist(),
         "future_hour_available_at_ns": list(expected_hour_events),
