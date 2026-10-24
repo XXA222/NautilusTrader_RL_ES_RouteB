@@ -6,7 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from nautilus_trader.execution import DefaultFillModel, MakerTakerFeeModel, StaticLatencyModel
+from nautilus_trader.execution import (
+    DefaultFillModel, LimitOrderPartialFillModel, MakerTakerFeeModel, StaticLatencyModel,
+)
 from nautilus_trader.model import (
     AccountType,
     AccountId,
@@ -268,7 +270,8 @@ def _perpetual_instrument():
     )
 
 
-def _perpetual_builder(submitter: NativePlanSubmitter, *, bar_execution: bool = True) -> PublicBacktestBuilder:
+def _perpetual_builder(submitter: NativePlanSubmitter, *, bar_execution: bool = True,
+                       fill_model: object | None = None) -> PublicBacktestBuilder:
     instrument = _perpetual_instrument()
     usdt = Currency.from_str("USDT")
     return PublicBacktestBuilder(
@@ -280,7 +283,8 @@ def _perpetual_builder(submitter: NativePlanSubmitter, *, bar_execution: bool = 
                 "starting_balances": [Money(100_000, usdt)], "base_currency": usdt,
                 "margin_model": StandardMarginModel(),
                 "fee_model": MakerTakerFeeModel(Decimal("0.001"), Decimal("0.001")),
-                "fill_model": DefaultFillModel(), "latency_model": StaticLatencyModel(),
+                "fill_model": (DefaultFillModel() if fill_model is None else fill_model),
+                "latency_model": StaticLatencyModel(),
                 "bar_execution": bar_execution, "liquidity_consumption": not bar_execution,
                 "liquidation_enabled": False,
             },),
@@ -502,6 +506,88 @@ def test_imagined_account_matches_native_perpetual_intrabar_limit_touch(
             simulated_fill.fee, rel=0, abs=1e-8)
         assert Decimal(str(simulated_fill.price)) == Decimal(limit_price)
         assert float(touched.equity) == pytest.approx(account.equity, rel=0, abs=1e-8)
+    finally:
+        session.close()
+
+
+def test_imagined_account_is_not_economics_eligible_for_native_partial_limit_fill() -> None:
+    """Pin a native partial-fill counterexample to the all-or-none prototype."""
+    from dataclasses import replace
+    from rles_world_model.routeb.imagined_account import ImaginedAccount
+    from rles_world_model.routeb.market import Candle, MINUTE_NS
+
+    instrument = _perpetual_instrument()
+    submitter = NativeLimitSubmitter(rules=LimitInstrumentRules(
+        instrument_id=str(instrument.id), price_tick=Decimal("0.01"),
+        qty_step=Decimal("0.001"), min_qty=Decimal("0.001"), min_notional=Decimal("10"),
+    ), quantity_unit="ETH")
+    decoder = NativeMarketEventDecoder(
+        instrument=instrument,
+        bar_type=BarType.from_str(f"{instrument.id}-1-MINUTE-LAST-EXTERNAL"),
+    )
+    session = EngineSession(
+        build_native=lambda _scope: _perpetual_builder(
+            submitter, fill_model=LimitOrderPartialFillModel(random_seed=0))(_scope),
+        submit_plan=lambda _engine, _plan: None,
+        decode_event=decoder,
+        facts_reader=NativeFactsReader(
+            account_id=AccountId.from_str("SIM-001"), instrument_id=instrument.id,
+            currency="USDT",
+        ),
+        contract_snapshot_factory=lambda **facts: SimpleNamespace(**facts),
+        certified_barrier_protocol=EngineSession.BARRIER_PROTOCOL,
+        submit_limit_intent=lambda engine, intent, timestamp: submitter(
+            engine, intent, decision_ts_ns=timestamp),
+    )
+    account = ImaginedAccount(initial_equity=100_000, fee_maker=0.001, fee_taker=0.001)
+
+    def candle(number: int, ohlc: tuple[str, str, str, str]) -> Candle:
+        open_, high, low, close = (float(value) for value in ohlc)
+        timestamp = number * MINUTE_NS
+        return Candle(timestamp, timestamp, str(instrument.id), open_, high, low,
+                      close, 100.0)
+
+    session.open(SimpleNamespace(dataset_hash="8" * 64, fold_hash="9" * 64,
+                                 config_hash="a" * 64))
+    try:
+        session.bootstrap((_perpetual_batch(1),), decision_ts_ns=MINUTE_NS)
+        account.on_bar(candle(1, ("1000.00",) * 4))
+        order = LimitOrderIntent(
+            intent_id="partial-native-limit", instrument_id=str(instrument.id),
+            kind=OrderIntentKind.LIMIT, signed_qty=Decimal("10.000"),
+            decision_ts_ns=MINUTE_NS, effective_ts_ns=2 * MINUTE_NS,
+            limit_price=Decimal("995.00"), pending_id="partial-native-pending",
+        )
+        account.submit(target_qty=10.0, decision_ns=MINUTE_NS, kind="limit",
+                       limit_price=995.0, delay_ns=MINUTE_NS)
+        session.advance_limit(
+            order, batches=(_perpetual_batch(2),), next_decision_ts_ns=2 * MINUTE_NS,
+        )
+        account.on_bar(candle(2, ("1000.00",) * 4))
+        touched = session.advance(
+            replace(_perpetual_plan("partial-native-touch", "1.000"),
+                    action="NOOP", delta_qty=Decimal(0)),
+            batches=(_perpetual_batch(
+                3, ohlc=("1000.00", "1005.00", "990.00", "1000.00"),
+            ),),
+            next_decision_ts_ns=3 * MINUTE_NS,
+        )
+        simulated_fill = account.on_bar(candle(
+            3, ("1000.00", "1005.00", "990.00", "1000.00")))
+        native_filled = sum(Decimal(fill["last_qty"]) for fill in touched.fills)
+        assert len(touched.fills) == 2
+        assert all(Decimal(fill["last_qty"]) < Decimal("10.000")
+                   for fill in touched.fills)
+        assert native_filled == Decimal("10.000")
+        assert simulated_fill is not None
+        assert len(account.fills) == 1
+        assert Decimal(str(simulated_fill.signed_qty)) == Decimal("10.0")
+        native_fee = sum(
+            (Money.from_str(fill["commission"]).as_decimal() for fill in touched.fills),
+            start=Decimal(0),
+        )
+        assert native_fee != Decimal(str(simulated_fill.fee))
+        assert account.economics_eligible is False
     finally:
         session.close()
 

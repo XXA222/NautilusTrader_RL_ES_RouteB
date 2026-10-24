@@ -1,0 +1,38 @@
+{
+  "schema": "routeb.audit-native-partial-fill-gap.v1",
+  "status": "COMPLETED_COUNTEREXAMPLE",
+  "date": "2026-10-25",
+  "workspace": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB",
+  "environment": {
+    "os": "Ubuntu 24.04 on WSL2",
+    "python": "3.14.7",
+    "nautilus_trader": "2.0.0rc6"
+  },
+  "scenario": {
+    "instrument": "ETHUSDT-PERP.SIM",
+    "data": "synthetic OHLCV only",
+    "order_type": "BUY LIMIT",
+    "order_quantity": "10.000 ETH",
+    "limit_price": "995.00 USDT",
+    "native_fill_model": "LimitOrderPartialFillModel(random_seed=0)",
+    "native_fill_events": 2,
+    "native_cumulative_fill_quantity": "10.000 ETH",
+    "imagined_fill_events": 1,
+    "native_and_imagined_fees_match": false,
+    "imagined_account_economics_eligible": false
+  },
+  "test": {
+    "path": "tests/test_nautilus_adapter_smoke.py",
+    "name": "test_imagined_account_is_not_economics_eligible_for_native_partial_limit_fill",
+    "source_sha256": "79a80e02b423bd55ac66b24cdca790632fc58b59e49d102bc45174c7396f2691",
+    "junit_path": ".tmp/routeb-rb11-partial-fill-native-20261025.xml",
+    "junit_sha256": "a72aebdb96e0bb1d5cb6258f90186460aa349d457f589536dde3f3ebfbb10e8e",
+    "selector_result": "53 passed"
+  },
+  "interpretation": "The native engine emitted two partial execution events for one 10 ETH limit order; ImaginedAccount represented the same bar touch as one full fill and produced a different fee. This is a deterministic synthetic counterexample to using the all-or-none prototype for maker economics. It does not establish realistic queue priority, market liquidity, exchange ordering, or economic parity. No real market, account, Validation, Test, or Holdout payload was read.",
+  "open_gates": [
+    "realistic maker queue and available-liquidity modeling",
+    "partial fill followed by cancel acknowledgement and in-flight fill race",
+    "hedge/cross margin, leverage tiers, mark/index basis, and liquidation parity"
+  ]
+}
