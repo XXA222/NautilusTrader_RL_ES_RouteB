@@ -14,6 +14,7 @@ os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 import numpy as np
 from rles_world_model.routeb.hierarchy_dataset import build_train_hierarchy
+from rles_world_model.routeb.hierarchical_paths import sample_hierarchical_ohlcv_paths
 from rles_world_model.routeb.jax_hierarchy_train import (
     HierarchicalModelConfig, HierarchicalTrainingConfig,
     forecast_hierarchical_f2, hierarchy_tensor_sha256, train_hierarchical,
@@ -173,6 +174,22 @@ def main() -> int:
             or not np.any(f2["hour_latent_diagnostic"][:, 2] != 0)
             or not np.any(f2["day_latent_diagnostic"][:, 2] != 0)):
         raise AssertionError("F2 generated slow features outside/without availability events")
+    e3_paths = sample_hierarchical_ohlcv_paths(
+        minute_mean=e3["minute_mean"][0], minute_scale=e3["minute_scale"][0],
+        minute_scaler=scalers.minute, hour_scaler=scalers.hour,
+        day_scaler=scalers.day, observed_prefix=replay.candles,
+        paths=4, seed=991)
+    e4_paths = sample_hierarchical_ohlcv_paths(
+        minute_mean=f2["minute_mean"][0], minute_scale=f2["minute_scale"][0],
+        minute_scaler=scalers.minute, hour_scaler=scalers.hour,
+        day_scaler=scalers.day, observed_prefix=replay.candles,
+        paths=4, seed=991)
+    if (e3_paths.minute.shape != (4, 5, 5) or e4_paths.minute.shape != (4, 5, 5)
+            or e3_paths.hour.shape != (4, 1, 5) or e4_paths.hour.shape != (4, 1, 5)
+            or e3_paths.day.shape != (4, 1, 5) or e4_paths.day.shape != (4, 1, 5)
+            or not np.array_equal(e3_paths.minute[:, :3], e4_paths.minute[:, :3])
+            or np.array_equal(e3_paths.minute[:, 3], e4_paths.minute[:, 3])):
+        raise AssertionError("E3/E4 sampled OHLCV paths failed event-aligned divergence checks")
     last = full[-1]
     gradient_keys = ("grad_minute_dyn_norm", "grad_hour_dyn_norm", "grad_day_dyn_norm")
     if not all(math.isfinite(float(last[key])) and float(last[key]) > 0
@@ -197,6 +214,16 @@ def main() -> int:
         "f2_independent_context_loaded": True,
         "f2_future_event_perturbation_causal": True,
         "f2_delayed_event_barrier_alignment": True,
+        "e3_e4_minute_ohlcv_path_shapes": {
+            "minute": list(e4_paths.minute.shape),
+            "hour": list(e4_paths.hour.shape),
+            "day": list(e4_paths.day.shape),
+        },
+        "e3_e4_path_rejection_counts": {
+            "E3": e3_paths.rejected_paths, "E4": e4_paths.rejected_paths,
+        },
+        "e3_e4_paths_conserve_completed_slow_ohlcv": True,
+        "e3_e4_path_divergence_after_slow_event": True,
         "f2_event_schedule_from_multiscale_clock": True,
         "future_decision_ns": decisions.tolist(),
         "future_hour_available_at_ns": list(expected_hour_events),

@@ -1,26 +1,27 @@
 {
   "schema": "routeb.audit-remediation.local-evidence.v1",
-  "date": "2026-10-23",
+  "date": "2026-10-24",
   "workspace": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
   "scope": "RouteB source and synthetic/local regression only; no market, account, Validation, Test, or Holdout payload was opened",
-  "source_identity_sha256": "d9fdbb9a100bff7db20e539a3b308fa228ddc25af908958e70772eb8d39cf537",
-  "source_files": 372,
+  "source_identity_sha256": "454921e24600421cc3837a44461260a5be435283d04208d08b3a7e552ee4f3ae",
+  "source_files": 374,
   "results": {
     "research_access": "91 passed",
     "routeb_main_environment": "237 passed, 3 JAX-only skipped",
     "routeb_jax_cpu": "131 passed",
     "routeb_b2_cpu_smoke": "PASS",
-    "routeb_b3_cpu_smoke": "PASS",
+    "routeb_b3_cpu_smoke": "PASS on commit 8e6207b; next path-enabled smoke pending Hosted CI",
+    "routeb_rb04_path_tests": "11 passed; exact synthetic hour/day aggregation, Train-scaled feedback features, invalid-path rejection accounting",
     "world_model_mypy": "38 source files, no issues",
     "ruff": "PASS"
   },
   "fixed": ["RB-01", "RB-02", "RB-03", "RB-06", "RB-07", "RB-08", "RB-13", "RB-14"],
   "bounded_or_partial": {
-    "RB-04": "slow outputs renamed and frozen as latent diagnostics, not market OHLCV; per-path conserved F2 OHLCV remains open",
+    "RB-04": "added per-path Gaussian sampling, strict OHLCV decode/rejection counts, exact path-derived hour/day aggregation and Train-scaled feedback features; slow RSSM closed-loop update and registered worker integration remain open",
     "RB-05": "added a matched E3/E4 rollout switch that shares one trained B3 checkpoint; registered-Fold scoring remains open pending validated per-path OHLCV and the complete pinned-upstream smoke",
     "RB-10": "posterior/prior transition is exposed numerically; real open-loop shift comparison remains open",
     "RB-11": "economic certification remains false; native account parity remains open"
   },
-  "open": ["RB-05", "RB-09", "RB-12"],
-  "hosted_ci": "PASS for commit 8e6207b89fad6570e0b9ec18545736f25255b39c (run 40045345260): Linux, Windows and JAX CPU; GPU/release skipped by lane selection"
+  "open": ["RB-04", "RB-05", "RB-09", "RB-12"],
+  "hosted_ci": "PASS for commit 8e6207b89fad6570e0b9ec18545736f25255b39c (run 40045345260); path-enabled smoke pending"
 }
