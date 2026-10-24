@@ -57,5 +57,28 @@
     "repeat_training_change_percent": 9.61,
     "repeat_peak_rss_change_percent": -3.60,
     "interpretation": "The two full-budget synthetic CUDA runs completed with comparable resource use. This is a two-run resource repeatability observation only; it does not establish training convergence, production capacity, forecast calibration, or market quality."
+  },
+  "same_source_seed_reproducibility_probe": {
+    "source_commit": "a7806306ceb09441d4880058c5807e58c64cd986",
+    "profile_script_sha256": "5d850e38331ec643acd777750f732f657d2f79808ad2fb04a245508756e0dbb9",
+    "training_module_sha256": "67494a1829afeb381267e4d98f96dbb3dcb7e636b0eb0b51526a0d9e0057602e",
+    "seed": 47,
+    "repeat_2": {
+      "status": "COMPLETED",
+      "training_seconds": 171.90214614400065,
+      "process_wall_seconds": 183.06238072499946,
+      "peak_process_rss_mib": 2611.33984375,
+      "checkpoint_sha256": "3a666f0edd07b0e1fd65205e90256882f30583919075bac82d0bdf5ee84320d8",
+      "raw_result_sha256": "1e724d2f5210d8cfacc63e2cb9fdfe7e3c6e479d2d2c412e6f6e3a41bfbfa831",
+      "raw_result_path": ".tmp/routeb-b3-configured-360d-cuda-repeat2-20261025/result.json"
+    },
+    "checkpoint_parameter_comparison_repeat_1_vs_repeat_2": {
+      "parameter_arrays": 82,
+      "parameter_count": 1283732,
+      "max_absolute_delta": 0.007279857061803341,
+      "rms_delta_over_20261024_baseline_parameter_rms": 0.0033407107158087116,
+      "bitwise_identical": false
+    },
+    "interpretation": "The two runs used the same current profile/training source hashes and seed, but their checkpoint parameters are not bitwise identical. The observed relative RMS delta is about 0.334% of the 2026-10-24 baseline parameter RMS. Code explicitly derives per-step sample selection and JAX noise seeds from the configured seed; this comparison does not identify the remaining cause, so deterministic checkpoint reproducibility is not established."
   }
 }
