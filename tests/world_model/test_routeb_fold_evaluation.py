@@ -103,6 +103,9 @@ def b3_training_report(fold, scope="routeb-fold-fresh", snapshot="9" * 40):
         "candidate": "B3", "dataset_hash": fold.dataset_hash,
         "fold_hash": fold.hash, "train_scope_id": scope,
         "reservation_label": "routeb-fold-fresh-b3",
+        "registration_receipt_sha256": "6" * 64,
+        "reservation_key": "7" * 64,
+        "reservation_token_sha256": "8" * 64,
         "repository_commit": "a" * 40, "source_code_sha256": "b" * 64,
         "train_artifact_sha256": "1" * 64,
         "hierarchy_tensor_sha256": "2" * 64, "scaler_sha256": "3" * 64,
@@ -124,8 +127,9 @@ def b3_rollout_runs(fold, train_report, anchors, forecasts, context_sha="c" * 64
                     forecast_seed=31):
     digest = train_report["report_sha256"]
     anchor_sha = _numeric_sha256(anchors, dtype="<i8")
-    return {
-        name: {
+    reports = {}
+    for name in ("E3", "E4"):
+        report = {
             "schema": "routeb.b3-rollout-run.v1", "status": "COMPLETED",
             "candidate": name,
             "rollout_mode": ("FROZEN_OBSERVED_SLOW_POSTERIOR" if name == "E3"
@@ -133,6 +137,9 @@ def b3_rollout_runs(fold, train_report, anchors, forecasts, context_sha="c" * 64
             "b3_train_report_sha256": digest,
             "dataset_hash": fold.dataset_hash, "fold_hash": fold.hash,
             "train_scope_id": train_report["train_scope_id"],
+            "registration_receipt_sha256": train_report["registration_receipt_sha256"],
+            "reservation_key": train_report["reservation_key"],
+            "reservation_token_sha256": train_report["reservation_token_sha256"],
             "train_artifact_sha256": train_report["train_artifact_sha256"],
             "checkpoint_sha256": train_report["checkpoint_sha256"],
             "configuration_sha256": train_report["configuration_sha256"],
@@ -154,8 +161,16 @@ def b3_rollout_runs(fold, train_report, anchors, forecasts, context_sha="c" * 64
             "max_attempts_per_bar": 20,
             "rejection_rate": 0.0,
         }
-        for name in ("E3", "E4")
-    }
+        canonical = json.dumps(report, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        report["report_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        reports[name] = report
+    return reports
+
+
+def reseal_b3_rollout(report):
+    report.pop("report_sha256", None)
+    canonical = json.dumps(report, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    report["report_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def test_fold_report_generates_e0_and_scores_e1_e2_on_same_future_labels():
@@ -231,6 +246,7 @@ def test_fold_b3_report_rejects_inconsistent_path_sampling_rejections():
     train_report = b3_training_report(fold)
     runs = b3_rollout_runs(fold, train_report, anchors, forecasts)
     runs["E4"]["rejected_bar_samples"] = 1
+    reseal_b3_rollout(runs["E4"])
     with pytest.raises(ValueError, match="invalid path-sampling rejection accounting"):
         build_fold_b3_predictive_report(
             replay, fold, forecasts, train_report, runs,
@@ -244,6 +260,7 @@ def test_fold_b3_report_rejects_inconsistent_path_sampling_rejections():
 
     runs = b3_rollout_runs(fold, train_report, anchors, forecasts)
     runs["E4"]["max_attempts_per_bar"] = 10
+    reseal_b3_rollout(runs["E4"])
     with pytest.raises(ValueError, match="same per-bar rejection budget"):
         build_fold_b3_predictive_report(
             replay, fold, forecasts, train_report, runs,
@@ -264,6 +281,7 @@ def test_fold_b3_report_rejects_unmatched_checkpoint_and_tampered_train_digest()
     train_report = b3_training_report(fold)
     runs = b3_rollout_runs(fold, train_report, anchors, forecasts)
     runs["E4"]["checkpoint_sha256"] = "f" * 64
+    reseal_b3_rollout(runs["E4"])
     common = dict(
         replay=replay, fold=fold, candidate_ohlcv_paths=forecasts,
         b3_training_report=train_report, candidate_rollout_runs=runs,

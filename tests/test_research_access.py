@@ -1071,15 +1071,26 @@ def test_fresh_fold_reader_reads_only_row_groups_after_atomic_scope_record(tmp_p
     with sqlite3.connect(registry.path) as connection:
         assert connection.execute("SELECT COUNT(*) FROM access").fetchone()[0] == 0
 
-    store = research_access.read_registered_fold_window(
+    store, reader_receipt = research_access.read_registered_fold_window(
         config, window, marker_sha256=source_identity["marker_sha256"],
         dataset_hash=source.snapshot_hash, required_start_ns=MINUTE_NS,
         required_end_ns=11 * MINUTE_NS, label="routeb-fold-synthetic-01",
         fold_sha256="f" * 64, repository_commit="c" * 40,
-        source_code_sha256="d" * 64,
+        source_code_sha256="d" * 64, return_receipt=True,
     )
 
     assert len(store.events) == 8
+    unsigned_receipt = {key: value for key, value in reader_receipt.items()
+                        if key != "receipt_sha256"}
+    assert reader_receipt["schema"] == "rles.routeb-fold-reader-receipt.v1"
+    assert reader_receipt["reservation_committed_before_decode"] is True
+    assert reader_receipt["read_scope"] == {
+        "start_ns": MINUTE_NS, "end_ns": 9 * MINUTE_NS, "includes_test": False}
+    assert reader_receipt["fold_sha256"] == "f" * 64
+    assert reader_receipt["reservation_token_sha256"]
+    assert reader_receipt["receipt_sha256"] == sha256(json.dumps(
+        unsigned_receipt, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")).hexdigest()
     assert observed["identity"]["fold_sha256"] == "f" * 64
     assert observed["identity"]["repository_commit"] == "c" * 40
     assert observed["identity"]["source_code_sha256"] == "d" * 64

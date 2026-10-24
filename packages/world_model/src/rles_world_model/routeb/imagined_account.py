@@ -1,7 +1,7 @@
 """Research-only deterministic, net-position simulated execution for OHLC bars.
 
 NOT a replacement for NautilusTrader; no hedge legs, liquidation, orderbook,
-funding settlement, mark/index basis, or historical margin rules. Economic
+mark/index basis, or historical margin rules. Economic
 certification remains BLOCKED until native differential testing passes.
 """
 from __future__ import annotations
@@ -52,6 +52,8 @@ class ImaginedAccount:
         self.qty=0.0;self.entry=0.0;self.pending:Pending|None=None
         self.fees_paid=0.0;self.max_abs_qty=max_abs_qty
         self.maker=float(fee_maker);self.taker=float(fee_taker)
+        self.funding_paid=0.0
+        self._funding_event_ids:set[str]=set()
         self.last_close:float|None=None
         self.last_bar_ns:int|None=None
         self.last_available_ns:int|None=None
@@ -78,6 +80,28 @@ class ImaginedAccount:
         was=self.pending is not None
         self.pending=None
         return was
+
+    def apply_funding_settlement(self,*,event_id:str,rate:float,mark_price:float,
+                                 settlement_ns:int)->float:
+        """Apply one observed linear-perpetual funding settlement.
+
+        The caller must first advance bars through the settlement timestamp;
+        this method deliberately accepts no inferred or future market data.
+        Repeated event IDs are rejected so an upstream replay cannot silently
+        double-charge a settlement.
+        """
+        if (not isinstance(event_id,str) or not event_id.strip()
+            or event_id in self._funding_event_ids
+            or not math.isfinite(rate) or not math.isfinite(mark_price)
+            or mark_price<=0 or type(settlement_ns) is not int
+            or self.last_available_ns is None
+            or settlement_ns>self.last_available_ns):
+            raise ValueError("invalid, duplicate, or not-yet-available funding settlement")
+        change=-self.qty*mark_price*rate
+        self.cash+=change
+        self.funding_paid-=change
+        self._funding_event_ids.add(event_id)
+        return change
 
     def _apply_fill(self,order:Pending,bar:Candle,price:float,*,maker:bool)->Fill:
         old=self.qty

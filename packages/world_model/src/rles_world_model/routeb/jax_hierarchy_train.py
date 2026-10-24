@@ -155,6 +155,7 @@ def train_hierarchical(*, tensors: HierarchyTensors, train_scope_id: str,
     reports: list[dict[str, float | int | str]] = []
     started = time.perf_counter()
     for step in range(start, cfg.steps):
+        update_started = time.perf_counter()
         selected = np.random.default_rng(cfg.seed + step).choice(
             len(windows.starts), size=cfg.batch_size, replace=False)
         params, opt_state, metrics = update(
@@ -164,6 +165,7 @@ def train_hierarchical(*, tensors: HierarchyTensors, train_scope_id: str,
             jnp.asarray(windows.minute_mask[selected]), jnp.asarray(slow_mask_h),
             jnp.asarray(slow_mask_d), jnp.asarray(windows.reset[selected]), cfg.seed + step + 1)
         scalar = {key: float(np.asarray(value)) for key, value in metrics.items()}
+        scalar["update_seconds"] = time.perf_counter() - update_started
         if not all(math.isfinite(value) for value in scalar.values()):
             raise RuntimeError("nonfinite B3 training metric; failed closed")
         if (step + 1) % cfg.report_interval == 0 or step + 1 == cfg.steps:
@@ -368,6 +370,33 @@ class StatefulHierarchicalF2Predictor:
         self._next_step = 0
         self._compiled: dict[tuple[bool, bool, bool], object] = {}
 
+    def reset_context(self, *, tensors: HierarchyTensors, forecast_seed: int,
+                      advance_slow_priors: bool) -> None:
+        """Reuse loaded parameters and compiled step shapes for another anchor."""
+        if (not isinstance(tensors, HierarchyTensors)
+                or type(forecast_seed) is not int or forecast_seed < 0
+                or type(advance_slow_priors) is not bool):
+            raise ValueError("invalid reusable B3 context or rollout identity")
+        if (tensors.minute_x.shape[0] != 1 or tensors.hour_x.shape[0] != 1
+                or tensors.day_x.shape[0] != 1):
+            raise ValueError("stateful B3 expects one observable anchor context")
+
+        def repeated(value: np.ndarray) -> np.ndarray:
+            return np.broadcast_to(value, (self._paths, *value.shape[1:]))
+
+        self._parameters, self._state = self._nj.pure(
+            self._model.initialize_rollout_f2)(
+                self._parameters,
+                self._jax.numpy.asarray(repeated(tensors.minute_x)),
+                self._jax.numpy.asarray(repeated(tensors.hour_x)),
+                self._jax.numpy.asarray(repeated(tensors.day_x)),
+                self._jax.numpy.asarray(repeated(tensors.hour_index)),
+                self._jax.numpy.asarray(repeated(tensors.day_index)),
+                seed=forecast_seed)
+        self._forecast_seed = forecast_seed
+        self._advance_slow_priors = advance_slow_priors
+        self._next_step = 0
+
     def _step_function(self, *, has_feedback: bool, hour_event: bool,
                        day_event: bool):
         key = has_feedback, hour_event, day_event
@@ -512,7 +541,9 @@ def generate_recursive_hierarchical_f2_paths(*, tensors: HierarchyTensors,
         day_scaler: TrainOnlyStandardizer,
         observed_prefix: tuple[Candle, ...], paths: int, forecast_seed: int = 811,
         advance_slow_priors: bool = True,
-        max_attempts_per_bar: int = 20) -> RecursiveHierarchicalOHLCVPaths:
+        stateful_predictor: StatefulHierarchicalF2Predictor | None = None,
+        max_attempts_per_bar: int = 20,
+        max_total_bar_attempts: int = 250_000) -> RecursiveHierarchicalOHLCVPaths:
     """Generate legal F2 OHLCV paths autoregressively with path-derived feedback.
 
     Each minute is forecast, sampled and decoded before the next conditional
@@ -542,14 +573,24 @@ def generate_recursive_hierarchical_f2_paths(*, tensors: HierarchyTensors,
         hour_available_at_ns=hour_times,
         day_available_at_ns=day_times)
 
-    predictor = create_stateful_hierarchical_f2_predictor(
-        tensors=tensors, train_scope_id=train_scope_id, dataset_id=dataset_id,
-        scaler_sha256=scaler_sha256, checkout=checkout, checkpoint=checkpoint,
-        model_config=model_config, training_config=training_config,
-        training_tensor_sha256=training_tensor_sha256,
-        inference_context_sha256=inference_context_sha256, paths=paths,
-        forecast_seed=forecast_seed,
-        advance_slow_priors=advance_slow_priors)
+    if stateful_predictor is None:
+        predictor = create_stateful_hierarchical_f2_predictor(
+            tensors=tensors, train_scope_id=train_scope_id, dataset_id=dataset_id,
+            scaler_sha256=scaler_sha256, checkout=checkout, checkpoint=checkpoint,
+            model_config=model_config, training_config=training_config,
+            training_tensor_sha256=training_tensor_sha256,
+            inference_context_sha256=inference_context_sha256, paths=paths,
+            forecast_seed=forecast_seed,
+            advance_slow_priors=advance_slow_priors)
+    else:
+        if not isinstance(stateful_predictor, StatefulHierarchicalF2Predictor):
+            raise ValueError("reusable B3 rollout requires a loaded stateful predictor")
+        if stateful_predictor._paths != paths:
+            raise ValueError("reusable B3 predictor path count differs from this request")
+        stateful_predictor.reset_context(
+            tensors=tensors, forecast_seed=forecast_seed,
+            advance_slow_priors=advance_slow_priors)
+        predictor = stateful_predictor
 
     return generate_recursive_hierarchical_ohlcv_paths(
         predictor=predictor, future_minute_decisions_ns=decisions,
@@ -559,4 +600,5 @@ def generate_recursive_hierarchical_f2_paths(*, tensors: HierarchyTensors,
         minute_scaler=minute_scaler, hour_scaler=hour_scaler,
         day_scaler=day_scaler, observed_prefix=observed_prefix,
         paths=paths, seed=forecast_seed,
-        max_attempts_per_bar=max_attempts_per_bar)
+        max_attempts_per_bar=max_attempts_per_bar,
+        max_total_bar_attempts=max_total_bar_attempts)

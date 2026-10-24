@@ -1,0 +1,91 @@
+{
+  "schema": "routeb.audit.b3-default-cpu-steady-profile.v1",
+  "status": "PASS_SYNTHETIC_RESOURCE_PROBE",
+  "created_at": "2026-10-24",
+  "environment": {
+    "os": "WSL2 Ubuntu 24.04",
+    "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2",
+    "python": "3.12.10",
+    "jax": "0.11.2",
+    "jaxlib": "0.11.2",
+    "device": "cpu:0",
+    "dreamerv3_upstream_sha": "e01491fad6434b2245a3b8ca201dd7faedcc458c",
+    "python_snapshot_sha256": "80194a587444bf4a11f06f6e273723e5754f2483"
+  },
+  "profile_script": "qa/world_model/routeb_b3_default_cpu_profile.py",
+  "profile_script_sha256": "b41978545b5f497ddef098c3bd99ac1a473b4625334778e6fe4af3990d8608d5",
+  "training_source": "packages/world_model/src/rles_world_model/routeb/jax_hierarchy_train.py",
+  "training_source_sha256": "9e3d20c61dd27ecefbd017f88b001baa6bcba1aa88004260663e9558a8d4cbe1",
+  "method": {
+    "data": "deterministic synthetic OHLCV; no real market data",
+    "model_dimensions_per_scale": {
+      "deter": 256,
+      "hidden": 128,
+      "stoch": 16,
+      "classes": 16,
+      "blocks": 8
+    },
+    "model_parameter_count": 1283732,
+    "optimizer_updates_per_duration": 5,
+    "batch_size": 1,
+    "window_length_minutes": 16,
+    "report_interval": 1,
+    "durations_run_in_separate_fresh_processes": true,
+    "process_timeout_seconds": 180,
+    "update_timing": "host wall time around JAX update and metric materialization; first update includes compilation",
+    "peak_rss_unit": "MiB (Linux ru_maxrss KiB converted by /1024)",
+    "validation_test_holdout_accessed": false,
+    "economic_certification": false
+  },
+  "results": [
+    {
+      "days": 30,
+      "minute_rows": 43199,
+      "hour_rows": 720,
+      "day_rows": 30,
+      "first_update_seconds_including_jit": 3.8357256290000805,
+      "steady_updates": 4,
+      "steady_update_seconds_mean": 0.14336988450003219,
+      "steady_update_seconds_median": 0.14434436800002004,
+      "steady_update_seconds_p95": 0.1470752153500598,
+      "train_call_seconds": 22.12815417999991,
+      "training_seconds_reported": 10.571096228999977,
+      "peak_rss_mib": 1065.0,
+      "raw_result": ".tmp/routeb-b3-default-5-update-20261024/b3_default_cpu_profile_30d_5updates.json",
+      "raw_result_sha256": "35a8e7fafb05922b4442e4ae146a981ab9610141e452ca558f1a008c5260a413"
+    },
+    {
+      "days": 90,
+      "minute_rows": 129599,
+      "hour_rows": 2160,
+      "day_rows": 90,
+      "first_update_seconds_including_jit": 4.223611078999966,
+      "steady_updates": 4,
+      "steady_update_seconds_mean": 0.41537113624997346,
+      "steady_update_seconds_median": 0.4103493804999516,
+      "steady_update_seconds_p95": 0.4398264753999001,
+      "train_call_seconds": 23.656331658,
+      "training_seconds_reported": 12.208450330000005,
+      "peak_rss_mib": 1191.8125,
+      "raw_result": ".tmp/routeb-b3-default-5-update-20261024/b3_default_cpu_profile_90d_5updates.json",
+      "raw_result_sha256": "838442378a4af21e0916a733e390f3b3b4d3f84c8d86bf91a287f79b1d80a26e"
+    },
+    {
+      "days": 360,
+      "minute_rows": 518399,
+      "hour_rows": 8640,
+      "day_rows": 360,
+      "first_update_seconds_including_jit": 5.357946326000047,
+      "steady_updates": 4,
+      "steady_update_seconds_mean": 1.5333723737500122,
+      "steady_update_seconds_median": 1.5275402314999837,
+      "steady_update_seconds_p95": 1.5557070524500773,
+      "train_call_seconds": 30.265284039000107,
+      "training_seconds_reported": 17.72768389099997,
+      "peak_rss_mib": 1710.543,
+      "raw_result": ".tmp/routeb-b3-default-5-update-20261024/b3_default_cpu_profile_360d_5updates.json",
+      "raw_result_sha256": "07904bf612489798f17213421faa9ca418e624c2896b046621e5687d5c4c6738"
+    }
+  ],
+  "interpretation": "The repository-default three-scale RSSM completed 5 CPU updates for 30/90/360 synthetic days. Steady update time and RSS both grew with slow-stream length; the 360-day run completed within the 180-second process timeout and at about 1.67 GiB peak RSS. This is still a short, batch-1, 16-minute-window synthetic profile: not convergence, sustained production throughput, GPU capacity, or real-market forecasting evidence. RB-09 remains open."
+}

@@ -1,0 +1,42 @@
+{
+  "schema": "routeb.audit.b3_posterior_prior_event_delay.v1",
+  "status": "PASS",
+  "scope": "synthetic_mechanism_only",
+  "date": "2026-10-25",
+  "repository_head": "bd199dd50c9c62b69a0f2bf2e0e550c007181212",
+  "workspace": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB",
+  "environment": {
+    "platform": "Ubuntu 24.04 / WSL2",
+    "python": "3.12.10",
+    "jax": "0.11.2 CPU",
+    "dreamerv3_commit": "e01491fad6434b2245a3b8ca201dd7faedcc458c"
+  },
+  "command": "PYTHONPATH=packages/world_model/src:packages/data/src:packages/contracts/src:packages/orchestrator/src:packages/research/src packages/world_model/environment/.venv-wsl/bin/python qa/world_model/routeb_b3_cpu_smoke.py --checkout .tmp/dreamerv3-route-b --output-dir .tmp/routeb-b3-rb02-smoke-20261025-attempt2",
+  "checks": {
+    "optimizer_updates": 2,
+    "parameter_count": 3208,
+    "first_f2_output_matches_anchor_posterior_head": true,
+    "posterior_vs_advanced_prior_max_abs_delta": 0.421875,
+    "slow_event_delays_minutes_tested": [0, 1, 2, 60],
+    "two_minute_delay_unchanged_until_event_effective": true,
+    "two_minute_event_availability_ns": 345720000000000,
+    "e3_e4_share_initial_head_and_diverge_after_slow_event": true,
+    "recursive_paths_remain_synthetic_and_ohlcv_reconciled": true
+  },
+  "raw_result": {
+    "path": ".tmp/routeb-b3-rb02-smoke-20261025-attempt2/result.json",
+    "sha256": "80246b05fde9c34c254e14373c8b7248fa99eb65a65284a829ec61318b0d4c15"
+  },
+  "source": {
+    "path": "qa/world_model/routeb_b3_cpu_smoke.py",
+    "sha256": "1fc0b449b591febc904941a12c4240ebb63fd51f2b8f6b60ae5d3f43b99e45f1"
+  },
+  "boundary": {
+    "real_market_data_read": false,
+    "train_validation_payload_read": false,
+    "test_holdout_read": false,
+    "real_open_loop_quality_or_calibration_proven": false,
+    "economic_certification": false,
+    "note": "This numerical smoke confirms time-coordinate and event-barrier mechanism behavior on a tiny synthetic model. It does not close RB-10 or RB-12; those still require one fresh authorized Train+Validation reservation on eligible never-consumed data."
+  }
+}

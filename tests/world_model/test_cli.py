@@ -316,6 +316,56 @@ def test_registered_fold_cli_rejects_existing_report_dir_before_data_reader(
     assert "already exists" in json.loads(capsys.readouterr().err)["detail"]
 
 
+def test_registered_b3_cli_rejects_per_anchor_budget_before_reader(
+    tmp_path, monkeypatch, capsys,
+):
+    monkeypatch.setattr(world_model_cli, "_registered_fold_baseline",
+                        lambda *args, **kwargs: (_ for _ in ()).throw(
+                            AssertionError("fresh Fold reader must not run")))
+    fold = {
+        "schema_version": "0.4.0", "dataset_hash": "a" * 64,
+        "feature_hash": "b" * 64,
+        "train": {"warmup_start_ns": 0, "score_start_ns": DAY_NS,
+                  "score_end_ns": 61 * DAY_NS},
+        "validation": {"warmup_start_ns": 60 * DAY_NS, "score_start_ns": 61 * DAY_NS,
+                       "score_end_ns": 76 * DAY_NS},
+        "test": {"warmup_start_ns": 75 * DAY_NS, "score_start_ns": 76 * DAY_NS,
+                 "score_end_ns": 91 * DAY_NS},
+        "purge_ns": 0, "embargo_ns": 0, "scaler_hash": None,
+    }
+    registered = {
+        "schema_version": "rles.world_model.registered_fold_baseline.v0",
+        "config": {"environment": {"market_path": "market.parquet",
+                                    "instrument": "ETHUSDT-PERP.SIM"}},
+        "fold": fold, "marker_sha256": "c" * 64,
+        "label": "routeb-fold-b3-budget-preflight", "instrument": "ETHUSDT-PERP.SIM",
+        "allow_legacy_isolated_snapshot": False,
+    }
+    registered_path = tmp_path / "registered-fold.json"
+    registered_path.write_text(json.dumps(registered), encoding="utf-8")
+    configuration_path = tmp_path / "b3-config.json"
+    configuration_path.write_text(json.dumps({
+        "model": {scale: {} for scale in ("minute", "hour", "day")},
+        "training": {},
+    }), encoding="utf-8")
+    output_dir = tmp_path / "must-not-be-created"
+
+    assert main([
+        "world-model", "run-registered-fold-b3",
+        "--registered-fold-config", str(registered_path),
+        "--b3-configuration", str(configuration_path),
+        "--worker-python", str(tmp_path / "worker-python"),
+        "--upstream-checkout", str(tmp_path / "upstream"),
+        "--output-dir", str(output_dir), "--forecast-paths", "1024",
+        "--horizons", "60", "--anchor-interval-minutes", "1000000",
+        "--max-attempts-per-bar", "100", "--max-total-bar-attempts", "100000000",
+    ]) == 2
+    error = json.loads(capsys.readouterr().err)
+    assert error["status"] == "BLOCKED"
+    assert "per-anchor or global rollout budget" in error["detail"]
+    assert not output_dir.exists()
+
+
 def test_prepare_fold_train_cli_uses_registered_reader_and_writes_bound_artifact(
     tmp_path, monkeypatch, capsys,
 ):

@@ -124,6 +124,8 @@ RecursivePredictor = Callable[
     [np.ndarray, np.ndarray, np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]
 ] | StatefulRecursivePredictor
 
+MAX_TOTAL_BAR_ATTEMPTS = 1_000_000
+
 
 def _ohlcv(bucket: ClosedBucket) -> tuple[float, float, float, float, float]:
     return bucket.open, bucket.high, bucket.low, bucket.close, bucket.volume
@@ -317,7 +319,8 @@ def generate_recursive_hierarchical_ohlcv_paths(*, predictor: RecursivePredictor
         hour_availability_delay_ns: int, day_availability_delay_ns: int,
         minute_scaler: TrainOnlyStandardizer, hour_scaler: TrainOnlyStandardizer,
         day_scaler: TrainOnlyStandardizer, observed_prefix: tuple[Candle, ...],
-        paths: int, seed: int, max_attempts_per_bar: int = 20
+        paths: int, seed: int, max_attempts_per_bar: int = 20,
+        max_total_bar_attempts: int = 250_000
         ) -> RecursiveHierarchicalOHLCVPaths:
     """Generate one legal minute bar at a time and feed it into the next forecast.
 
@@ -344,8 +347,14 @@ def generate_recursive_hierarchical_ohlcv_paths(*, predictor: RecursivePredictor
             or day_availability_delay_ns < 0
             or type(paths) is not int or paths < 1
             or type(seed) is not int or seed < 0
-            or type(max_attempts_per_bar) is not int or max_attempts_per_bar < 1):
+            or type(max_attempts_per_bar) is not int or max_attempts_per_bar < 1
+            or type(max_total_bar_attempts) is not int
+            or not 1 <= max_total_bar_attempts <= MAX_TOTAL_BAR_ATTEMPTS):
         raise ValueError("invalid recursive OHLCV generation inputs")
+    maximum_attempts = paths * len(decisions) * max_attempts_per_bar
+    if maximum_attempts > max_total_bar_attempts:
+        raise ValueError(
+            "recursive OHLCV worst-case bar attempts exceed the explicit total budget")
     anchor = observed_prefix[-1].ts_close_ns
     if observed_prefix[-1].available_at_ns >= decisions[0]:
         raise ValueError("recursive decisions must follow the observed availability barrier")

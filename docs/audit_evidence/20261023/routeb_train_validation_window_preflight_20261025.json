@@ -1,0 +1,33 @@
+{
+  "schema": "routeb.audit.train_validation_window_preflight.v1",
+  "status": "NO_ELIGIBLE_NEVER_CONSUMED_WINDOW",
+  "date": "2026-10-25",
+  "workspace": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB",
+  "environment": "Ubuntu 24.04 / WSL2",
+  "source_scope": "local 0.4.1 curated source metadata and complete markers only",
+  "registry": {
+    "database": ".artifacts/research-access.sqlite",
+    "sqlite_mode": "read-only",
+    "perpetual_market_access_rows": 123,
+    "formal_query_intents": 0
+  },
+  "inventory": {
+    "curated_market_snapshots": 44,
+    "source_schema_version": "0.4.1",
+    "source_event_bounds_read": true,
+    "market_payload_rows_read": false,
+    "test_or_holdout_payload_read": false
+  },
+  "fresh_fold_preflight": {
+    "minimum_contiguous_unconsumed_scope_days": 78,
+    "eligible_scopes": 0,
+    "largest_unconsumed_gap_minutes": 23040,
+    "largest_unconsumed_gap_days": 16,
+    "reservation_created": false
+  },
+  "boundary": {
+    "train_validation_authorization_used": false,
+    "test_or_holdout_read": false,
+    "interpretation": "All available local curated 0.4.1 event-time intervals were compared against the read-only project registry. No contiguous 78-day never-consumed scope was available; maximum uncovered interval was 16 days. A fresh authorized Train+Validation evaluation cannot proceed from the present local sources without new eligible data."
+  }
+}

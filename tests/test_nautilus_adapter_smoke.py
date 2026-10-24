@@ -289,12 +289,16 @@ def _perpetual_builder(submitter: NativePlanSubmitter, *, bar_execution: bool = 
     )
 
 
-def _perpetual_batch(number: int, *extra_events: tuple[str, dict]) -> VisibleBatch:
+def _perpetual_batch(number: int, *extra_events: tuple[str, dict],
+                     price: str = "1000.00",
+                     ohlc: tuple[str, str, str, str] | None = None) -> VisibleBatch:
     instrument = _perpetual_instrument()
     timestamp = number * 60_000_000_000
+    open_price, high_price, low_price, close_price = (
+        ohlc if ohlc is not None else (price, price, price, price))
     payloads = [("ohlcv_1m", {
-        "instrument": str(instrument.id), "open": "1000.00", "high": "1000.00",
-        "low": "1000.00", "close": "1000.00", "volume": "100.000",
+        "instrument": str(instrument.id), "open": open_price, "high": high_price,
+        "low": low_price, "close": close_price, "volume": "100.000",
     }), *extra_events]
     events = tuple(MarketEvent(
         event_id=f"perpetual-{number}-{index}", ts_event_ns=timestamp,
@@ -321,6 +325,270 @@ def _perpetual_plan(key: str, quantity: str) -> ExecutionPlan:
         cancel_policy=PendingOrderPolicy.NONE, action="SUBMIT", reason="funding golden",
         idempotency_key=key, delta_qty=Decimal(quantity),
     )
+
+
+@pytest.mark.parametrize(
+    ("entry_qty", "exit_qty", "exit_price"),
+    [("1.000", "-1.000", "1010.00"),
+     ("-1.000", "1.000", "990.00")],
+)
+def test_imagined_account_matches_native_perpetual_market_roundtrip_baseline(
+    entry_qty: str, exit_qty: str, exit_price: str,
+) -> None:
+    """Only certify the shared fixed-price, market-order, taker-fee subcase."""
+    from rles_world_model.routeb.imagined_account import ImaginedAccount
+    from rles_world_model.routeb.market import Candle, MINUTE_NS
+
+    instrument = _perpetual_instrument()
+    submitter = NativePlanSubmitter(
+        instrument_id=str(instrument.id), quantity_unit="ETH",
+        quantity_increment=Decimal("0.001"), execution_spec_hash="e" * 64,
+        latency_model_id="latency-1",
+    )
+    decoder = NativeMarketEventDecoder(
+        instrument=instrument,
+        bar_type=BarType.from_str(f"{instrument.id}-1-MINUTE-LAST-EXTERNAL"),
+    )
+    session = EngineSession(
+        build_native=_perpetual_builder(submitter), submit_plan=submitter,
+        decode_event=decoder,
+        facts_reader=NativeFactsReader(
+            account_id=AccountId.from_str("SIM-001"), instrument_id=instrument.id,
+            currency="USDT",
+        ),
+        contract_snapshot_factory=lambda **facts: SimpleNamespace(**facts),
+        certified_barrier_protocol=EngineSession.BARRIER_PROTOCOL,
+    )
+    account = ImaginedAccount(
+        initial_equity=100_000, fee_maker=0.001, fee_taker=0.001)
+
+    def candle(number: int, price: str) -> Candle:
+        value = float(price)
+        timestamp = number * MINUTE_NS
+        return Candle(timestamp, timestamp, str(instrument.id), value, value,
+                      value, value, 100.0)
+
+    session.open(SimpleNamespace(dataset_hash="a" * 64, fold_hash="b" * 64,
+                                 config_hash="c" * 64))
+    try:
+        session.bootstrap(
+            (_perpetual_batch(1),), decision_ts_ns=MINUTE_NS)
+        account.on_bar(candle(1, "1000.00"))
+
+        account.submit(target_qty=float(entry_qty), decision_ns=MINUTE_NS)
+        entered = session.advance(
+            _perpetual_plan("parity-entry", entry_qty),
+            batches=(_perpetual_batch(2),), next_decision_ts_ns=2 * MINUTE_NS,
+        )
+        simulated_entry = account.on_bar(candle(2, "1000.00"))
+        assert simulated_entry is not None
+        assert len(entered.fills) == 1
+        native_entry = entered.fills[0]
+        native_entry_sign = (Decimal("1") if native_entry["order_side"] == "BUY"
+                             else Decimal("-1"))
+        assert native_entry_sign * Decimal(native_entry["last_qty"]) == Decimal(entry_qty)
+        assert Decimal(native_entry["last_px"]) == Decimal("1000.00")
+        assert Money.from_str(native_entry["commission"]).as_decimal() == Decimal(
+            str(simulated_entry.fee))
+        assert Decimal(str(simulated_entry.signed_qty)) == Decimal(entry_qty)
+        assert Decimal(str(simulated_entry.price)) == Decimal("1000.00")
+        assert entered.equity == Decimal(str(account.equity))
+
+        account.submit(target_qty=0.0, decision_ns=2 * MINUTE_NS)
+        terminal = session.drain_and_close(
+            "force_flatten_with_cost", flatten_plan=_perpetual_plan(
+                "parity-exit", exit_qty),
+            drain_batches=(_perpetual_batch(3, price=exit_price),),
+            terminal_ts_ns=3 * MINUTE_NS,
+        )
+        simulated_exit = account.on_bar(candle(3, exit_price))
+        assert simulated_exit is not None
+        assert len(terminal.fills) == 2
+        native_exit = terminal.fills[-1]
+        native_exit_sign = (Decimal("1") if native_exit["order_side"] == "BUY"
+                            else Decimal("-1"))
+        assert native_exit_sign * Decimal(native_exit["last_qty"]) == Decimal(exit_qty)
+        assert Decimal(native_exit["last_px"]) == Decimal(exit_price)
+        assert Money.from_str(native_exit["commission"]).as_decimal() == Decimal(
+            str(simulated_exit.fee))
+        assert Decimal(str(simulated_exit.signed_qty)) == Decimal(exit_qty)
+        assert Decimal(str(simulated_exit.price)) == Decimal(exit_price)
+        assert terminal.equity == Decimal(str(account.equity))
+        assert terminal.equity == (Decimal("100007.99") if entry_qty.startswith("1")
+                                   else Decimal("100008.01"))
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize(
+    ("signed_qty", "limit_price", "bar_ohlc", "expected_side"),
+    [("1.000", "995.00", ("1000.00", "1005.00", "990.00", "1000.00"), "BUY"),
+     ("-1.000", "1005.00", ("1000.00", "1010.00", "995.00", "1000.00"), "SELL")],
+)
+def test_imagined_account_matches_native_perpetual_intrabar_limit_touch(
+    signed_qty: str, limit_price: str, bar_ohlc: tuple[str, str, str, str],
+    expected_side: str,
+) -> None:
+    """Compare only a resting limit touched after the next bar opens."""
+    from dataclasses import replace
+    from rles_world_model.routeb.imagined_account import ImaginedAccount
+    from rles_world_model.routeb.market import Candle, MINUTE_NS
+
+    instrument = _perpetual_instrument()
+    rules = LimitInstrumentRules(
+        instrument_id=str(instrument.id), price_tick=Decimal("0.01"),
+        qty_step=Decimal("0.001"), min_qty=Decimal("0.001"),
+        min_notional=Decimal("10"),
+    )
+    submitter = NativeLimitSubmitter(rules=rules, quantity_unit="ETH")
+    decoder = NativeMarketEventDecoder(
+        instrument=instrument,
+        bar_type=BarType.from_str(f"{instrument.id}-1-MINUTE-LAST-EXTERNAL"),
+    )
+    session = EngineSession(
+        build_native=_perpetual_builder(submitter),
+        submit_plan=lambda _engine, _plan: None,
+        decode_event=decoder,
+        facts_reader=NativeFactsReader(
+            account_id=AccountId.from_str("SIM-001"), instrument_id=instrument.id,
+            currency="USDT",
+        ),
+        contract_snapshot_factory=lambda **facts: SimpleNamespace(**facts),
+        certified_barrier_protocol=EngineSession.BARRIER_PROTOCOL,
+        submit_limit_intent=lambda engine, intent, timestamp: submitter(
+            engine, intent, decision_ts_ns=timestamp),
+    )
+    account = ImaginedAccount(
+        initial_equity=100_000, fee_maker=0.001, fee_taker=0.001)
+
+    def candle(number: int, ohlc: tuple[str, str, str, str]) -> Candle:
+        open_, high, low, close = (float(value) for value in ohlc)
+        timestamp = number * MINUTE_NS
+        return Candle(timestamp, timestamp, str(instrument.id), open_, high, low,
+                      close, 100.0)
+
+    session.open(SimpleNamespace(dataset_hash="d" * 64, fold_hash="e" * 64,
+                                 config_hash="f" * 64))
+    try:
+        session.bootstrap((_perpetual_batch(1),), decision_ts_ns=MINUTE_NS)
+        account.on_bar(candle(1, ("1000.00",) * 4))
+        intent = LimitOrderIntent(
+            intent_id="imagined-native-maker-parity", instrument_id=str(instrument.id),
+            kind=OrderIntentKind.LIMIT, signed_qty=Decimal(signed_qty),
+            decision_ts_ns=MINUTE_NS, effective_ts_ns=2 * MINUTE_NS,
+            limit_price=Decimal(limit_price), pending_id="imagined-native-maker-pending",
+        )
+        account.submit(target_qty=float(signed_qty), decision_ns=MINUTE_NS,
+                       kind="limit", limit_price=float(limit_price), delay_ns=MINUTE_NS)
+        pending = session.advance_limit(
+            intent, batches=(_perpetual_batch(2),), next_decision_ts_ns=2 * MINUTE_NS)
+        account.on_bar(candle(2, ("1000.00",) * 4))
+        assert pending.fills == ()
+
+        touched = session.advance(
+            replace(_perpetual_plan("maker-touch-observe", "1.000"),
+                    action="NOOP", delta_qty=Decimal(0)),
+            batches=(_perpetual_batch(3, ohlc=bar_ohlc),),
+            next_decision_ts_ns=3 * MINUTE_NS,
+        )
+        simulated_fill = account.on_bar(candle(3, bar_ohlc))
+        assert simulated_fill is not None and simulated_fill.maker
+        assert len(touched.fills) == 1
+        native_fill = touched.fills[0]
+        assert native_fill["order_side"] == expected_side
+        assert Decimal(native_fill["last_qty"]) == abs(Decimal(signed_qty))
+        assert Decimal(native_fill["last_px"]) == Decimal(limit_price)
+        assert float(Money.from_str(native_fill["commission"]).as_decimal()) == pytest.approx(
+            simulated_fill.fee, rel=0, abs=1e-8)
+        assert Decimal(str(simulated_fill.price)) == Decimal(limit_price)
+        assert float(touched.equity) == pytest.approx(account.equity, rel=0, abs=1e-8)
+    finally:
+        session.close()
+
+
+def test_imagined_account_matches_native_limit_cancel_before_later_touch() -> None:
+    """A canceled resting order must remain unfilled when a later bar touches it."""
+    from dataclasses import replace
+    from rles_world_model.routeb.imagined_account import ImaginedAccount
+    from rles_world_model.routeb.market import Candle, MINUTE_NS
+
+    instrument = _perpetual_instrument()
+    submitter = NativeLimitSubmitter(rules=LimitInstrumentRules(
+        instrument_id=str(instrument.id), price_tick=Decimal("0.01"),
+        qty_step=Decimal("0.001"), min_qty=Decimal("0.001"), min_notional=Decimal("10"),
+    ), quantity_unit="ETH")
+    decoder = NativeMarketEventDecoder(
+        instrument=instrument,
+        bar_type=BarType.from_str(f"{instrument.id}-1-MINUTE-LAST-EXTERNAL"),
+    )
+    session = EngineSession(
+        build_native=_perpetual_builder(submitter), submit_plan=lambda _engine, _plan: None,
+        decode_event=decoder,
+        facts_reader=NativeFactsReader(
+            account_id=AccountId.from_str("SIM-001"), instrument_id=instrument.id,
+            currency="USDT",
+        ),
+        contract_snapshot_factory=lambda **facts: SimpleNamespace(**facts),
+        certified_barrier_protocol=EngineSession.BARRIER_PROTOCOL,
+        submit_limit_intent=lambda engine, intent, timestamp: submitter(
+            engine, intent, decision_ts_ns=timestamp),
+    )
+    account = ImaginedAccount(initial_equity=100_000, fee_maker=0.001, fee_taker=0.001)
+
+    def candle(number: int, ohlc: tuple[str, str, str, str]) -> Candle:
+        open_, high, low, close = (float(value) for value in ohlc)
+        timestamp = number * MINUTE_NS
+        return Candle(timestamp, timestamp, str(instrument.id), open_, high, low,
+                      close, 100.0)
+
+    session.open(SimpleNamespace(dataset_hash="d" * 64, fold_hash="e" * 64,
+                                 config_hash="f" * 64))
+    try:
+        session.bootstrap((_perpetual_batch(1),), decision_ts_ns=MINUTE_NS)
+        account.on_bar(candle(1, ("1000.00",) * 4))
+        order = LimitOrderIntent(
+            intent_id="cancel-parity-limit", instrument_id=str(instrument.id),
+            kind=OrderIntentKind.LIMIT, signed_qty=Decimal("1.000"),
+            decision_ts_ns=MINUTE_NS, effective_ts_ns=MINUTE_NS + 1,
+            limit_price=Decimal("995.00"), pending_id="cancel-parity-pending",
+        )
+        account.submit(target_qty=1.0, decision_ns=MINUTE_NS, kind="limit",
+                       limit_price=995.0, delay_ns=1)
+        pending = session.advance_limit(
+            order, batches=(_perpetual_batch(2),), next_decision_ts_ns=2 * MINUTE_NS,
+        )
+        account.on_bar(candle(2, ("1000.00",) * 4))
+        assert pending.fills == ()
+
+        account.cancel()
+        cancel = LimitOrderIntent(
+            intent_id="cancel-parity-action", instrument_id=str(instrument.id),
+            kind=OrderIntentKind.CANCEL, signed_qty=Decimal(0),
+            decision_ts_ns=2 * MINUTE_NS, effective_ts_ns=3 * MINUTE_NS,
+            pending_id="cancel-parity-pending", cancel_id="cancel-parity-event",
+        )
+        canceled = session.advance_limit(
+            cancel, batches=(_perpetual_batch(3),), next_decision_ts_ns=3 * MINUTE_NS,
+        )
+        account.on_bar(candle(3, ("1000.00",) * 4))
+        assert canceled.all_orders[0]["status"] == "CANCELED"
+        assert canceled.fills == ()
+
+        touched = session.advance(
+            replace(_perpetual_plan("cancel-parity-touch", "1.000"),
+                    action="NOOP", delta_qty=Decimal(0)),
+            batches=(_perpetual_batch(
+                4, ohlc=("1000.00", "1005.00", "990.00", "1000.00"),
+            ),),
+            next_decision_ts_ns=4 * MINUTE_NS,
+        )
+        assert account.on_bar(candle(4, ("1000.00", "1005.00", "990.00", "1000.00"))) is None
+        assert touched.fills == ()
+        assert touched.positions == ()
+        assert touched.equity == Decimal("100000.00")
+        assert touched.equity == Decimal(str(account.equity))
+    finally:
+        session.close()
 
 
 @pytest.mark.parametrize("entry_qty,exit_qty", [("1.0000", "-1.0000"), ("-1.0000", "1.0000")])
@@ -537,6 +805,8 @@ def test_native_perpetual_funding_rate_settles_once_in_account(
 ) -> None:
     from dataclasses import replace
     from nautilus_trader.model import BarType
+    from rles_world_model.routeb.imagined_account import ImaginedAccount
+    from rles_world_model.routeb.market import Candle, MINUTE_NS
 
     instrument = _perpetual_instrument()
     submitter = NativePlanSubmitter(
@@ -558,12 +828,25 @@ def test_native_perpetual_funding_rate_settles_once_in_account(
     )
     session.open(SimpleNamespace(dataset_hash="a" * 64, fold_hash="b" * 64,
                                  config_hash="c" * 64))
+    imagined = ImaginedAccount(
+        initial_equity=100_000, fee_maker=0.001, fee_taker=0.001)
+
+    def imagined_bar(number: int) -> Candle:
+        timestamp = number * MINUTE_NS
+        return Candle(timestamp, timestamp, str(instrument.id), 1000.0, 1000.0,
+                      1000.0, 1000.0, 100.0)
+
     try:
         initial = session.bootstrap((_perpetual_batch(1),), decision_ts_ns=60_000_000_000)
+        imagined.on_bar(imagined_bar(1))
         entered = session.advance(
             _perpetual_plan("funding-entry", quantity),
             batches=(_perpetual_batch(2),), next_decision_ts_ns=120_000_000_000,
         )
+        imagined.submit(target_qty=float(Decimal(quantity)), decision_ns=MINUTE_NS)
+        imagined_entry = imagined.on_bar(imagined_bar(2))
+        assert imagined_entry is not None
+        assert Decimal(str(imagined.equity)) == entered.equity
         assert len(entered.positions) == len(entered.fills) == 1
         funding_event_ns = 180_000_000_000
         settlement_ns = 240_000_000_000
@@ -577,6 +860,12 @@ def test_native_perpetual_funding_rate_settles_once_in_account(
             wait, batches=(_perpetual_batch(3, mark, rate),),
             next_decision_ts_ns=funding_event_ns,
         )
+        imagined.on_bar(imagined_bar(3))
+        with pytest.raises(ValueError, match="not-yet-available"):
+            imagined.apply_funding_settlement(
+                event_id="funding-too-early", rate=0.001, mark_price=1000.0,
+                settlement_ns=settlement_ns,
+            )
         settlement_event = ("funding_settlement", {
             "instrument": str(instrument.id), "rate": "0.001",
             "interval_minutes": 480, "settlement_ns": settlement_ns,
@@ -587,6 +876,17 @@ def test_native_perpetual_funding_rate_settles_once_in_account(
             batches=(_perpetual_batch(4, settlement_event),),
             next_decision_ts_ns=settlement_ns,
         )
+        imagined.on_bar(imagined_bar(4))
+        imagined_funding = imagined.apply_funding_settlement(
+            event_id="funding-240s", rate=0.001, mark_price=1000.0,
+            settlement_ns=settlement_ns,
+        )
+        assert Decimal(str(imagined_funding)) == funding_change
+        with pytest.raises(ValueError, match="duplicate"):
+            imagined.apply_funding_settlement(
+                event_id="funding-240s", rate=0.001, mark_price=1000.0,
+                settlement_ns=settlement_ns,
+            )
         settled = session.advance(
             replace(wait, decision_id="funding-settled", plan_id="funding-settled",
                     idempotency_key="funding-settled"),
@@ -598,6 +898,7 @@ def test_native_perpetual_funding_rate_settles_once_in_account(
         assert Money.from_str(adjustment["pnl_change"]).as_decimal() == funding_change
         assert settled.equity == initial.equity - Decimal("1.00") + funding_change
         assert settled.equity == equity
+        assert Decimal(str(imagined.equity)) == settled.equity
         assert adjustment["ts_event"] == settlement_ns
         assert settled.margins == entered.margins
         if compact_history:

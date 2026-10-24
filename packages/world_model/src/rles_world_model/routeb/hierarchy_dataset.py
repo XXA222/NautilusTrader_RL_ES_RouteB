@@ -216,6 +216,85 @@ def build_train_hierarchy(replay: MarketSequence, *, burn_in: int,
     ), scalers
 
 
+def build_inference_hierarchy(replay: MarketSequence, *,
+        scalers: HierarchyScalers, decision_ts_ns: int
+        ) -> tuple[HierarchyTensors, tuple[Candle, ...]]:
+    """Build one causal B3 context at an authorized Validation decision.
+
+    The input sequence must already come from the registered Train+Validation
+    reader. This function does not authorize access: it rejects Test/Holdout
+    scopes, clips to bars both closed and available by ``decision_ts_ns``,
+    uses a fixed 4,320-minute lookback with enough complete slow-scale history,
+    and applies (but never fits) the frozen Train scalers.
+    """
+    if (not isinstance(replay, MarketSequence)
+            or replay.scope not in {"validation", "inference_visible"}
+            or not isinstance(scalers, HierarchyScalers)
+            or type(decision_ts_ns) is not int or decision_ts_ns <= 0
+            or decision_ts_ns % MINUTE_NS):
+        raise ValueError("B3 inference requires an authorized visible sequence and aligned decision")
+    if any(scaler.dataset_id != replay.dataset_id or scaler.train_scope != "train"
+           for scaler in (scalers.minute, scalers.hour, scalers.day)):
+        raise ValueError("B3 inference must reuse matching frozen Train scalers")
+
+    visible = replay.as_of(decision_ts_ns)
+    if not visible or visible[-1].ts_close_ns != decision_ts_ns:
+        raise ValueError("authorized inference sequence must contain the decision-time candle")
+    # Fixed length keeps every anchor on one JAX context shape. Starting three
+    # complete UTC days back at the same minute-of-day leaves at least two full
+    # completed daily buckets while allowing the current day to remain partial.
+    context_bars = 3 * 1440
+    context_start = decision_ts_ns - (context_bars - 1) * MINUTE_NS
+    first_index = next((index for index, bar in enumerate(visible)
+                        if bar.ts_close_ns >= context_start), None)
+    if first_index is None or visible[first_index].ts_close_ns != context_start:
+        raise ValueError("inference context lacks a complete UTC-aligned three-day prefix")
+    bars = visible[first_index:]
+    if len(bars) != context_bars:
+        raise ValueError("B3 inference context requires the complete fixed 4,320-bar lookback")
+
+    minute_coords = OHLCVCodec.encode(bars[1:], previous_close=bars[0].close)
+    clock = MultiScaleClock(bars)
+    hourly = _bucket_candles(clock.buckets(60, as_of_ns=decision_ts_ns))
+    daily = _bucket_candles(clock.buckets(1440, as_of_ns=decision_ts_ns))
+    if len(hourly) < 2 or len(daily) < 2:
+        raise ValueError("B3 inference context needs two complete bars at every slow scale")
+    hour_coords = _coords(hourly)
+    day_coords = _coords(daily)
+    plan = build_plan(bars)
+    hour_index = np.asarray(plan.hour_last_visible[1:], dtype=np.int32)
+    day_index = np.asarray(plan.day_last_visible[1:], dtype=np.int32)
+    minute_available = np.asarray([bar.available_at_ns for bar in bars[1:]],
+                                  dtype=np.int64)
+    for indices, availability, name in (
+            (hour_index, plan.hour_available_at, "hour"),
+            (day_index, plan.day_available_at, "day")):
+        if (indices.shape != minute_available.shape or (indices < -1).any()
+                or (indices >= len(availability)).any()
+                or (np.diff(indices) < 0).any()):
+            raise ValueError(f"{name} inference visibility map is invalid")
+        selected = indices >= 0
+        if selected.any() and np.any(availability[indices[selected]]
+                                     > minute_available[selected]):
+            raise ValueError(f"{name} inference context contains a future slow bar")
+
+    tensors = HierarchyTensors(
+        scalers.minute.transform(minute_coords)[None],
+        scalers.hour.transform(hour_coords)[None],
+        scalers.day.transform(day_coords)[None],
+        hour_index[None], day_index[None],
+        np.zeros((1, len(minute_coords)), dtype=np.float32),
+        np.zeros((1, len(hourly)), dtype=np.float32),
+        np.zeros((1, len(daily)), dtype=np.float32),
+        minute_available,
+        np.asarray(plan.hour_available_at, dtype=np.int64),
+        np.asarray(plan.day_available_at, dtype=np.int64),
+        np.asarray([bar.ts_close_ns for bar in hourly], dtype=np.int64),
+        np.asarray([bar.ts_close_ns for bar in daily], dtype=np.int64),
+    )
+    return tensors, bars
+
+
 def make_hierarchy_windows(tensors: HierarchyTensors, *, length: int,
                            burn_in: int, stride: int) -> HierarchyWindowBatch:
     """Window only minute inputs; slow streams remain shared and causally indexed."""

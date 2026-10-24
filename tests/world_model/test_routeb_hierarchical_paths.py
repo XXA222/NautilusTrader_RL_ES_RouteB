@@ -4,12 +4,19 @@ import numpy as np
 import pytest
 
 from rles_world_model.routeb.codec import TrainOnlyStandardizer
-from rles_world_model.routeb.hierarchy_dataset import build_train_hierarchy
+from rles_world_model.routeb.hierarchy_dataset import (
+    build_inference_hierarchy, build_train_hierarchy,
+)
 from rles_world_model.routeb.hierarchical_paths import (
     PathSamplingError,
     align_bucket_feedback,
     generate_recursive_hierarchical_ohlcv_paths,
     sample_hierarchical_ohlcv_paths,
+)
+from rles_world_model.routeb.hierarchy_artifacts import (
+    export_hierarchical_inference_artifact,
+    hierarchy_scaler_sha256,
+    load_hierarchical_inference_artifact,
 )
 from rles_world_model.routeb.jax_hierarchy_train import (
     HierarchicalModelConfig,
@@ -215,6 +222,75 @@ def test_recursive_path_generation_rejects_slow_event_without_closed_bucket():
             hour_availability_delay_ns=0, day_availability_delay_ns=0,
             minute_scaler=_scaler(), hour_scaler=_scaler(), day_scaler=_scaler(),
             observed_prefix=_bars(30), paths=1, seed=17)
+
+
+def test_recursive_path_generation_enforces_total_attempt_budget_before_forecast():
+    calls = []
+
+    def predictor(prefix, minute_feedback, hour_feedback, day_feedback):
+        calls.append(len(prefix))
+        mean = np.zeros((minute_feedback.shape[0], 5), dtype=np.float64)
+        return mean, np.full_like(mean, 0.001)
+
+    with pytest.raises(ValueError, match="worst-case bar attempts exceed"):
+        generate_recursive_hierarchical_ohlcv_paths(
+            predictor=predictor,
+            future_minute_decisions_ns=np.arange(31, 34, dtype=np.int64) * MINUTE_NS,
+            future_hour_events=(False,) * 3, future_day_events=(False,) * 3,
+            hour_availability_delay_ns=0, day_availability_delay_ns=0,
+            minute_scaler=_scaler(), hour_scaler=_scaler(), day_scaler=_scaler(),
+            observed_prefix=_bars(30), paths=2, seed=7,
+            max_attempts_per_bar=20, max_total_bar_attempts=119,
+        )
+    assert calls == []
+
+
+def test_inference_hierarchy_uses_frozen_train_scalers_and_clips_future_tail(tmp_path):
+    all_bars = _bars(9_000)
+    train = MarketSequence(all_bars[:8_640], "synthetic-inference", "train")
+    _, scalers = build_train_hierarchy(
+        train, burn_in=2, score_start_ns=2 * MINUTE_NS,
+        score_end_ns=8_640 * MINUTE_NS + MINUTE_NS)
+    visible = MarketSequence(
+        all_bars, "synthetic-inference", "inference_visible")
+    decision = 7_000 * MINUTE_NS
+
+    tensors, observed = build_inference_hierarchy(
+        visible, scalers=scalers, decision_ts_ns=decision)
+
+    assert observed[0].ts_close_ns == 2_681 * MINUTE_NS
+    assert observed[-1].ts_close_ns == decision
+    assert tensors.minute_x.shape == (1, 4_319, 5)
+    assert tensors.minute_available_at[-1] == decision
+    assert tensors.hour_x.shape[1] >= 2
+    assert tensors.day_x.shape[1] == 2
+    for indices, availability in (
+            (tensors.hour_index[0], tensors.hour_available_at),
+            (tensors.day_index[0], tensors.day_available_at)):
+        visible_indices = indices >= 0
+        assert np.all(availability[indices[visible_indices]]
+                      <= tensors.minute_available_at[visible_indices])
+    assert not tensors.minute_mask.any()
+
+    artifact, metadata = export_hierarchical_inference_artifact(
+        tmp_path / "anchor.npz", tensors=tensors, scalers=scalers,
+        observed_prefix=observed, train_scope_id="routeb-fold-synthetic",
+        fold_sha256="a" * 64, anchor_ts_ns=decision)
+    loaded, loaded_scalers, loaded_observed, loaded_metadata = (
+        load_hierarchical_inference_artifact(
+            artifact, expected_scope="routeb-fold-synthetic",
+            expected_fold_sha256="a" * 64, expected_anchor_ts_ns=decision,
+            expected_scaler_sha256=hierarchy_scaler_sha256(scalers)))
+    assert loaded_metadata == metadata
+    assert loaded_observed == observed
+    assert hierarchy_scaler_sha256(loaded_scalers) == hierarchy_scaler_sha256(scalers)
+    np.testing.assert_array_equal(loaded.minute_x, tensors.minute_x)
+
+    holdout = MarketSequence(
+        all_bars, "synthetic-inference", "holdout")
+    with pytest.raises(ValueError, match="authorized visible sequence"):
+        build_inference_hierarchy(
+            holdout, scalers=scalers, decision_ts_ns=decision)
 
 
 def test_recursive_f2_wrapper_initializes_stateful_predictor_once(monkeypatch):

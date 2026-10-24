@@ -1,0 +1,101 @@
+{
+  "schema": "routeb.audit.imagined_native_market_roundtrip.v1",
+  "status": "PASS",
+  "scope": "synthetic_native_engine_subcase_only",
+  "date": "2026-10-25",
+  "repository_head": "bd199dd50c9c62b69a0f2bf2e0e550c007181212",
+  "workspace": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB",
+  "environment": {
+    "platform": "Ubuntu 24.04 / WSL2",
+    "project_runtime": "CPython 3.14.7",
+    "nautilus_trader": "2.0.0rc6",
+    "fee_model": "MakerTakerFeeModel(maker=0.001, taker=0.001)",
+    "account": "NETTING margin SIM, USDT 100000"
+  },
+  "test": "tests/test_nautilus_adapter_smoke.py::test_imagined_account_matches_native_perpetual_market_roundtrip_baseline",
+  "cases": [
+    {
+      "position": "long",
+      "entry": {"quantity": "1.000 ETH", "price": "1000.00 USDT", "fee": "1.000 USDT"},
+      "exit": {"quantity": "-1.000 ETH", "price": "1010.00 USDT", "fee": "1.010 USDT"},
+      "native_final_equity_usdt": "100007.99",
+      "imagined_final_equity_usdt": "100007.99"
+    },
+    {
+      "position": "short",
+      "entry": {"quantity": "-1.000 ETH", "price": "1000.00 USDT", "fee": "1.000 USDT"},
+      "exit": {"quantity": "1.000 ETH", "price": "990.00 USDT", "fee": "0.990 USDT"},
+      "native_final_equity_usdt": "100008.01",
+      "imagined_final_equity_usdt": "100008.01"
+    }
+  ],
+  "limit_touch_cases": [
+    {
+      "position": "long maker limit",
+      "bar_ohlc_usdt": {"open": "1000.00", "high": "1005.00", "low": "990.00", "close": "1000.00"},
+      "limit_price_usdt": "995.00",
+      "native_and_imagined_fill": {"side": "BUY", "quantity_eth": "1.000", "price_usdt": "995.00", "commission_usdt": "0.99500000"},
+      "equity_match_tolerance_usdt": "0.00000001"
+    },
+    {
+      "position": "short maker limit",
+      "bar_ohlc_usdt": {"open": "1000.00", "high": "1010.00", "low": "995.00", "close": "1000.00"},
+      "limit_price_usdt": "1005.00",
+      "native_and_imagined_fill": {"side": "SELL", "quantity_eth": "1.000", "price_usdt": "1005.00", "commission_usdt": "1.00500000"},
+      "equity_match_tolerance_usdt": "0.00000001"
+    }
+  ],
+  "cancel_before_later_touch_case": {
+    "position": "long maker limit canceled before subsequent bar touches",
+    "bar_ohlc_usdt": {
+      "resting_order_bar": ["1000.00", "1000.00", "1000.00", "1000.00"],
+      "later_touch_bar": ["1000.00", "1005.00", "990.00", "1000.00"]
+    },
+    "limit_price_usdt": "995.00",
+    "native_cancel_status": "CANCELED",
+    "native_fill_count_after_cancel": 0,
+    "imagined_fill_count_after_cancel": 0,
+    "native_and_imagined_final_equity_usdt": "100000.00"
+  },
+  "funding_settlement_cases": [
+    {
+      "positions": ["long", "short"],
+      "history_modes": ["full", "compact"],
+      "mark_price_usdt": "1000.00",
+      "funding_rate": "0.001",
+      "settlement_ns": 240000000000,
+      "native_and_imagined_funding_change_usdt": {"long": "-1.00", "short": "1.00"},
+      "native_and_imagined_equity_usdt": {"long": "99998.00", "short": "100000.00"},
+      "duplicate_event_rejected": true,
+      "not_yet_available_event_rejected": true
+    }
+  ],
+  "verification": {
+    "focused_market_order_pytest": "2 passed, 37 deselected",
+    "focused_cancel_parity_pytest": "1 passed, 38 deselected",
+    "focused_funding_native_differential_pytest": "4 passed, 35 deselected",
+    "full_native_smoke_file_pytest": "39 passed",
+    "native_limit_submitter_pytest": "13 passed",
+    "ruff": "passed",
+    "full_file_junit_xml": ".tmp/routeb-rb11-parity-20261025/full-file-funding-pytest.xml",
+    "full_file_junit_xml_sha256": "2d2d75b46c545c14d974ac98c0ee1a18b10919c93f0b52ba6c1134537afd5ec7",
+    "native_limit_submitter_junit_xml": ".tmp/routeb-rb11-parity-20261025/native-limit-submit-pytest.xml",
+    "native_limit_submitter_junit_xml_sha256": "c95f00d81f3ef8567c5307d28245ed63b4fac32f3462d611008629795f7fb508",
+    "test_source_sha256": "bb12b4e1fcb39f969aea8b5e901acde8733429808c502b001135f46492b6090d",
+    "imagined_account_source_sha256": "04ee197bb545c8c9132459eeb0828c668258995b308b9beb62821f20a4abc596",
+    "market_order_only_test_source_sha256": "52b280f14394eb2096dfca281e385e6bc56517cf393bfb9551a168edd4fe8abb",
+    "market_order_only_junit_sha256": "8802d28fc6635993a6eea9d43327d086f30b93e67ae4ad0ceeb4dd25f2ff96be"
+  },
+  "boundary": {
+    "market_data": "synthetic fixed-price OHLCV only",
+    "test_holdout_read": false,
+    "real_market_account_data_read": false,
+    "maker_limit_partial_fill_parity_proven": false,
+    "cancel_race_or_in_flight_fill_parity_proven": false,
+    "single_linear_funding_settlement_parity_proven": true,
+    "funding_schedule_accrual_or_repeated_settlement_parity_proven": false,
+    "funding_margin_tiers_liquidation_parity_proven": false,
+    "economic_certification": false,
+    "note": "The limit comparison tolerates only 1e-8 USDT for IEEE-754 representation against the native fixed-point money amount; order side, quantity, price and bar/event barrier are exact. The cancellation case proves only an acknowledged cancel before a later touch, not cancel races or in-flight fills. The funding test checks one observed linear settlement at a fixed mark, long/short signs, availability gating, duplicate rejection, and full/compact history; it does not establish rate schedules, repeated accrual, mark/index basis, exchange-specific rounding, or financing economics. These tests close synthetic market, intrabar limit-touch, cancel-before-later-touch, and one funding-settlement subcase only. ImaginedAccount remains research-only and economics_eligible=false; RB-11 requires broader native parity before any economic use."
+  }
+}

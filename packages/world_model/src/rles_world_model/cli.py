@@ -9,6 +9,7 @@ import math
 from pathlib import Path
 import subprocess
 import sys
+from typing import Literal, overload
 
 from rles_data.core import DAY_NS, MINUTE_NS, DataError, FoldManifest, Window, routeb_workspace_root
 from rles_data.io import strict_json_loads
@@ -23,7 +24,10 @@ from .routeb.sequences import load_worker_batch
 from .routeb.jax_train import SNAPSHOT_SHA
 from .routeb.jax_model import PINNED_UPSTREAM
 from .routeb.fold_experiment import run_fold_experiment
-from .routeb.fold_protocol import validate_fold_experiment_protocol
+from .routeb.fold_b3_executor import run_fold_b3_experiment
+from .routeb.fold_protocol import (
+    validate_fold_experiment_protocol, validation_anchor_timestamps,
+)
 from .upstream import inspect_upstream
 
 
@@ -156,9 +160,30 @@ def _routeb_code_identity(root: Path | None = None) -> dict[str, str]:
     return {"repository_commit": commit, "source_code_sha256": fingerprint.hexdigest()}
 
 
-def _registered_fold_baseline(path: str, code_identity: dict[str, str]
-                               ) -> tuple[dict, FoldManifest, MarketReplay]:
-    payload = _read_json(path)
+@overload
+def _registered_fold_baseline(path: str | dict, code_identity: dict[str, str], *,
+                              return_reader_receipt: Literal[False] = False
+                              ) -> tuple[dict, FoldManifest, MarketReplay]: ...
+
+
+@overload
+def _registered_fold_baseline(path: str | dict, code_identity: dict[str, str], *,
+                              return_reader_receipt: Literal[True]
+                              ) -> tuple[dict, FoldManifest, MarketReplay, dict]: ...
+
+
+@overload
+def _registered_fold_baseline(path: str | dict, code_identity: dict[str, str], *,
+                              return_reader_receipt: bool
+                              ) -> tuple[dict, FoldManifest, MarketReplay] | tuple[
+                                  dict, FoldManifest, MarketReplay, dict]: ...
+
+
+def _registered_fold_baseline(path: str | dict, code_identity: dict[str, str], *,
+                              return_reader_receipt: bool = False
+                              ) -> tuple[dict, FoldManifest, MarketReplay] | tuple[
+                                  dict, FoldManifest, MarketReplay, dict]:
+    payload = _read_json(path) if isinstance(path, str) else path
     expected = {"schema_version", "config", "fold", "marker_sha256", "label",
                 "instrument", "allow_legacy_isolated_snapshot"}
     if (set(payload) != expected
@@ -176,14 +201,22 @@ def _registered_fold_baseline(path: str, code_identity: dict[str, str]
         raise DataError("invalid registered B0 Fold identity")
     fold = _fold(payload["fold"])
     _validate_registered_b0_fold(fold)
-    replay = project_registered_fold_replay(
+    read_result = project_registered_fold_replay(
         config, fold, marker_sha256=payload["marker_sha256"],
         repository_commit=code_identity["repository_commit"],
         source_code_sha256=code_identity["source_code_sha256"],
         label=payload["label"], instrument=payload["instrument"],
         allow_legacy_isolated_snapshot=payload["allow_legacy_isolated_snapshot"],
+        return_reader_receipt=return_reader_receipt,
     )
-    return payload, fold, replay
+    if return_reader_receipt:
+        if not isinstance(read_result, tuple):
+            raise DataError("registered Fold reader omitted its reservation receipt")
+        replay, reader_receipt = read_result
+        return payload, fold, replay, reader_receipt
+    if isinstance(read_result, tuple):
+        raise DataError("registered Fold reader returned an unexpected reservation receipt")
+    return payload, fold, read_result
 
 
 def _preflight_report_dir(value: str) -> Path:
@@ -300,6 +333,27 @@ def main(argv: list[str] | None = None) -> int:
     experiment.add_argument("--block-length", type=int, default=8)
     experiment.add_argument("--bootstrap-replicates", type=int, default=2000)
     experiment.add_argument("--seed", type=int, default=0)
+    b3_experiment = commands.add_parser("run-registered-fold-b3")
+    b3_experiment.add_argument("--registered-fold-config", required=True)
+    b3_experiment.add_argument("--b3-configuration", required=True)
+    b3_experiment.add_argument("--worker-python", required=True)
+    b3_experiment.add_argument("--upstream-checkout", required=True)
+    b3_experiment.add_argument("--output-dir", required=True)
+    b3_experiment.add_argument("--timeout-seconds", type=int, default=1800)
+    b3_experiment.add_argument("--forecast-seed", type=int, default=0)
+    b3_experiment.add_argument("--forecast-paths", type=int, default=32)
+    b3_experiment.add_argument("--horizons", default="1,5,15")
+    b3_experiment.add_argument("--anchor-interval-minutes", type=int, default=15)
+    b3_experiment.add_argument("--batch-size", type=int, default=32)
+    b3_experiment.add_argument("--hour-availability-delay-ns", type=int, default=0)
+    b3_experiment.add_argument("--day-availability-delay-ns", type=int, default=0)
+    b3_experiment.add_argument("--max-attempts-per-bar", type=int, default=20)
+    b3_experiment.add_argument("--max-total-bar-attempts", type=int, default=50_000_000)
+    b3_experiment.add_argument("--burn-in", type=int, default=8)
+    b3_experiment.add_argument("--volatility-window", type=int, default=15)
+    b3_experiment.add_argument("--block-length", type=int, default=8)
+    b3_experiment.add_argument("--bootstrap-replicates", type=int, default=2000)
+    b3_experiment.add_argument("--seed", type=int, default=0)
     args = parser.parse_args(argv)
     try:
         if args.command == "audit-data":
@@ -433,6 +487,128 @@ def main(argv: list[str] | None = None) -> int:
                 **code_identity,
                 **summary,
             }
+        elif args.command == "run-registered-fold-b3":
+            from dataclasses import asdict as dataclass_asdict
+            from .routeb.jax_hierarchy_train import (
+                HierarchicalModelConfig, HierarchicalTrainingConfig,
+            )
+            from .routeb.jax_model import RSSMConfig
+
+            b3_configuration = _read_json(args.b3_configuration)
+            if (set(b3_configuration) != {"model", "training"}
+                    or not isinstance(b3_configuration["model"], dict)
+                    or set(b3_configuration["model"]) != {"minute", "hour", "day"}
+                    or any(not isinstance(b3_configuration["model"][scale], dict)
+                           for scale in ("minute", "hour", "day"))
+                    or not isinstance(b3_configuration["training"], dict)):
+                raise DataError("B3 configuration must contain minute/hour/day models and training")
+            try:
+                model_config = HierarchicalModelConfig(**{
+                    scale: RSSMConfig(**b3_configuration["model"][scale])
+                    for scale in ("minute", "hour", "day")
+                })
+                training_config = HierarchicalTrainingConfig(**b3_configuration["training"])
+                b3_configuration = {
+                    "model": {scale: dataclass_asdict(getattr(model_config, scale))
+                              for scale in ("minute", "hour", "day")},
+                    "training": dataclass_asdict(training_config),
+                }
+            except (TypeError, ValueError) as exc:
+                raise DataError(f"invalid B3 model/training configuration: {exc}") from exc
+            try:
+                horizons = tuple(int(part.strip()) for part in args.horizons.split(","))
+            except ValueError as exc:
+                raise DataError("--horizons must be a comma-separated sequence of integers") from exc
+            try:
+                validate_fold_experiment_protocol(
+                    horizons=horizons, anchor_interval_minutes=args.anchor_interval_minutes,
+                    context_lookback=3 * 1440,
+                    volatility_window=args.volatility_window,
+                    block_length=args.block_length,
+                    bootstrap_replicates=args.bootstrap_replicates, seed=args.seed)
+            except ValueError as exc:
+                raise DataError(str(exc)) from exc
+            integer_bounds = (
+                ("timeout", args.timeout_seconds, 1, 86_400),
+                ("forecast seed", args.forecast_seed, 0, 2**32 - 1),
+                ("forecast paths", args.forecast_paths, 2, 1024),
+                ("batch size", args.batch_size, 1, 64),
+                ("hour delay", args.hour_availability_delay_ns, 0, 2**63 - 1),
+                ("day delay", args.day_availability_delay_ns, 0, 2**63 - 1),
+                ("per-bar attempts", args.max_attempts_per_bar, 1, 100),
+                ("total attempts", args.max_total_bar_attempts, 1, 100_000_000),
+            )
+            if any(type(value) is not int or not low <= value <= high
+                   for _, value, low, high in integer_bounds):
+                raise DataError("B3 worker, path-sampling or resource budget is outside bounds")
+            registered_payload = _read_json(args.registered_fold_config)
+            expected_fold_keys = {"schema_version", "config", "fold", "marker_sha256",
+                                  "label", "instrument", "allow_legacy_isolated_snapshot"}
+            if (set(registered_payload) != expected_fold_keys
+                    or registered_payload.get("schema_version")
+                       != "rles.world_model.registered_fold_baseline.v0"):
+                raise DataError("registered Fold config does not match the supported B3 schema")
+            fold_preflight = _fold(registered_payload["fold"])
+            _validate_registered_b0_fold(fold_preflight)
+            preflight_anchors = validation_anchor_timestamps(
+                fold=fold_preflight, max_horizon=horizons[-1],
+                anchor_interval_minutes=args.anchor_interval_minutes)
+            total_attempt_bound = (len(preflight_anchors) * args.forecast_paths
+                                   * horizons[-1] * args.max_attempts_per_bar)
+            if (len(preflight_anchors) < 1
+                    or args.forecast_paths * horizons[-1] * args.max_attempts_per_bar > 1_000_000
+                    or total_attempt_bound > args.max_total_bar_attempts):
+                raise DataError("B3 Validation anchors exceed the declared per-anchor or global rollout budget")
+            worker_python = Path(args.worker_python).resolve()
+            upstream_checkout = Path(args.upstream_checkout).resolve()
+            if not worker_python.is_file() or not upstream_checkout.is_dir():
+                raise DataError("pinned Python 3.12 worker and upstream checkout are required")
+            output_dir = _preflight_report_dir(args.output_dir)
+            output_dir.mkdir(exist_ok=False)
+            code_identity = _routeb_code_identity()
+            reader_receipt = None
+            try:
+                reader_config, fold, replay, reader_receipt = _registered_fold_baseline(
+                    registered_payload, code_identity, return_reader_receipt=True)
+                with (output_dir / "registration_receipt.json").open(
+                        "x", encoding="utf-8", newline="\n") as stream:
+                    stream.write(json.dumps(reader_receipt, ensure_ascii=False,
+                        sort_keys=True, indent=2, allow_nan=False) + "\n")
+                result = run_fold_b3_experiment(
+                    replay=replay, fold=fold, train_scope_id=reader_config["label"],
+                    configuration=b3_configuration,
+                    worker=WorkerClient(WorkerConfig(
+                        worker_python, upstream_checkout,
+                        timeout_seconds=args.timeout_seconds)),
+                    output_dir=output_dir,
+                    repository_commit=code_identity["repository_commit"],
+                    source_code_sha256=code_identity["source_code_sha256"],
+                    reservation_label=reader_config["label"],
+                    marker_sha256=reader_config["marker_sha256"],
+                    registration_receipt=reader_receipt,
+                    forecast_seed=args.forecast_seed,
+                    forecast_paths=args.forecast_paths, horizons=horizons,
+                    anchor_interval_minutes=args.anchor_interval_minutes,
+                    batch_size=args.batch_size,
+                    hour_availability_delay_ns=args.hour_availability_delay_ns,
+                    day_availability_delay_ns=args.day_availability_delay_ns,
+                    max_attempts_per_bar=args.max_attempts_per_bar,
+                    max_total_bar_attempts=args.max_total_bar_attempts,
+                    burn_in=args.burn_in,
+                    volatility_window=args.volatility_window,
+                    block_length=args.block_length,
+                    bootstrap_replicates=args.bootstrap_replicates, seed=args.seed)
+            except Exception as exc:
+                failure = {"schema": "routeb.b3-fold-experiment-failure.v1",
+                           "status": "BLOCKED", "error": type(exc).__name__,
+                           "detail": str(exc), "registered_read_started": reader_receipt is not None,
+                           **code_identity}
+                failure_path = output_dir / "run_failure.json"
+                if not failure_path.exists():
+                    failure_path.write_text(json.dumps(
+                        failure, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+                        encoding="utf-8")
+                raise
         elif args.command == "run-registered-fold":
             from dataclasses import asdict as dataclass_asdict
             from .routeb.jax_gru import GRUConfig

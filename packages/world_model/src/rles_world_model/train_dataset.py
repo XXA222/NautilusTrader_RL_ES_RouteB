@@ -1,6 +1,8 @@
 """Causal projection from the canonical L2 store into Route B market rows."""
 from __future__ import annotations
 
+from typing import Literal, overload
+
 from rles_data.core import CuratedStore, DataError, FoldManifest, MINUTE_NS, Window, require_hash, require_ns
 
 from .contracts import MarketReplay
@@ -35,14 +37,44 @@ def project_market_replay(store: CuratedStore, *, instrument: str, window: Windo
     return MarketReplay.from_events(events, dataset_hash=frozen_hash, instrument=instrument)
 
 
+@overload
 def project_registered_fold_replay(config: dict, fold: FoldManifest, *, marker_sha256: str,
                                    repository_commit: str, source_code_sha256: str,
                                    label: str, instrument: str,
-                                   allow_legacy_isolated_snapshot: bool = False) -> MarketReplay:
+                                   allow_legacy_isolated_snapshot: bool = False,
+                                   return_reader_receipt: Literal[False] = False
+                                   ) -> MarketReplay: ...
+
+
+@overload
+def project_registered_fold_replay(config: dict, fold: FoldManifest, *, marker_sha256: str,
+                                   repository_commit: str, source_code_sha256: str,
+                                   label: str, instrument: str,
+                                   allow_legacy_isolated_snapshot: bool = False,
+                                   return_reader_receipt: Literal[True]
+                                   ) -> tuple[MarketReplay, dict]: ...
+
+
+@overload
+def project_registered_fold_replay(config: dict, fold: FoldManifest, *, marker_sha256: str,
+                                   repository_commit: str, source_code_sha256: str,
+                                   label: str, instrument: str,
+                                   allow_legacy_isolated_snapshot: bool = False,
+                                   return_reader_receipt: bool
+                                   ) -> MarketReplay | tuple[MarketReplay, dict]: ...
+
+
+def project_registered_fold_replay(config: dict, fold: FoldManifest, *, marker_sha256: str,
+                                   repository_commit: str, source_code_sha256: str,
+                                   label: str, instrument: str,
+                                   allow_legacy_isolated_snapshot: bool = False,
+                                   return_reader_receipt: bool = False
+                                   ) -> MarketReplay | tuple[MarketReplay, dict]:
     """Read one fresh, frozen Train/Validation span; the Fold's Test is never decoded."""
     if (not isinstance(fold, FoldManifest) or not isinstance(instrument, str) or not instrument
             or type(allow_legacy_isolated_snapshot) is not bool
-            or allow_legacy_isolated_snapshot):
+            or allow_legacy_isolated_snapshot
+            or type(return_reader_receipt) is not bool):
         raise DataError("registered Route B baseline requires a frozen FoldManifest and row-group scoped data")
     environment = config.get("environment") if isinstance(config, dict) else None
     if not isinstance(environment, dict) or environment.get("instrument") != instrument:
@@ -54,16 +86,31 @@ def project_registered_fold_replay(config: dict, fold: FoldManifest, *, marker_s
     window = {"start_ns": start_ns, "end_ns": end_ns}
     from rles_orchestrator.research_access import read_registered_fold_window
 
-    store = read_registered_fold_window(
+    read_result = read_registered_fold_window(
         config, window, marker_sha256=marker_sha256, dataset_hash=fold.dataset_hash,
         required_start_ns=start_ns, required_end_ns=fold.test.score_end_ns,
         label=label, fold_sha256=fold.hash, repository_commit=repository_commit,
         source_code_sha256=source_code_sha256,
         allow_legacy_isolated_snapshot=allow_legacy_isolated_snapshot,
+        return_receipt=return_reader_receipt,
     )
+    receipt: dict | None = None
+    if return_reader_receipt:
+        if not isinstance(read_result, tuple):
+            raise DataError("registered Fold reader omitted its reservation receipt")
+        store, receipt = read_result
+    else:
+        if isinstance(read_result, tuple):
+            raise DataError("registered Fold reader returned an unexpected reservation receipt")
+        store = read_result
     replay_window = Window(start_ns, start_ns, end_ns)
-    return project_market_replay(store, instrument=instrument, window=replay_window,
-                                 dataset_hash=fold.dataset_hash)
+    replay = project_market_replay(store, instrument=instrument, window=replay_window,
+                                   dataset_hash=fold.dataset_hash)
+    if return_reader_receipt:
+        if receipt is None:
+            raise DataError("registered Fold reservation receipt is missing")
+        return replay, receipt
+    return replay
 
 
 def project_registered_train_replay(config: dict, window: dict, *, marker_sha256: str,

@@ -10,6 +10,7 @@ import hmac
 import numpy as np
 
 from rles_data.core import FoldManifest
+from rles_data.io import strict_json_loads
 
 from ..baselines import score_baselines
 from ..contracts import MarketReplay
@@ -53,6 +54,52 @@ def _write_json_fresh(path: Path, value: Mapping[str, object]) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _verify_fold_reader_receipt(*, receipt: Mapping[str, object], root: Path,
+        fold: FoldManifest, reservation_label: str, repository_commit: str,
+        source_code_sha256: str, marker_sha256: str) -> tuple[str, str, str]:
+    """Bind B3 work to the exact successful reservation returned by the reader."""
+    value = dict(receipt)
+    supplied = value.get("receipt_sha256")
+    unsigned = {key: item for key, item in value.items() if key != "receipt_sha256"}
+    try:
+        canonical = json.dumps(unsigned, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Fold reader receipt is not canonical finite JSON") from exc
+    expected_digest = sha256(canonical.encode("utf-8")).hexdigest()
+
+    def valid_sha(item: object) -> bool:
+        return (isinstance(item, str) and len(item) == 64
+                and all(char in "0123456789abcdef" for char in item))
+
+    expected_scope = {"start_ns": fold.train.warmup_start_ns,
+                      "end_ns": fold.validation.score_end_ns,
+                      "includes_test": False}
+    if (supplied != expected_digest
+            or value.get("schema") != "rles.routeb-fold-reader-receipt.v1"
+            or value.get("reservation_label") != reservation_label
+            or value.get("dataset_hash") != fold.dataset_hash
+            or value.get("marker_sha256") != marker_sha256
+            or value.get("fold_sha256") != fold.hash
+            or value.get("repository_commit") != repository_commit
+            or value.get("source_code_sha256") != source_code_sha256
+            or value.get("read_scope") != expected_scope
+            or value.get("reservation_committed_before_decode") is not True
+            or not all(valid_sha(value.get(key)) for key in (
+                "reservation_key", "reservation_token_sha256",
+                "reservation_identity_sha256"))):
+        raise ValueError("B3 stage requires the exact matching reader reservation receipt")
+    receipt_path = root / "registration_receipt.json"
+    try:
+        persisted = strict_json_loads(
+            receipt_path.read_bytes(), context="B3 registered Fold receipt")
+    except (OSError, ValueError) as exc:
+        raise ValueError("B3 output directory lacks the persisted reader receipt") from exc
+    if persisted != value:
+        raise ValueError("persisted B3 reader receipt differs from the reader return value")
+    return (expected_digest, str(value["reservation_key"]),
+            str(value["reservation_token_sha256"]))
+
+
 def _candidate_run(*, name: str, configuration: dict, configuration_path: Path,
                    checkpoint: Path, worker_result: dict, train_batch,
                    train_metadata: dict, fold: FoldManifest,
@@ -93,7 +140,8 @@ def _candidate_run(*, name: str, configuration: dict, configuration_path: Path,
 def train_fold_b3_diagnostic(*, replay: MarketReplay, fold: FoldManifest,
         train_scope_id: str, configuration: dict, worker: WorkerClient,
         output_dir: Path, repository_commit: str, source_code_sha256: str,
-        reservation_label: str, burn_in: int = 8) -> dict[str, object]:
+        reservation_label: str, registration_receipt: Mapping[str, object],
+        marker_sha256: str, burn_in: int = 8) -> dict[str, object]:
     """Train one registered Fold's B3 hierarchy without Validation/Test scoring.
 
     This is the Train-only B3 stage. It deliberately does not produce E3/E4
@@ -123,6 +171,11 @@ def train_fold_b3_diagnostic(*, replay: MarketReplay, fold: FoldManifest,
     existing = {path.name for path in root.iterdir()} if root.is_dir() else set()
     if not root.is_dir() or existing not in (set(), {"registration_receipt.json"}):
         raise ValueError("B3 output directory must be fresh except for its registration receipt")
+    receipt_sha256, reservation_key, reservation_token_sha256 = (
+        _verify_fold_reader_receipt(
+            receipt=registration_receipt, root=root, fold=fold,
+            reservation_label=reservation_label, repository_commit=repository_commit,
+            source_code_sha256=source_code_sha256, marker_sha256=marker_sha256))
     audit = audit_replay(replay)
     if not audit.market_model_eligible:
         raise ValueError("registered Fold failed market model eligibility audit")
@@ -165,6 +218,9 @@ def train_fold_b3_diagnostic(*, replay: MarketReplay, fold: FoldManifest,
         "candidate": "B3", "dataset_hash": fold.dataset_hash,
         "fold_hash": fold.hash, "train_scope_id": train_scope_id,
         "reservation_label": reservation_label,
+        "registration_receipt_sha256": receipt_sha256,
+        "reservation_key": reservation_key,
+        "reservation_token_sha256": reservation_token_sha256,
         "repository_commit": repository_commit,
         "source_code_sha256": source_code_sha256,
         "train_artifact": artifact_path.name,

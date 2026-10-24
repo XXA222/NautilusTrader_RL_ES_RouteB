@@ -1,4 +1,4 @@
-"""Single-update synthetic 30-day CPU profile with the repository B3 defaults."""
+"""Bounded multi-update synthetic device profile with the repository B3 defaults."""
 from __future__ import annotations
 
 import argparse
@@ -11,17 +11,10 @@ import resource
 import sys
 import time
 
+import numpy as np
+
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
 os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
-
-from rles_world_model.routeb.hierarchy_dataset import build_train_hierarchy
-from rles_world_model.routeb.jax_hierarchy_train import (
-    HierarchicalModelConfig, HierarchicalTrainingConfig, train_hierarchical,
-)
-from rles_world_model.routeb.jax_model import PINNED_UPSTREAM, RSSMConfig
-from rles_world_model.routeb.jax_train import SNAPSHOT_SHA
-from rles_world_model.routeb.market import MINUTE_NS, MarketSequence
-
 
 def main() -> int:
     repository_root = Path(__file__).resolve().parents[2]
@@ -34,13 +27,31 @@ def main() -> int:
     parser.add_argument("--checkout", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--days", type=int, choices=(30, 90, 360), default=30)
+    parser.add_argument("--updates", type=int, choices=(1, 3, 5), default=1)
+    parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     args = parser.parse_args()
+    os.environ["JAX_PLATFORMS"] = "cuda" if args.device == "cuda" else "cpu"
+    from rles_world_model.routeb.hierarchy_dataset import build_train_hierarchy
+    from rles_world_model.routeb.jax_hierarchy_train import (
+        HierarchicalModelConfig, HierarchicalTrainingConfig, train_hierarchical,
+    )
+    from rles_world_model.routeb.jax_model import PINNED_UPSTREAM, RSSMConfig
+    from rles_world_model.routeb.jax_train import SNAPSHOT_SHA
+    from rles_world_model.routeb.market import MINUTE_NS, MarketSequence
+    import jax
+
+    devices = jax.devices()
+    if args.device == "cuda" and not any(
+            device.platform in {"cuda", "gpu"} for device in devices):
+        raise RuntimeError("CUDA profile requested but JAX exposes no CUDA device")
+
     output_dir = Path(args.output_dir).resolve()
     if not output_dir.is_relative_to(root):
         raise ValueError("profile outputs must remain inside the canonical checkout")
     output_dir.mkdir(parents=True, exist_ok=True)
-    output = output_dir / f"b3_default_cpu_profile_{args.days}d.json"
-    checkpoint = output_dir / f"b3_default_cpu_profile_{args.days}d_checkpoint.npz"
+    suffix = "" if args.updates == 1 else f"_{args.updates}updates"
+    output = output_dir / f"b3_default_{args.device}_profile_{args.days}d{suffix}.json"
+    checkpoint = output_dir / f"b3_default_{args.device}_profile_{args.days}d{suffix}_checkpoint.npz"
     if output.exists() or checkpoint.exists():
         raise FileExistsError("profile output already exists; choose a fresh output directory")
 
@@ -52,7 +63,7 @@ def main() -> int:
     default = RSSMConfig()
     model = HierarchicalModelConfig(default, default, default)
     training = HierarchicalTrainingConfig(
-        seed=47, steps=1, batch_size=1, window_length=16,
+        seed=47, steps=args.updates, batch_size=1, window_length=16,
         burn_in=3, stride=8, report_interval=1)
     scaler_sha = hashlib.sha256((
         scalers.minute.fingerprint + scalers.hour.fingerprint
@@ -65,8 +76,12 @@ def main() -> int:
         model_config=model, training_config=training)
     elapsed = time.perf_counter() - started
     final = reports[-1]
+    update_seconds = [float(report["update_seconds"]) for report in reports]
+    if len(update_seconds) != args.updates or any(value <= 0 for value in update_seconds):
+        raise RuntimeError("per-update training timings are missing or invalid")
+    steady = np.asarray(update_seconds[1:], dtype=np.float64)
     payload = {
-        "schema": "routeb.b3-synthetic-default-cpu-profile.v1",
+        "schema": "routeb.b3-synthetic-default-device-profile.v3",
         "status": "COMPLETED",
         "synthetic_only": True,
         "real_market_data_accessed": False,
@@ -80,6 +95,18 @@ def main() -> int:
             name: getattr(default, name) for name in default.__dataclass_fields__},
         "model_parameter_count": final["parameter_count"],
         "optimizer_updates": final["optimizer_updates"],
+        "updates_requested": args.updates,
+        "devices": [{
+            "id": int(device.id), "platform": device.platform,
+            "kind": device.device_kind,
+        } for device in devices],
+        "update_seconds": update_seconds,
+        "first_update_seconds_including_any_jit": update_seconds[0],
+        "steady_update_seconds": ({
+            "count": int(steady.size), "mean": float(np.mean(steady)),
+            "median": float(np.median(steady)),
+            "p95": float(np.quantile(steady, 0.95)),
+        } if steady.size else None),
         "train_call_seconds_including_first_update_jit": elapsed,
         "training_seconds_reported": final["training_seconds"],
         "peak_rss_kib": getattr(resource, "getrusage")(
@@ -89,8 +116,9 @@ def main() -> int:
         "dreamerv3_upstream_sha": PINNED_UPSTREAM,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "interpretation": (
-            "One optimizer update on deterministic synthetic data using default RSSM "
-            "dimensions; not convergence, production-throughput, GPU or market-quality evidence."
+            f"Bounded deterministic synthetic {final['device']} updates using "
+            "repository-default RSSM dimensions; first update may include JIT compile. "
+            "Not convergence, production capacity, or market-quality evidence."
         ),
     }
     output.write_text(json.dumps(payload, sort_keys=True, indent=2,

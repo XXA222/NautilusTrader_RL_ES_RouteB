@@ -307,6 +307,7 @@ def build_fold_predictive_report(
         },
         realized_ohlcv=realized_ohlcv,
         previous_close=anchor_closes,
+        rolling_window=volatility_window,
         bootstrap_replicates=bootstrap_replicates,
         seed=seed,
     )
@@ -380,7 +381,8 @@ def build_fold_b3_predictive_report(
 
     required_train_fields = {
         "schema", "status", "candidate", "dataset_hash", "fold_hash",
-        "train_scope_id", "reservation_label", "repository_commit",
+        "train_scope_id", "reservation_label", "registration_receipt_sha256",
+        "reservation_key", "reservation_token_sha256", "repository_commit",
         "source_code_sha256", "train_artifact_sha256", "scaler_sha256",
         "training_config", "optimizer_updates", "parameter_count", "train_windows",
         "training_seconds", "device", "configuration_sha256", "checkpoint_sha256",
@@ -419,7 +421,8 @@ def build_fold_b3_predictive_report(
             or not train_report["device"].strip()):
         raise ValueError("B3 Train report has invalid source, budget or measurements")
     for key in ("train_artifact_sha256", "scaler_sha256", "configuration_sha256",
-                "checkpoint_sha256", "snapshot_sha256", "upstream_sha256"):
+                "checkpoint_sha256", "registration_receipt_sha256", "reservation_key",
+                "reservation_token_sha256", "snapshot_sha256", "upstream_sha256"):
         if not valid_sha(train_report[key],
                          40 if key in ("snapshot_sha256", "upstream_sha256") else 64):
             raise ValueError(f"B3 Train report has invalid {key}")
@@ -456,6 +459,16 @@ def build_fold_b3_predictive_report(
             path_count = int(paths.shape[1])
         elif paths.shape[1] != path_count:
             raise ValueError("E3 and E4 must use the same path count")
+        unsigned_run = {key: value for key, value in run.items()
+                        if key != "report_sha256"}
+        try:
+            canonical_run = json.dumps(
+                unsigned_run, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} rollout manifest is not canonical finite JSON") from exc
+        if run.get("report_sha256") != hashlib.sha256(
+                canonical_run.encode("utf-8")).hexdigest():
+            raise ValueError(f"{name} rollout manifest digest is invalid")
         expected_bars = len(anchors) * int(paths.shape[1]) * max_horizon
         attempted = run.get("attempted_bar_samples")
         rejected = run.get("rejected_bar_samples")
@@ -486,6 +499,9 @@ def build_fold_b3_predictive_report(
             ("b3_train_report_sha256", supplied_digest),
             ("dataset_hash", fold.dataset_hash), ("fold_hash", fold.hash),
             ("train_scope_id", train_scope_id),
+            ("registration_receipt_sha256", train_report["registration_receipt_sha256"]),
+            ("reservation_key", train_report["reservation_key"]),
+            ("reservation_token_sha256", train_report["reservation_token_sha256"]),
             ("train_artifact_sha256", train_report["train_artifact_sha256"]),
             ("checkpoint_sha256", train_report["checkpoint_sha256"]),
             ("configuration_sha256", train_report["configuration_sha256"]),
@@ -541,6 +557,9 @@ def build_fold_b3_predictive_report(
     report["hierarchical_rollout"] = {
         "schema": "routeb.b3-e3-e4-validation.v1",
         "b3_train_report_sha256": supplied_digest,
+        "registration_receipt_sha256": train_report["registration_receipt_sha256"],
+        "reservation_key": train_report["reservation_key"],
+        "reservation_token_sha256": train_report["reservation_token_sha256"],
         "train_artifact_sha256": train_report["train_artifact_sha256"],
         "scaler_sha256": train_report["scaler_sha256"],
         "checkpoint_sha256": train_report["checkpoint_sha256"],

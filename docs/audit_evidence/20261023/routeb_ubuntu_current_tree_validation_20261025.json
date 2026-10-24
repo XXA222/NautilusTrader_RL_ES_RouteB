@@ -1,0 +1,79 @@
+{
+  "schema": "routeb.audit.ubuntu_current_tree_validation.v1",
+  "status": "PASS",
+  "scope": "local_ubuntu_current_worktree_only",
+  "date": "2026-10-25",
+  "repository_head_before_snapshot_commit": "bd199dd50c9c62b69a0f2bf2e0e550c007181212",
+  "workspace": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB",
+  "source_manifest": {
+    "path": ".tmp/routeb-final-audit-20261025/source_manifest.json",
+    "verified": true,
+    "files": 383,
+    "source_identity_sha256": "698b49bde42aad58844e38c7f9357f0cf661623f7543ff8a4b1543cc70372128"
+  },
+  "audit_deliverable": {
+    "temporal_truth_table": "docs/ROUTEB_TEMPORAL_CONTRACT_20261025.md",
+    "repeated_default_cpu_profile": "docs/audit_evidence/20261023/routeb_b3_default_cpu_repeat_20261025.json",
+    "scope": "documented close/availability, posterior-to-next-step head, recursive feedback, and E3/E4 event ordering against executable tests"
+  },
+  "environment": {
+    "platform": "Ubuntu 24.04 / WSL2",
+    "workspace_python": "3.14.7",
+    "world_model_python": "3.12.10",
+    "jax": "0.11.2 CPU",
+    "dreamerv3_commit": "e01491fad6434b2245a3b8ca201dd7faedcc458c"
+  },
+  "verification": {
+    "ubuntu_pr_selector": {
+      "command": "uv run --locked --no-sync python -m pytest -q tests/ -m 'contracts or unit or micro_golden or algorithm_smoke'",
+      "result": "772 passed, 7 skipped, 297 deselected",
+      "junit_xml": ".tmp/routeb-final-audit-20261025/ubuntu-pr-junit.xml",
+      "junit_sha256": "ec9e5e99dc640ffa1a68f2b73a339798147011516bcce1a5a09efd848dbeda94",
+      "skip_boundary": "All seven skips require the Windows Job API and were not executed."
+    },
+    "jax_world_model_selector": {
+      "result": "154 passed",
+      "cli_module_excluded": "tests/world_model/test_cli.py (gymnasium absent in isolated JAX environment)",
+      "junit_xml": ".tmp/routeb-final-audit-20261025/jax-world-model-junit.xml",
+      "junit_sha256": "9f4e313548793033e02e09360dcd3eed956098b28c698706c02445ac385aea55"
+    },
+    "workspace_mypy": "Success: no issues found in 110 source files",
+    "world_model_mypy": "Success: no issues found in 41 source files, run with locked workspace MyPy because offline JAX venv lacks the MyPy wheel",
+    "ruff": "All checks passed",
+    "workspace_wheel_build": {
+      "wheels": 12,
+      "source_matches_wheel": true,
+      "wheel_manifest": ".tmp/routeb-final-audit-20261025/wheel_manifest.json",
+      "wheel_manifest_sha256": "5333a943f1dae898b099dc3830ef034b2ac39c5aad12a97f4d1c3f769b9a5411",
+      "wheel_import_smoke": "PASS; all 12 packages imported from installed local wheels",
+      "installed_wheel_native_adapter_tests": {
+        "result": "52 passed",
+        "junit_xml": ".tmp/routeb-final-audit-20261025/wheel-native-adapter-junit.xml",
+        "junit_sha256": "2e8c13409b9e831c44900f48509be88db58267a9645b58eaa358725a8b907f6a"
+      }
+    },
+    "b2_cpu_smoke": {
+      "status": "PASS",
+      "scope": "synthetic_mechanism_only",
+      "raw_result": ".tmp/routeb-final-audit-20261025/b2-smoke/result.json",
+      "raw_result_sha256": "7e8ae0f50907690bfe707d2c50e95b83749fcd7f013276653b6fc27699755e0b"
+    },
+    "b3_cpu_smoke": {
+      "status": "PASS",
+      "scope": "synthetic_mechanism_only",
+      "optimizer_updates": 2,
+      "parameter_count": 3208,
+      "posterior_vs_prior_max_abs_delta": 0.421875,
+      "raw_result": ".tmp/routeb-final-audit-20261025/b3-smoke/result.json",
+      "raw_result_sha256": "80246b05fde9c34c254e14373c8b7248fa99eb65a65284a829ec61318b0d4c15"
+    }
+  },
+  "boundary": {
+    "hosted_ci_for_current_source_identity": false,
+    "real_market_or_validation_payload_read": false,
+    "test_holdout_read": false,
+    "economic_certification": false,
+    "research_acceptance": false,
+    "note": "This is broad current-tree local Ubuntu verification, not Hosted CI or research validation. Synthetic B3 smoke uses a 3,208-parameter model and two optimizer updates. RB-04/RB-05 registered recursive execution, RB-09 representative repeated-run capacity, RB-10/RB-12 real-data validation, RB-11 full native economic parity, fresh eligible Train+Validation reservation, and exact-tree Hosted CI remain open."
+  }
+}

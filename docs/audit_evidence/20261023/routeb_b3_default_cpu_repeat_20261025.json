@@ -1,0 +1,75 @@
+{
+  "schema": "routeb.audit.b3-default-cpu-repeat.v1",
+  "status": "PASS_SYNTHETIC_REPEATABILITY_PROBE",
+  "date": "2026-10-25",
+  "repository_base_head": "bd199dd50c9c62b69a0f2bf2e0e550c007181212",
+  "workspace": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB",
+  "environment": {
+    "os": "WSL2 Ubuntu 24.04",
+    "python": "3.12.10",
+    "jax": "0.11.2",
+    "device": "cpu:0",
+    "dreamerv3_upstream_sha": "e01491fad6434b2245a3b8ca201dd7faedcc458c",
+    "python_snapshot_sha256": "80194a587444bf4a11f06f6e273723e5754f2483"
+  },
+  "profile_script": "qa/world_model/routeb_b3_default_cpu_profile.py",
+  "profile_script_sha256": "fd54477ef28945b2b73d4d03cbd692764f90cb9016301022a87e4cd6da4f9fa1",
+  "training_source": "packages/world_model/src/rles_world_model/routeb/jax_hierarchy_train.py",
+  "training_source_sha256": "9e3d20c61dd27ecefbd017f88b001baa6bcba1aa88004260663e9558a8d4cbe1",
+  "method": {
+    "data": "deterministic synthetic OHLCV; no real market data",
+    "model_parameters": 1283732,
+    "updates_per_duration": 5,
+    "batch_size": 1,
+    "window_length_minutes": 16,
+    "durations_days": [30, 90, 360],
+    "each_duration_fresh_process": true,
+    "validation_test_holdout_accessed": false,
+    "economic_certification": false
+  },
+  "comparison_to_2026_10_24_baseline": [
+    {
+      "days": 30,
+      "steady_update_seconds_mean": {
+        "baseline": 0.1433698845,
+        "repeat": 0.1484194218,
+        "relative_delta_percent": 3.52
+      },
+      "peak_rss_mib": {"baseline": 1065.0, "repeat": 1072.57},
+      "train_call_seconds": {"baseline": 22.1282, "repeat": 16.2710},
+      "raw_result": ".tmp/routeb-final-audit-20261025/repeat-cpu/b3_default_cpu_profile_30d_5updates.json",
+      "raw_result_sha256": "047099dcc9409e31adb88ec03bf3aea3c71d38b79c5c2625301552e86ab94600"
+    },
+    {
+      "days": 90,
+      "steady_update_seconds_mean": {
+        "baseline": 0.4153711363,
+        "repeat": 0.3976045445,
+        "relative_delta_percent": -4.28
+      },
+      "peak_rss_mib": {"baseline": 1191.8, "repeat": 1192.88},
+      "train_call_seconds": {"baseline": 23.6563, "repeat": 17.6239},
+      "raw_result": ".tmp/routeb-final-audit-20261025/repeat-cpu/b3_default_cpu_profile_90d_5updates.json",
+      "raw_result_sha256": "6b149b3d89e25aed9ea6ac9f65423a06e0a0cd4e31902634b273f669dc18f190"
+    },
+    {
+      "days": 360,
+      "steady_update_seconds_mean": {
+        "baseline": 1.5333723738,
+        "repeat": 1.5711142397,
+        "relative_delta_percent": 2.46
+      },
+      "peak_rss_mib": {"baseline": 1710.5, "repeat": 1722.66},
+      "train_call_seconds": {"baseline": 30.2653, "repeat": 23.6317},
+      "raw_result": ".tmp/routeb-final-audit-20261025/repeat-cpu/b3_default_cpu_profile_360d_5updates.json",
+      "raw_result_sha256": "481bd3f17df2190cfd8a35c6b5843e3293c577608725fea453311b92387732fe"
+    }
+  ],
+  "boundary": {
+    "capacity_or_convergence_proven": false,
+    "gpu_capacity_proven": false,
+    "real_market_quality_proven": false,
+    "economic_certification": false,
+    "interpretation": "The repeated five-update runs are consistent with the previous 30/90/360-day synthetic profile, with steady-mean variation within about 4.3% and peak RSS within 1%. This improves repeatability evidence only; it is not sustained training, convergence, GPU parity, or production capacity. RB-09 remains partial/open."
+  }
+}

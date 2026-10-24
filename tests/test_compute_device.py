@@ -101,7 +101,13 @@ def test_gpu_kernel_lease_recovers_after_hard_process_exit(tmp_path) -> None:
     process.start()
     send.close()
     try:
-        assert receive.poll(15), "GPU lease owner did not acquire its lock"
+        # ``spawn`` re-imports this module (including torch) in a fresh Python
+        # process. On the canonical WSL checkout backed by /mnt/d that cold
+        # import alone can take well over 15 seconds, especially under load.
+        assert receive.poll(60), (
+            "GPU lease owner did not acquire its lock "
+            f"(child exit code: {process.exitcode})"
+        )
         assert receive.recv() is True
         contender = GPULearnerLease(tmp_path, 0)
         with pytest.raises(QuotaExceeded, match="single CUDA learner owner"):

@@ -135,6 +135,27 @@ def main() -> int:
         future_minute_decisions_ns=decisions,
         hour_availability_delay_ns=MINUTE_NS,
         day_availability_delay_ns=MINUTE_NS, forecast_seed=811)
+    two_minute_decisions = np.arange(first_future_minute, first_future_minute + 6,
+                                     dtype=np.int64) * MINUTE_NS
+    two_minute_future_event_perturbed = forecast_hierarchical_f2(
+        tensors=tensors, train_scope_id="synthetic-train-only",
+        dataset_id=replay.dataset_id, scaler_sha256=scaler_hash,
+        checkout=args.checkout, checkpoint=resumed, model_config=model_cfg,
+        training_config=two, training_tensor_sha256=tensor_hash,
+        inference_context_sha256=tensor_hash,
+        future_minute_decisions_ns=two_minute_decisions,
+        hour_availability_delay_ns=60 * MINUTE_NS,
+        day_availability_delay_ns=60 * MINUTE_NS,
+        forecast_seed=811)
+    f2_two_minute_delayed_event = forecast_hierarchical_f2(
+        tensors=tensors, train_scope_id="synthetic-train-only",
+        dataset_id=replay.dataset_id, scaler_sha256=scaler_hash,
+        checkout=args.checkout, checkpoint=resumed, model_config=model_cfg,
+        training_config=two, training_tensor_sha256=tensor_hash,
+        inference_context_sha256=tensor_hash,
+        future_minute_decisions_ns=two_minute_decisions,
+        hour_availability_delay_ns=2 * MINUTE_NS,
+        day_availability_delay_ns=2 * MINUTE_NS, forecast_seed=811)
     inference_minute_x = tensors.minute_x.copy()
     inference_minute_x[:, -1, 0] += np.float32(2.0)
     inference_tensors = replace(tensors, minute_x=inference_minute_x)
@@ -174,6 +195,11 @@ def main() -> int:
     if np.array_equal(f2_delayed_event["minute_mean"][:, 4],
                       f2_future_event_perturbed["minute_mean"][:, 4]):
         raise AssertionError("F2 did not apply a delayed slow-scale event at its availability barrier")
+    if (not np.array_equal(two_minute_future_event_perturbed["minute_mean"][:, :5],
+                           f2_two_minute_delayed_event["minute_mean"][:, :5])
+            or np.array_equal(two_minute_future_event_perturbed["minute_mean"][:, 5],
+                              f2_two_minute_delayed_event["minute_mean"][:, 5])):
+        raise AssertionError("F2 two-minute slow-event delay changed forecasts before its barrier")
     if (np.any(f2["hour_latent_diagnostic"][:, 0] != 0)
             or np.any(f2["day_latent_diagnostic"][:, 0] != 0)
             or not np.any(f2["hour_latent_diagnostic"][:, 2] != 0)
@@ -317,12 +343,33 @@ def main() -> int:
         "f2_day_latent_diagnostic_shape": list(f2["day_latent_diagnostic"].shape),
         "f2_slow_outputs_are_market_ohlcv": False,
         "f2_event_masks_respected": True,
-        "f2_first_step_matches_trained_posterior_head": True,
-        "f2_first_prior_state_distinguished": True,
+        "f2_first_step_matches_trained_posterior_head": bool(np.array_equal(
+            f2["minute_mean"][:, 0], f2["anchor_minute_mean"])),
+        "f2_first_prior_state_distinguished": bool(not np.array_equal(
+            f2["minute_mean"][:, 0], f2["first_prior_minute_mean"])),
+        "f2_first_posterior_vs_prior_max_abs_delta": float(np.max(np.abs(
+            f2["minute_mean"][:, 0] - f2["first_prior_minute_mean"]))),
         "f2_training_and_inference_context_identities_separated": True,
         "f2_independent_context_loaded": True,
         "f2_future_event_perturbation_causal": True,
-        "f2_delayed_event_barrier_alignment": True,
+        "f2_delayed_event_barrier_alignment": bool(
+            np.array_equal(f2_delayed_event["minute_mean"][:, :4],
+                           f2_future_event_perturbed["minute_mean"][:, :4])
+            and not np.array_equal(f2_delayed_event["minute_mean"][:, 4],
+                                   f2_future_event_perturbed["minute_mean"][:, 4])),
+        "f2_two_minute_event_delay_barrier_alignment": bool(
+            np.array_equal(two_minute_future_event_perturbed["minute_mean"][:, :5],
+                           f2_two_minute_delayed_event["minute_mean"][:, :5])
+            and not np.array_equal(two_minute_future_event_perturbed["minute_mean"][:, 5],
+                                   f2_two_minute_delayed_event["minute_mean"][:, 5])),
+        "two_minute_hour_available_at_ns": list(MultiScaleClock.future_availability_schedule(
+            minute_decisions_ns=two_minute_decisions, timeframe_minutes=60,
+            availability_delay_ns=2 * MINUTE_NS,
+            observed_close_through_ns=int(tensors.hour_close_at[-1]))),
+        "two_minute_day_available_at_ns": list(MultiScaleClock.future_availability_schedule(
+            minute_decisions_ns=two_minute_decisions, timeframe_minutes=1440,
+            availability_delay_ns=2 * MINUTE_NS,
+            observed_close_through_ns=int(tensors.day_close_at[-1]))),
         "e3_e4_minute_ohlcv_path_shapes": {
             "minute": list(e4_paths.minute.shape),
             "hour": list(e4_paths.hour.shape),

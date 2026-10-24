@@ -1,6 +1,7 @@
 """Resolve the shared project ledger; never derive it from an experiment output."""
 from contextvars import ContextVar
 from hashlib import sha256
+import json
 from pathlib import Path
 from time import time_ns
 import uuid
@@ -80,7 +81,7 @@ def record_development(config: dict, window: dict, *, label: str,
 
 def reserve_routeb_fresh_fold(config: dict, window: dict, *, label: str,
                               fold_sha256: str, repository_commit: str,
-                              source_code_sha256: str, source_identity: dict) -> None:
+                              source_code_sha256: str, source_identity: dict) -> dict:
     """Freeze a fresh Route B fold scope before any curated payload is decoded."""
     environment = config.get("environment")
     if (not isinstance(environment, dict)
@@ -125,24 +126,46 @@ def reserve_routeb_fresh_fold(config: dict, window: dict, *, label: str,
     }
     owner = digest(["routeb-world-model-b0", market_key(environment["instrument"]), fold_sha256])
     key = digest([owner, label, window, source_identity])
-    project_registry().reserve_fresh_development(
+    reservation_token = project_registry().reserve_fresh_development(
         key=key, owner=owner, market=market_key(environment["instrument"]),
         family=DATA_FAMILY, start_ns=window["start_ns"], end_ns=window["end_ns"],
         identity=identity,
     )
+    identity_bytes = json.dumps(
+        identity, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    receipt: dict = {
+        "schema": "rles.routeb-fold-reader-receipt.v1",
+        "reservation_key": key,
+        "reservation_token_sha256": sha256(reservation_token.encode("ascii")).hexdigest(),
+        "reservation_identity_sha256": sha256(identity_bytes).hexdigest(),
+        "reservation_label": label,
+        "dataset_hash": source_identity["snapshot_hash"],
+        "marker_sha256": source_identity["marker_sha256"],
+        "fold_sha256": fold_sha256,
+        "repository_commit": repository_commit,
+        "source_code_sha256": source_code_sha256,
+        "read_scope": {"start_ns": window["start_ns"],
+                       "end_ns": window["end_ns"], "includes_test": False},
+        "reservation_committed_before_decode": True,
+    }
+    receipt["receipt_sha256"] = sha256(json.dumps(
+        receipt, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")).hexdigest()
+    return receipt
 
 
 def read_registered_fold_window(config: dict, window: dict, *, marker_sha256: str,
                                 dataset_hash: str, required_start_ns: int, required_end_ns: int,
                                 label: str, fold_sha256: str, repository_commit: str,
                                 source_code_sha256: str,
-                                allow_legacy_isolated_snapshot: bool = False) -> CuratedStore:
+                                allow_legacy_isolated_snapshot: bool = False,
+                                return_receipt: bool = False) -> CuratedStore | tuple[CuratedStore, dict]:
     """Preflight the frozen COMPLETE marker, reserve a fresh Fold scope, then decode rows."""
     environment = config.get("environment")
     if (not isinstance(environment, dict) or not isinstance(environment.get("market_path"), str)
             or any(config.get(name) is not None for name in ("evaluation", "test", "holdout"))
             or type(allow_legacy_isolated_snapshot) is not bool
-            or allow_legacy_isolated_snapshot):
+            or allow_legacy_isolated_snapshot or type(return_receipt) is not bool):
         raise DataError("fresh Route B Fold reads require row-group scoped 0.4.1 data and no formal scopes")
     marker_sha256 = require_hash(marker_sha256)
     dataset_hash = require_hash(dataset_hash)
@@ -164,16 +187,17 @@ def read_registered_fold_window(config: dict, window: dict, *, marker_sha256: st
     if (bounds["min_ts_event_ns"] > required_start_ns
             or bounds["max_ts_event_ns"] < required_end_ns - MINUTE_NS):
         raise DataError("curated source time bounds do not cover the complete frozen Fold")
-    reserve_routeb_fresh_fold(
+    receipt = reserve_routeb_fresh_fold(
         config, window, label=label, fold_sha256=fold_sha256,
         repository_commit=repository_commit, source_code_sha256=source_code_sha256,
         source_identity=source_identity,
     )
-    return read_curated_window(
+    store = read_curated_window(
         environment["market_path"], window["start_ns"], window["end_ns"],
         expected_marker_sha256=marker_sha256,
         allow_legacy_isolated_snapshot=allow_legacy_isolated_snapshot,
     )
+    return (store, receipt) if return_receipt else store
 
 def read_registered_train_window(config: dict, window: dict, *, marker_sha256: str,
                                   label: str,

@@ -41,6 +41,19 @@ def main(argv:list[str]|None=None)->int:
     bt.add_argument("--checkpoint",required=True)
     bt.add_argument("--configuration",required=True)
     bt.add_argument("--resume",action="store_true")
+    br=subs.add_parser("b3-rollout")
+    br.add_argument("--request",required=True)
+    br.add_argument("--context",required=True)
+    br.add_argument("--checkout",required=True)
+    br.add_argument("--checkpoint",required=True)
+    br.add_argument("--output",required=True)
+    br.add_argument("--configuration",required=True)
+    bbr=subs.add_parser("b3-rollout-batch")
+    bbr.add_argument("--request",required=True)
+    bbr.add_argument("--checkout",required=True)
+    bbr.add_argument("--checkpoint",required=True)
+    bbr.add_argument("--output",required=True)
+    bbr.add_argument("--configuration",required=True)
     f=subs.add_parser("forecast")
     f.add_argument("--request",required=True)
     f.add_argument("--checkout",required=True)
@@ -143,6 +156,298 @@ def main(argv:list[str]|None=None)->int:
                 "validation_scored": False,
                 "test_scored": False,
                 "economic_certification": False,
+            }
+            print(json.dumps(result, ensure_ascii=False, allow_nan=False))
+            return 0
+        if args.command == "b3-rollout":
+            from .hierarchy_artifacts import load_hierarchical_inference_artifact
+            from .jax_hierarchy_train import (
+                HierarchicalModelConfig, HierarchicalTrainingConfig,
+                generate_recursive_hierarchical_f2_paths,
+            )
+
+            if (not isinstance(config, dict) or set(config) != {"model", "training"}
+                    or not isinstance(config["model"], dict)
+                    or set(config["model"]) != {"minute", "hour", "day"}
+                    or any(not isinstance(config["model"][scale], dict)
+                           for scale in ("minute", "hour", "day"))
+                    or not isinstance(config["training"], dict)):
+                raise ValueError("B3 config requires minute/hour/day models and training")
+            request = strict_json_loads(
+                Path(args.request).read_bytes(), context="B3 rollout request")
+            expected = {
+                "schema", "train_scope_id", "dataset_id", "fold_sha256",
+                "context_artifact_sha256", "scaler_sha256", "train_tensor_sha256",
+                "checkpoint_sha256", "configuration_sha256", "anchor_ts_ns",
+                "horizon", "n_paths", "forecast_seed", "rollout_mode",
+                "hour_availability_delay_ns", "day_availability_delay_ns",
+                "max_attempts_per_bar", "max_total_bar_attempts",
+            }
+            if (not isinstance(request, dict) or set(request) != expected
+                    or request.get("schema") != "routeb.b3-rollout-request.v1"):
+                raise ValueError("unexpected B3 rollout request schema")
+            string_fields = ("train_scope_id", "dataset_id", "fold_sha256",
+                             "context_artifact_sha256", "scaler_sha256",
+                             "train_tensor_sha256", "checkpoint_sha256",
+                             "configuration_sha256")
+            if any(not isinstance(request[name], str) or not request[name]
+                   for name in string_fields):
+                raise ValueError("B3 rollout identities must be nonempty strings")
+            rollout_sha_fields = ("fold_sha256", "context_artifact_sha256", "scaler_sha256",
+                                  "train_tensor_sha256", "checkpoint_sha256",
+                                  "configuration_sha256")
+            if any(len(request[name]) != 64 or any(char not in "0123456789abcdef"
+                   for char in request[name]) for name in rollout_sha_fields):
+                raise ValueError("B3 rollout identities must be lowercase SHA-256")
+            integer_fields = ("anchor_ts_ns", "horizon", "n_paths", "forecast_seed",
+                              "hour_availability_delay_ns", "day_availability_delay_ns",
+                              "max_attempts_per_bar", "max_total_bar_attempts")
+            if any(type(request[name]) is not int for name in integer_fields):
+                raise ValueError("B3 rollout integer fields must not be coerced")
+            if (request["dataset_id"] == "" or request["anchor_ts_ns"] <= 0
+                    or request["anchor_ts_ns"] % MINUTE_NS
+                    or not 1 <= request["horizon"] <= 60
+                    or not 2 <= request["n_paths"] <= 1024
+                    or request["forecast_seed"] < 0
+                    or request["hour_availability_delay_ns"] < 0
+                    or request["day_availability_delay_ns"] < 0
+                    or not 1 <= request["max_attempts_per_bar"] <= 100
+                    or not 1 <= request["max_total_bar_attempts"] <= 1_000_000
+                    or request["rollout_mode"] not in {"E3", "E4"}):
+                raise ValueError("B3 rollout parameters are outside the supported contract")
+            if (hashlib.sha256(Path(args.checkpoint).read_bytes()).hexdigest()
+                    != request["checkpoint_sha256"]
+                    or hashlib.sha256(Path(args.configuration).read_bytes()).hexdigest()
+                    != request["configuration_sha256"]):
+                raise ValueError("B3 rollout checkpoint or configuration digest mismatch")
+            tensors, scalers, observed, context_metadata = load_hierarchical_inference_artifact(
+                args.context, expected_scope=request["train_scope_id"],
+                expected_fold_sha256=request["fold_sha256"],
+                expected_anchor_ts_ns=request["anchor_ts_ns"],
+                expected_scaler_sha256=request["scaler_sha256"])
+            if (context_metadata["dataset_id"] != request["dataset_id"]
+                    or hashlib.sha256(Path(args.context).read_bytes()).hexdigest()
+                    != request["context_artifact_sha256"]):
+                raise ValueError("B3 rollout context artifact identity mismatch")
+            model_config = HierarchicalModelConfig(**{
+                scale: RSSMConfig(**config["model"][scale])
+                for scale in ("minute", "hour", "day")
+            })
+            training_config = HierarchicalTrainingConfig(**config["training"])
+            decisions = np.arange(
+                request["anchor_ts_ns"] + MINUTE_NS,
+                request["anchor_ts_ns"] + (request["horizon"] + 1) * MINUTE_NS,
+                MINUTE_NS, dtype=np.int64)
+            rollout = generate_recursive_hierarchical_f2_paths(
+                tensors=tensors, train_scope_id=request["train_scope_id"],
+                dataset_id=request["dataset_id"], scaler_sha256=request["scaler_sha256"],
+                checkout=args.checkout, checkpoint=args.checkpoint,
+                model_config=model_config, training_config=training_config,
+                training_tensor_sha256=request["train_tensor_sha256"],
+                inference_context_sha256=context_metadata["hierarchy_tensor_sha256"],
+                future_minute_decisions_ns=decisions,
+                hour_availability_delay_ns=request["hour_availability_delay_ns"],
+                day_availability_delay_ns=request["day_availability_delay_ns"],
+                minute_scaler=scalers.minute, hour_scaler=scalers.hour,
+                day_scaler=scalers.day, observed_prefix=observed,
+                paths=request["n_paths"], forecast_seed=request["forecast_seed"],
+                advance_slow_priors=request["rollout_mode"] == "E4",
+                max_attempts_per_bar=request["max_attempts_per_bar"],
+                max_total_bar_attempts=request["max_total_bar_attempts"])
+            output = Path(args.output)
+            if output.exists() or not output.parent.is_dir():
+                raise FileExistsError("B3 rollout output must be new in an existing directory")
+            with tempfile.NamedTemporaryFile(
+                    dir=output.parent, suffix=".npz", delete=False) as stream:
+                temporary = Path(stream.name)
+                np.savez_compressed(stream, bars=rollout.ensemble.minute,
+                                    anchor_ts_ns=np.asarray(request["anchor_ts_ns"],
+                                                           dtype=np.int64))
+            try:
+                os.replace(temporary, output)
+            finally:
+                temporary.unlink(missing_ok=True)
+            result = {
+                "status": "COMPLETED", "kind": "B3_ROLLOUT_PATHS",
+                "candidate": request["rollout_mode"],
+                "rollout_mode": ("FROZEN_OBSERVED_SLOW_POSTERIOR"
+                    if request["rollout_mode"] == "E3"
+                    else "ADVANCE_PATH_CONDITIONED_SLOW_POSTERIOR"),
+                "anchor_ts_ns": request["anchor_ts_ns"],
+                "paths": request["n_paths"], "horizon": request["horizon"],
+                "attempted_bar_samples": rollout.attempted_bar_samples,
+                "rejected_bar_samples": rollout.rejected_bar_samples,
+                "rejection_rate": rollout.rejection_rate,
+                "context_artifact_sha256": request["context_artifact_sha256"],
+                "output": str(output.resolve()),
+                "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+            }
+            print(json.dumps(result, ensure_ascii=False, allow_nan=False))
+            return 0
+        if args.command == "b3-rollout-batch":
+            from .hierarchy_artifacts import load_hierarchical_inference_artifact
+            from .jax_hierarchy_train import (
+                HierarchicalModelConfig, HierarchicalTrainingConfig,
+                create_stateful_hierarchical_f2_predictor,
+                generate_recursive_hierarchical_f2_paths,
+            )
+
+            if (not isinstance(config, dict) or set(config) != {"model", "training"}
+                    or not isinstance(config["model"], dict)
+                    or set(config["model"]) != {"minute", "hour", "day"}
+                    or any(not isinstance(config["model"][scale], dict)
+                           for scale in ("minute", "hour", "day"))
+                    or not isinstance(config["training"], dict)):
+                raise ValueError("B3 config requires minute/hour/day models and training")
+            request = strict_json_loads(
+                Path(args.request).read_bytes(), context="B3 rollout batch request")
+            expected = {
+                "schema", "train_scope_id", "dataset_id", "fold_sha256",
+                "scaler_sha256", "train_tensor_sha256", "checkpoint_sha256",
+                "configuration_sha256", "inference_context_sha256",
+                "context_artifacts", "horizon", "n_paths", "forecast_seed",
+                "hour_availability_delay_ns", "day_availability_delay_ns",
+                "max_attempts_per_bar", "max_total_bar_attempts",
+            }
+            if (not isinstance(request, dict) or set(request) != expected
+                    or request.get("schema") != "routeb.b3-rollout-batch-request.v1"):
+                raise ValueError("unexpected B3 rollout batch request schema")
+            batch_sha_fields = ("fold_sha256", "scaler_sha256", "train_tensor_sha256",
+                                "checkpoint_sha256", "configuration_sha256",
+                                "inference_context_sha256")
+            if (any(not isinstance(request.get(name), str) or len(request[name]) != 64
+                    or any(char not in "0123456789abcdef" for char in request[name])
+                    for name in batch_sha_fields)
+                    or not isinstance(request.get("train_scope_id"), str)
+                    or not request["train_scope_id"].strip()
+                    or not isinstance(request.get("dataset_id"), str)
+                    or not request["dataset_id"].strip()):
+                raise ValueError("B3 rollout batch identity is invalid")
+            batch_integer_fields = ("horizon", "n_paths", "forecast_seed",
+                                    "hour_availability_delay_ns", "day_availability_delay_ns",
+                                    "max_attempts_per_bar", "max_total_bar_attempts")
+            if any(type(request.get(name)) is not int for name in batch_integer_fields):
+                raise ValueError("B3 rollout batch integer fields must not be coerced")
+            artifacts = request.get("context_artifacts")
+            if (not isinstance(artifacts, list) or not 1 <= len(artifacts) <= 64
+                    or not 1 <= request["horizon"] <= 60
+                    or not 2 <= request["n_paths"] <= 1024
+                    or request["forecast_seed"] < 0
+                    or request["hour_availability_delay_ns"] < 0
+                    or request["day_availability_delay_ns"] < 0
+                    or not 1 <= request["max_attempts_per_bar"] <= 100
+                    or not 1 <= request["max_total_bar_attempts"] <= 100_000_000
+                    or request["n_paths"] * request["horizon"]
+                       * request["max_attempts_per_bar"] > 1_000_000
+                    or len(artifacts) * request["n_paths"] * request["horizon"]
+                       * request["max_attempts_per_bar"] > request["max_total_bar_attempts"]):
+                raise ValueError("B3 rollout batch exceeds its explicit work budget")
+            if (hashlib.sha256(Path(args.checkpoint).read_bytes()).hexdigest()
+                    != request["checkpoint_sha256"]
+                    or hashlib.sha256(Path(args.configuration).read_bytes()).hexdigest()
+                    != request["configuration_sha256"]):
+                raise ValueError("B3 rollout batch checkpoint/configuration digest mismatch")
+            if any(not isinstance(item, dict)
+                   or set(item) != {"path", "artifact_sha256", "anchor_ts_ns"}
+                   or not isinstance(item["path"], str)
+                   or type(item["anchor_ts_ns"]) is not int
+                   or item["anchor_ts_ns"] <= 0
+                   or item["anchor_ts_ns"] % MINUTE_NS
+                   or not isinstance(item["artifact_sha256"], str)
+                   or len(item["artifact_sha256"]) != 64
+                   or any(char not in "0123456789abcdef" for char in item["artifact_sha256"])
+                   for item in artifacts):
+                raise ValueError("B3 rollout batch context list is invalid")
+            anchors = [item["anchor_ts_ns"] for item in artifacts]
+            if any(right <= left for left, right in zip(anchors, anchors[1:])):
+                raise ValueError("B3 rollout batch anchors must be strictly increasing")
+            loaded = []
+            for item in artifacts:
+                context_path = Path(item["path"])
+                if hashlib.sha256(context_path.read_bytes()).hexdigest() != item["artifact_sha256"]:
+                    raise ValueError("B3 rollout batch context artifact digest mismatch")
+                inference_artifact = load_hierarchical_inference_artifact(
+                    context_path, expected_scope=request["train_scope_id"],
+                    expected_fold_sha256=request["fold_sha256"],
+                    expected_anchor_ts_ns=item["anchor_ts_ns"],
+                    expected_scaler_sha256=request["scaler_sha256"])
+                tensors, scalers, observed, metadata = inference_artifact
+                if metadata["dataset_id"] != request["dataset_id"]:
+                    raise ValueError("B3 rollout batch context dataset identity mismatch")
+                loaded.append((tensors, scalers, observed, metadata))
+            context_sha = hashlib.sha256(b"".join(
+                bytes.fromhex(item[3]["hierarchy_tensor_sha256"])
+                for item in loaded)).hexdigest()
+            if context_sha != request["inference_context_sha256"]:
+                raise ValueError("B3 rollout batch aggregate context identity mismatch")
+            model_config = HierarchicalModelConfig(**{
+                scale: RSSMConfig(**config["model"][scale])
+                for scale in ("minute", "hour", "day")
+            })
+            training_config = HierarchicalTrainingConfig(**config["training"])
+            outputs = {}
+            sampling = {}
+            for candidate, advance in (("E3", False), ("E4", True)):
+                first_tensors, first_scalers, _, first_meta = loaded[0]
+                predictor = create_stateful_hierarchical_f2_predictor(
+                    tensors=first_tensors, train_scope_id=request["train_scope_id"],
+                    dataset_id=request["dataset_id"], scaler_sha256=request["scaler_sha256"],
+                    checkout=args.checkout, checkpoint=args.checkpoint,
+                    model_config=model_config, training_config=training_config,
+                    training_tensor_sha256=request["train_tensor_sha256"],
+                    inference_context_sha256=first_meta["hierarchy_tensor_sha256"],
+                    paths=request["n_paths"], forecast_seed=request["forecast_seed"],
+                    advance_slow_priors=advance)
+                rows = []
+                attempted = rejected = 0
+                for tensors, scalers, observed, metadata in loaded:
+                    anchor = metadata["anchor_ts_ns"]
+                    decisions = np.arange(anchor + MINUTE_NS,
+                        anchor + (request["horizon"] + 1) * MINUTE_NS,
+                        MINUTE_NS, dtype=np.int64)
+                    rollout = generate_recursive_hierarchical_f2_paths(
+                        tensors=tensors, train_scope_id=request["train_scope_id"],
+                        dataset_id=request["dataset_id"], scaler_sha256=request["scaler_sha256"],
+                        checkout=args.checkout, checkpoint=args.checkpoint,
+                        model_config=model_config, training_config=training_config,
+                        training_tensor_sha256=request["train_tensor_sha256"],
+                        inference_context_sha256=metadata["hierarchy_tensor_sha256"],
+                        future_minute_decisions_ns=decisions,
+                        hour_availability_delay_ns=request["hour_availability_delay_ns"],
+                        day_availability_delay_ns=request["day_availability_delay_ns"],
+                        minute_scaler=scalers.minute, hour_scaler=scalers.hour,
+                        day_scaler=scalers.day, observed_prefix=observed,
+                        paths=request["n_paths"], forecast_seed=request["forecast_seed"],
+                        advance_slow_priors=advance, stateful_predictor=predictor,
+                        max_attempts_per_bar=request["max_attempts_per_bar"],
+                        max_total_bar_attempts=1_000_000)
+                    rows.append(rollout.ensemble.minute)
+                    attempted += rollout.attempted_bar_samples
+                    rejected += rollout.rejected_bar_samples
+                outputs[candidate] = np.stack(rows)
+                sampling[candidate] = {
+                    "attempted": attempted, "rejected": rejected,
+                    "rejection_rate": rejected / attempted,
+                }
+            output = Path(args.output)
+            if output.exists() or not output.parent.is_dir():
+                raise FileExistsError("B3 rollout batch output must be new in an existing directory")
+            with tempfile.NamedTemporaryFile(
+                    dir=output.parent, suffix=".npz", delete=False) as stream:
+                temporary = Path(stream.name)
+                np.savez_compressed(stream, bars_e3=outputs["E3"], bars_e4=outputs["E4"],
+                                    anchor_ts_ns=np.asarray(anchors, dtype=np.int64))
+            try:
+                os.replace(temporary, output)
+            finally:
+                temporary.unlink(missing_ok=True)
+            result = {
+                "status": "COMPLETED", "kind": "B3_ROLLOUT_BATCH_PATHS",
+                "anchors": len(anchors), "paths": request["n_paths"],
+                "horizon": request["horizon"],
+                "inference_context_sha256": context_sha,
+                "sampling": sampling, "output": str(output.resolve()),
+                "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
             }
             print(json.dumps(result, ensure_ascii=False, allow_nan=False))
             return 0
