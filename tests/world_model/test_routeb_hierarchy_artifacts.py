@@ -84,6 +84,21 @@ def test_hierarchy_train_artifact_rejects_wrong_fold_or_modified_payload(tmp_pat
             target, expected_scope="train-fold-001", expected_fold_sha256="a" * 64)
 
 
+def test_hierarchy_train_artifact_rejects_missing_dataset_identity(tmp_path):
+    tensors, scalers = _fixture()
+    target, _ = export_hierarchical_train_artifact(
+        tmp_path / "b3_train.npz", tensors=tensors, scalers=scalers,
+        train_scope_id="train-fold-001", fold_sha256="a" * 64)
+    metadata_path = target.with_suffix(".json")
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["dataset_id"] = None
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="dataset identity"):
+        load_hierarchical_train_artifact(
+            target, expected_scope="train-fold-001", expected_fold_sha256="a" * 64)
+
+
 def test_registered_fold_b3_training_stage_is_train_only_and_checksummed(tmp_path):
     dataset_hash = "c" * 64
     fold = FoldManifest(

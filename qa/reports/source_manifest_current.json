@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-24T12:32:18.311539+00:00",
-  "source_identity_sha256": "e845186a356289c6b86b8667922d5a522e9d8634a9515510a55b77b7da080f3f",
+  "generated_at_utc": "2026-10-24T12:44:26.551196+00:00",
+  "source_identity_sha256": "b3d91e0b8c3034779ef85333f57b00ea29e7ec59a37d145be4a5233c9222c9dc",
   "scope": {
     "included": [
       ".gitattributes",
@@ -56,8 +56,8 @@
     },
     {
       "path": ".github/workflows/l6-ci-reusable.yml",
-      "size_bytes": 8818,
-      "sha256": "0ee456f1ec31b32ba1b88d3b6e4ff729409cdfcc4fab42dc29f7ca2c370328c8"
+      "size_bytes": 8802,
+      "sha256": "8e5cf82fecf308ef7d3ab1bdea527fb8d7a3d0e6e14926cf6933b7dfc736323b"
     },
     {
       "path": ".python-version",
@@ -971,8 +971,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/hierarchy_artifacts.py",
-      "size_bytes": 7229,
-      "sha256": "72e873790de6d4dafdaf0d85e66001892418b6c847f2ea65ad099818e20cbe6b"
+      "size_bytes": 7366,
+      "sha256": "ce71496b7386fc17569eaf059754a87cf17c5dc03453738540a77df94f7c2fe6"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/hierarchy_dataset.py",
@@ -1906,8 +1906,8 @@
     },
     {
       "path": "tests/world_model/test_routeb_hierarchy_artifacts.py",
-      "size_bytes": 9484,
-      "sha256": "d57a0ce40485943ff837102bb3f9d901db63fe4151c4e82180955711bd55a759"
+      "size_bytes": 10191,
+      "sha256": "2f2d62aa0f6eda90533837d9dec3a2dcbf5ff4bdb1bf4fe11cc15ba82869cae9"
     },
     {
       "path": "tests/world_model/test_routeb_hierarchy_clock.py",

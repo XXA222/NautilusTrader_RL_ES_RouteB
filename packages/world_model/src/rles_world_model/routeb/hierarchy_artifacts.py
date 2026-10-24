@@ -123,6 +123,9 @@ def load_hierarchical_train_artifact(path: str | Path, *,
         raise ValueError("B3 Train hierarchy provenance mismatch")
     if hashlib.sha256(target.read_bytes()).hexdigest() != metadata.get("artifact_sha256"):
         raise ValueError("B3 Train hierarchy checksum mismatch")
+    dataset_id = metadata.get("dataset_id")
+    if not isinstance(dataset_id, str) or not dataset_id.strip():
+        raise ValueError("B3 Train hierarchy dataset identity is invalid")
     expected_members = set(_TENSOR_FIELDS)
     expected_members.update(f"{name}_scaler_{moment}"
                             for name in _SCALE_FIELDS for moment in ("mean", "std"))
@@ -130,7 +133,6 @@ def load_hierarchical_train_artifact(path: str | Path, *,
         if set(archive.files) != expected_members:
             raise ValueError("B3 Train hierarchy NPZ member schema mismatch")
         tensor_kwargs = {name: np.asarray(archive[name]).copy() for name in _TENSOR_FIELDS}
-        dataset_id = metadata.get("dataset_id")
         scalers = HierarchyScalers(*(
             TrainOnlyStandardizer(
                 np.asarray(archive[f"{name}_scaler_mean"], dtype=np.float64),
