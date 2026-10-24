@@ -17,9 +17,10 @@
   "fixed": ["RB-01", "RB-02", "RB-03", "RB-06", "RB-07", "RB-08", "RB-13", "RB-14"],
   "bounded_or_partial": {
     "RB-04": "slow outputs renamed and frozen as latent diagnostics, not market OHLCV; per-path conserved F2 OHLCV remains open",
+    "RB-05": "added a matched E3/E4 rollout switch that shares one trained B3 checkpoint; registered-Fold scoring remains open pending validated per-path OHLCV and the complete pinned-upstream smoke",
     "RB-10": "posterior/prior transition is exposed numerically; real open-loop shift comparison remains open",
     "RB-11": "economic certification remains false; native account parity remains open"
   },
   "open": ["RB-05", "RB-09", "RB-12"],
-  "hosted_ci": "PENDING"
+  "hosted_ci": "PASS for commit 27cf4439ae5908df3dad7eace1fca4d4f0734331; pending for subsequent E3/E4 rollout-switch changes"
 }

@@ -97,6 +97,22 @@ def main() -> int:
         training_tensor_sha256=tensor_hash, inference_context_sha256=tensor_hash,
         future_minute_decisions_ns=decisions, hour_availability_delay_ns=0,
         day_availability_delay_ns=0, forecast_seed=811)
+    e3 = forecast_hierarchical_f2(
+        tensors=tensors, train_scope_id="synthetic-train-only", dataset_id=replay.dataset_id,
+        scaler_sha256=scaler_hash, checkout=args.checkout, checkpoint=resumed,
+        model_config=model_cfg, training_config=two,
+        training_tensor_sha256=tensor_hash, inference_context_sha256=tensor_hash,
+        future_minute_decisions_ns=decisions, hour_availability_delay_ns=0,
+        day_availability_delay_ns=0, forecast_seed=811, advance_slow_priors=False)
+    e3_future_event_perturbed = forecast_hierarchical_f2(
+        tensors=tensors, train_scope_id="synthetic-train-only", dataset_id=replay.dataset_id,
+        scaler_sha256=scaler_hash, checkout=args.checkout, checkpoint=resumed,
+        model_config=model_cfg, training_config=two,
+        training_tensor_sha256=tensor_hash, inference_context_sha256=tensor_hash,
+        future_minute_decisions_ns=decisions,
+        hour_availability_delay_ns=60 * MINUTE_NS,
+        day_availability_delay_ns=60 * MINUTE_NS, forecast_seed=811,
+        advance_slow_priors=False)
     f2_future_event_perturbed = forecast_hierarchical_f2(
         tensors=tensors, train_scope_id="synthetic-train-only", dataset_id=replay.dataset_id,
         scaler_sha256=scaler_hash, checkout=args.checkout, checkpoint=resumed,
@@ -130,6 +146,12 @@ def main() -> int:
         raise AssertionError("F2 did not produce finite recursive minute forecasts")
     if not np.array_equal(f2["minute_mean"][:, 0], f2["anchor_minute_mean"]):
         raise AssertionError("F2 first step is not the trained posterior next-minute head")
+    if not np.array_equal(e3["minute_mean"][:, 0], f2["minute_mean"][:, 0]):
+        raise AssertionError("matched E3/E4 ablation changed the shared posterior first-step head")
+    if not np.array_equal(e3["minute_mean"], e3_future_event_perturbed["minute_mean"]):
+        raise AssertionError("E3 no-F2 control changed under a future slow-event schedule perturbation")
+    if np.array_equal(e3["minute_mean"][:, 3], f2["minute_mean"][:, 3]):
+        raise AssertionError("E3/E4 ablation did not diverge after an available slow-prior event")
     if np.array_equal(f2["minute_mean"][:, 0], f2["first_prior_minute_mean"]):
         raise AssertionError("F2 posterior and advanced prior head states were not distinguished")
     if inference_hash == tensor_hash:

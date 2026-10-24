@@ -122,12 +122,19 @@ def make_hierarchical_model(checkout,*,minute:RSSMConfig,hour:RSSMConfig,day:RSS
                     'minute_nll':nll, 'slow_aux':aux}
 
         def rollout_f2(self,minute_x,hour_x,day_x,hour_index,day_index,
-                       future_hour_events,future_day_events):
+                       future_hour_events,future_day_events,
+                       advance_slow_priors=True):
             """Generate a causal minute path while advancing slow RSSM priors.
 
             Event tuples state when a newly closed hour/day becomes available
             at each future decision. The caller derives them from UTC close plus
             exchange availability delay; future observations are never inputs.
+
+            ``advance_slow_priors=False`` is the matched E3 ablation: use the
+            same trained three-scale model and minute prior rollout, but freeze
+            both slow latent carries at their final observed posterior. E4 uses
+            the default and advances the slow prior carries at scheduled events.
+            This switch does not make the latent decoder outputs market OHLCV.
             """
             minute_x=jnp.asarray(minute_x,dtype=jnp.float32)
             hour_x=jnp.asarray(hour_x,dtype=jnp.float32)
@@ -180,14 +187,14 @@ def make_hierarchical_model(checkout,*,minute:RSSMConfig,hour:RSSMConfig,day:RSS
                 raw=self.sub('next_minute_scale',nn.Linear,5)(mz)
                 scale=jax.nn.softplus(jnp.clip(raw,-12.,8.))+minute.min_scale
                 means.append(mean);scales.append(scale)
-                if day_event:
+                if advance_slow_priors and day_event:
                     dcarry,(dprior,_)=d_dyn.imagine(dcarry,
                         {"market_dummy":jnp.zeros((B,1),jnp.float32)},1,False,single=True)
                     dz=jnp.concatenate([dprior['deter'],dprior['stoch'].reshape((B,-1))],-1)
                     day_diagnostics.append(self.sub('day_reconstruction',nn.Linear,5)(dz))
                 else:
                     day_diagnostics.append(jnp.zeros((B,5),jnp.float32))
-                if hour_event:
+                if advance_slow_priors and hour_event:
                     hcarry,(hprior,_)=h_dyn.imagine(hcarry,
                         {"market_dummy":jnp.zeros((B,1),jnp.float32)},1,False,single=True)
                     hz=jnp.concatenate([hprior['deter'],hprior['stoch'].reshape((B,-1))],-1)

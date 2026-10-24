@@ -182,21 +182,28 @@ def forecast_hierarchical_f2(*, tensors: HierarchyTensors, train_scope_id: str,
         future_minute_decisions_ns: np.ndarray,
         hour_availability_delay_ns: int,
         day_availability_delay_ns: int,
-        forecast_seed: int = 811
+        forecast_seed: int = 811,
+        advance_slow_priors: bool = True,
         ) -> dict[str, np.ndarray]:
-    """Load a provenance-bound B3 checkpoint and recursively imagine F2 priors.
+    """Load a provenance-bound B3 checkpoint for a matched E3/E4 rollout.
 
     Event flags are derived from the UTC calendar in ``MultiScaleClock`` plus
     explicit, frozen per-scale availability delays. Future market observations
     are deliberately not accepted by this API.
+
+    ``advance_slow_priors=True`` selects E4 (F2 slow-prior transitions).
+    ``False`` selects E3 (same three-scale checkpoint and minute-prior rollout,
+    with slow latent carries frozen at their observed posterior states).
+    Both modes return latent-space features, not independently valid OHLCV.
     """
     import jax
     import jax.numpy as jnp
     import ninjax as nj
     import optax
 
-    if type(forecast_seed) is not int or forecast_seed < 0:
-        raise ValueError("invalid F2 forecast seed")
+    if (type(forecast_seed) is not int or forecast_seed < 0
+            or type(advance_slow_priors) is not bool):
+        raise ValueError("invalid matched E3/E4 forecast mode or seed")
     actual_context_sha256 = hierarchy_tensor_sha256(tensors)
     if (not isinstance(training_tensor_sha256, str)
             or len(training_tensor_sha256) != 64
@@ -251,7 +258,7 @@ def forecast_hierarchical_f2(*, tensors: HierarchyTensors, train_scope_id: str,
         jnp.asarray(tensors.minute_x), jnp.asarray(tensors.hour_x),
         jnp.asarray(tensors.day_x), jnp.asarray(tensors.hour_index),
         jnp.asarray(tensors.day_index), future_hour_events, future_day_events,
-        seed=forecast_seed)
+        advance_slow_priors=advance_slow_priors, seed=forecast_seed)
     outputs = {key: np.asarray(jax.device_get(value)) for key, value in result.items()}
     horizon = len(future_hour_events)
     if (outputs["minute_mean"].shape != (batch_size, horizon, 5)

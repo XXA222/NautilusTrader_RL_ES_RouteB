@@ -106,10 +106,11 @@ def _source_files(root: Path) -> list[Path]:
                 part in _EXCLUDED_PARTS or part.startswith((".venv", "dist"))
                 for part in path.relative_to(root).parts
             )
-            if (path.is_file() and not path.is_symlink()
-                    and not generated_component
+            if (not generated_component
                     and path.suffix not in _EXCLUDED_SUFFIXES
-                    and ".egg-info" not in path.as_posix()):
+                    and ".egg-info" not in path.as_posix()
+                    and not path.is_symlink() and path.is_file()
+                    ):
                 files.add(path)
     workflow_dir = root / ".github" / "workflows"
     if workflow_dir.is_dir() and not workflow_dir.is_symlink():
