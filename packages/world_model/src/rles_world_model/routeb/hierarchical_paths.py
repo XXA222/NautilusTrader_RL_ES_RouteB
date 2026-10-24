@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 
@@ -108,6 +109,20 @@ class RecursiveHierarchicalOHLCVPaths:
     @property
     def rejection_rate(self) -> float:
         return self.rejected_bar_samples / self.attempted_bar_samples
+
+
+class StatefulRecursivePredictor(Protocol):
+    """Cached predictor that consumes one sampled bar before its next forecast."""
+
+    def predict_step(self, *, step: int, minute_feedback: np.ndarray,
+                     hour_feedback: np.ndarray, day_feedback: np.ndarray,
+                     hour_event: bool, day_event: bool
+                     ) -> tuple[np.ndarray, np.ndarray]: ...
+
+
+RecursivePredictor = Callable[
+    [np.ndarray, np.ndarray, np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]
+] | StatefulRecursivePredictor
 
 
 def _ohlcv(bucket: ClosedBucket) -> tuple[float, float, float, float, float]:
@@ -296,8 +311,7 @@ def align_bucket_feedback(*, close_ns: np.ndarray, feedback: np.ndarray,
     return aligned
 
 
-def generate_recursive_hierarchical_ohlcv_paths(*, predictor: Callable[
-        [np.ndarray, np.ndarray, np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]],
+def generate_recursive_hierarchical_ohlcv_paths(*, predictor: RecursivePredictor,
         future_minute_decisions_ns: np.ndarray,
         future_hour_events: tuple[bool, ...], future_day_events: tuple[bool, ...],
         hour_availability_delay_ns: int, day_availability_delay_ns: int,
@@ -318,7 +332,8 @@ def generate_recursive_hierarchical_ohlcv_paths(*, predictor: Callable[
     replaying the observed history for every decision.
     """
     decisions = np.asarray(future_minute_decisions_ns)
-    if (not callable(predictor) or decisions.ndim != 1
+    if (not (callable(predictor) or callable(getattr(predictor, "predict_step", None)))
+            or decisions.ndim != 1
             or decisions.dtype.kind not in "iu" or len(decisions) < 1
             or np.any(decisions <= 0) or np.any(np.diff(decisions) != MINUTE_NS)
             or not isinstance(observed_prefix, tuple) or not observed_prefix
@@ -390,8 +405,28 @@ def generate_recursive_hierarchical_ohlcv_paths(*, predictor: Callable[
                 elif any(future_day_events[:step]):
                     raise ValueError("a prior day event has no generated path aggregate")
 
-        mean, scale = predictor(decision_prefix, minute_feedback,
-                                hour_feedback, day_feedback)
+        stateful_step = getattr(predictor, "predict_step", None)
+        if callable(stateful_step):
+            if step == 0:
+                prior_minute = np.zeros((paths, 5), dtype=np.float32)
+                prior_hour = np.zeros_like(prior_minute)
+                prior_day = np.zeros_like(prior_minute)
+                hour_event = day_event = False
+            else:
+                prior_minute = minute_feedback[:, step - 1]
+                prior_hour = hour_feedback[:, step - 1]
+                prior_day = day_feedback[:, step - 1]
+                hour_event = future_hour_events[step - 1]
+                day_event = future_day_events[step - 1]
+            mean, scale = stateful_step(
+                step=step, minute_feedback=prior_minute,
+                hour_feedback=prior_hour, day_feedback=prior_day,
+                hour_event=hour_event, day_event=day_event)
+        elif callable(predictor):
+            mean, scale = predictor(decision_prefix, minute_feedback,
+                                    hour_feedback, day_feedback)
+        else:
+            raise ValueError("recursive predictor must be callable or implement predict_step")
         mean = np.asarray(mean, dtype=np.float64)
         scale = np.asarray(scale, dtype=np.float64)
         if (mean.shape != (paths, 5) or scale.shape != mean.shape

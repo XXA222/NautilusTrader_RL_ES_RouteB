@@ -19,7 +19,8 @@ from rles_world_model.routeb.hierarchical_paths import (
 )
 from rles_world_model.routeb.jax_hierarchy_train import (
     HierarchicalModelConfig, HierarchicalTrainingConfig,
-    forecast_hierarchical_f2, generate_recursive_hierarchical_f2_paths,
+    create_stateful_hierarchical_f2_predictor, forecast_hierarchical_f2,
+    generate_recursive_hierarchical_f2_paths,
     hierarchy_tensor_sha256, train_hierarchical,
 )
 from rles_world_model.routeb.jax_model import PINNED_UPSTREAM, RSSMConfig
@@ -226,6 +227,51 @@ def main() -> int:
         minute_feedback_features=e4_paths.minute_features,
         hour_feedback_features=aligned_hour_feedback,
         day_feedback_features=aligned_day_feedback)
+    stateful_means = {}
+    for label, advance_slow_priors, reference in (
+            ("E3", False, e3_feedback_replay),
+            ("E4", True, e4_feedback_replay)):
+        predictor = create_stateful_hierarchical_f2_predictor(
+            tensors=tensors, train_scope_id="synthetic-train-only",
+            dataset_id=replay.dataset_id, scaler_sha256=scaler_hash,
+            checkout=args.checkout, checkpoint=resumed, model_config=model_cfg,
+            training_config=two, training_tensor_sha256=tensor_hash,
+            inference_context_sha256=tensor_hash, paths=4,
+            advance_slow_priors=advance_slow_priors)
+        means = []
+        scales_out = []
+        for step in range(len(decisions)):
+            if step:
+                minute_feedback = e4_paths.minute_features[:, step - 1]
+                hour_feedback = aligned_hour_feedback[:, step - 1]
+                day_feedback = aligned_day_feedback[:, step - 1]
+                hour_event = bool(hour_feedback_events[step - 1])
+                day_event = bool(day_feedback_events[step - 1])
+            else:
+                minute_feedback = np.zeros((4, 5), dtype=np.float32)
+                hour_feedback = np.zeros_like(minute_feedback)
+                day_feedback = np.zeros_like(minute_feedback)
+                hour_event = day_event = False
+            mean, scale = predictor.predict_step(
+                step=step, minute_feedback=minute_feedback,
+                hour_feedback=hour_feedback, day_feedback=day_feedback,
+                hour_event=hour_event, day_event=day_event)
+            means.append(mean)
+            scales_out.append(scale)
+        stateful_mean = np.stack(means, axis=1)
+        stateful_scale = np.stack(scales_out, axis=1)
+        if (not np.allclose(stateful_mean[:, 0], reference["minute_mean"][:, 0],
+                            rtol=1e-6, atol=1e-7)
+                or not np.allclose(stateful_scale[:, 0], reference["minute_scale"][:, 0],
+                                   rtol=1e-6, atol=1e-7)
+                or not np.isfinite(stateful_mean).all()
+                or not np.isfinite(stateful_scale).all()):
+            raise AssertionError(f"stateful {label} initial head differs from replay reference")
+        stateful_means[label] = stateful_mean
+    if (np.array_equal(stateful_means["E3"][:, 3], stateful_means["E4"][:, 3])
+            or not np.array_equal(stateful_means["E3"][:, 0],
+                                  stateful_means["E4"][:, 0])):
+        raise AssertionError("stateful E3/E4 did not diverge after the available slow event")
     recursive_e4_paths = generate_recursive_hierarchical_f2_paths(
         tensors=tensors, train_scope_id="synthetic-train-only",
         dataset_id=replay.dataset_id, scaler_sha256=scaler_hash,
@@ -291,6 +337,8 @@ def main() -> int:
         "feedback_replay_conditions_on_sampled_minute_features": True,
         "feedback_replay_slow_features_aligned_to_availability": True,
         "feedback_replay_e3_e4_diverge_after_slow_feedback": True,
+        "stateful_initial_head_matches_feedback_replay": True,
+        "stateful_e3_e4_diverge_after_slow_event": True,
         "recursive_e4_ohlcv_paths": list(recursive_e4_paths.ensemble.minute.shape),
         "recursive_e4_hour_day_feedback_reconciled": True,
         "recursive_e4_bar_attempts": recursive_e4_paths.attempted_bar_samples,
