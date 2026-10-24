@@ -9,6 +9,7 @@ import sys
 
 
 CANONICAL_PROJECT_ROOT = Path(r"D:\Program Files\NautilusTrader_RL_ES_RouteB")
+CANONICAL_WSL_PROJECT_ROOT = Path("/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB")
 MARKER_NAME = ".canonical-project-root"
 
 
@@ -16,25 +17,39 @@ def _normalized(path: Path) -> str:
     return os.path.normcase(os.path.realpath(path)).rstrip("\\/")
 
 
-def assert_canonical_workspace() -> Path:
-    if os.name != "nt":
-        raise RuntimeError(
-            "RouteB local development is Windows-only at "
-            f"{CANONICAL_PROJECT_ROOT}; non-Windows checkouts are read-only/CI-only"
-        )
+def _platform_root(*, os_name: str = os.name, platform: str = sys.platform) -> Path:
+    if os_name == "nt":
+        return CANONICAL_PROJECT_ROOT
+    if os_name == "posix" and platform.startswith("linux"):
+        return CANONICAL_WSL_PROJECT_ROOT
+    raise RuntimeError(
+        "RouteB local development is supported only in the canonical Windows or "
+        f"WSL checkout: {CANONICAL_PROJECT_ROOT}"
+    )
 
+
+def _marker_matches(marker_value: str, *, expected: Path,
+                    os_name: str = os.name) -> bool:
+    if os_name == "nt":
+        return _normalized(Path(marker_value)) == _normalized(expected)
+    # The marker remains a stable Windows project identity in this shared checkout.
+    return marker_value.casefold() == str(CANONICAL_PROJECT_ROOT).casefold()
+
+
+def assert_canonical_workspace() -> Path:
+    platform_root = _platform_root()
     script_root = Path(__file__).resolve().parents[1]
-    expected = _normalized(CANONICAL_PROJECT_ROOT)
+    expected = _normalized(platform_root)
     actual = _normalized(script_root)
     if actual != expected:
         raise RuntimeError(
             f"refusing non-canonical RouteB checkout: {script_root}; expected "
-            f"{CANONICAL_PROJECT_ROOT}"
+            f"{platform_root}"
         )
 
     marker = script_root / MARKER_NAME
     marker_value = marker.read_text(encoding="utf-8").strip()
-    if _normalized(Path(marker_value)) != expected:
+    if not _marker_matches(marker_value, expected=platform_root):
         raise RuntimeError(f"invalid {MARKER_NAME}: {marker_value!r}")
 
     completed = subprocess.run(
@@ -46,7 +61,7 @@ def assert_canonical_workspace() -> Path:
     git_root = Path(completed.stdout.strip())
     if _normalized(git_root) != expected:
         raise RuntimeError(
-            f"Git root mismatch: {git_root}; expected {CANONICAL_PROJECT_ROOT}"
+            f"Git root mismatch: {git_root}; expected {platform_root}"
         )
     return script_root
 

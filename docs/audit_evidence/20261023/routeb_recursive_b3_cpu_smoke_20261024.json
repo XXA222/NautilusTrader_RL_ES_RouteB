@@ -1,0 +1,36 @@
+{
+  "status": "PASS",
+  "scope": "synthetic_mechanism_only",
+  "recorded_at": "2026-10-24",
+  "runner": {
+    "python": "3.12.10",
+    "jax": "0.11.2",
+    "jaxlib": "0.11.2",
+    "ninjax": "3.5.1",
+    "optax": "0.2.8",
+    "platform": "WSL2 Ubuntu 24.04 CPU",
+    "environment": "packages/world_model/environment/.venv-wsl",
+    "upstream_sha": "e01491fad6434b2245a3b8ca201dd7faedcc458c"
+  },
+  "smoke_script": "qa/world_model/routeb_b3_cpu_smoke.py",
+  "smoke_script_sha256": "46d92c902a5373e8218eb2d529d5e92db41767edd6493e7dd6ffc8ff9fc671fd",
+  "raw_result_sha256": "f740717429a2301fc88de618135d0682ab9e10aab9229d98f4ebafc33ffebab1",
+  "world_model_tests": "145 passed; test_cli.py excluded per JAX CI selector",
+  "canonical_guard_tests": "3 passed on Windows and WSL",
+  "optimizer_updates": 2,
+  "resume_parity": true,
+  "all_scale_gradients_nonzero": true,
+  "recursive_e4_ohlcv_paths": [
+    2,
+    5,
+    5
+  ],
+  "recursive_e4_hour_day_feedback_reconciled": true,
+  "recursive_e4_bar_attempts": 10,
+  "recursive_e4_rejected_bar_samples": 0,
+  "e3_e4_paths_conserve_completed_slow_ohlcv": true,
+  "e3_e4_path_divergence_after_slow_event": true,
+  "real_market_validation": false,
+  "economic_claim": false,
+  "data_boundary": "Synthetic fixtures only; no market, account, Validation, Test, or Holdout payload accessed."
+}

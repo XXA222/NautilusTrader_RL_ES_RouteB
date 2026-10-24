@@ -1,0 +1,68 @@
+{
+  "schema": "routeb.audit.b3-cpu-scale-profile.v1",
+  "status": "PASS_SYNTHETIC_RESOURCE_PROBE",
+  "created_at": "2026-10-24",
+  "environment": {
+    "os": "WSL2 Ubuntu 24.04",
+    "python": "3.12.10",
+    "jax": "0.11.2",
+    "jaxlib": "0.11.2",
+    "device": "cpu:0",
+    "dreamerv3_upstream_sha": "e01491fad6434b2245a3b8ca201dd7faedcc458c",
+    "python_snapshot_sha256": "80194a587444bf4a11f06f6e273723e5754f2483"
+  },
+  "profile_script": "qa/world_model/routeb_b3_cpu_profile.py",
+  "profile_script_sha256": "284caa6d04d8108488627b0321724f9ffb645772b829742c0d99426f9cad6f52",
+  "raw_result_artifacts": [
+    "docs/audit_evidence/20261023/b3_synthetic_cpu_profile_30d_20261024.json",
+    "docs/audit_evidence/20261023/b3_synthetic_cpu_profile_90d_20261024.json",
+    "docs/audit_evidence/20261023/b3_synthetic_cpu_profile_360d_20261024.json"
+  ],
+  "method": {
+    "data": "deterministic synthetic OHLCV; no real market data",
+    "updates_per_duration": 1,
+    "batch_size": 1,
+    "window_length_minutes": 16,
+    "model_parameters": 3208,
+    "durations_run_in_separate_fresh_processes": true,
+    "peak_rss_unit": "MiB (Linux ru_maxrss KiB converted by /1024)",
+    "validation_test_holdout_accessed": false,
+    "economic_certification": false
+  },
+  "results": [
+    {
+      "days": 30,
+      "minute_rows": 43199,
+      "hour_rows": 720,
+      "day_rows": 30,
+      "prepare_seconds": 0.158,
+      "training_seconds_including_first_update_jit": 15.538,
+      "training_seconds_reported": 3.645,
+      "peak_rss_mib": 927.8,
+      "raw_result_sha256": "eeeab4a0dc7a2654835ee98040a69869e155350408cea493ddda409005c69b20"
+    },
+    {
+      "days": 90,
+      "minute_rows": 129599,
+      "hour_rows": 2160,
+      "day_rows": 90,
+      "prepare_seconds": 0.424,
+      "training_seconds_including_first_update_jit": 15.264,
+      "training_seconds_reported": 3.739,
+      "peak_rss_mib": 966.0,
+      "raw_result_sha256": "83e017a883cd2cabd5bd6d7fe1f4e4d65bed3ff06235998372dc7d22481865db"
+    },
+    {
+      "days": 360,
+      "minute_rows": 518399,
+      "hour_rows": 8640,
+      "day_rows": 360,
+      "prepare_seconds": 1.772,
+      "training_seconds_including_first_update_jit": 15.552,
+      "training_seconds_reported": 3.850,
+      "peak_rss_mib": 1156.5,
+      "raw_result_sha256": "90a85077a9607c3b3094ad4671d7b2f16caa42cd13a38909625c5922fda9b736"
+    }
+  ],
+  "interpretation": "For this tiny model and one optimizer step, CPU prepare/update time and peak memory grew modestly across 30/90/360 synthetic days. This does not validate production model capacity, multi-step throughput, GPU behavior, convergence, open-loop forecast quality, or real-market calibration. RB-09 remains open pending representative configuration, repeated-step profile, and (where available) CUDA measurements."
+}

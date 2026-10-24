@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-24T01:35:03.289623+00:00",
-  "source_identity_sha256": "9ae18aff0a0b867a9ade4f8e273a7dbc70defbbbdca151b6d0d659733daf749a",
+  "generated_at_utc": "2026-10-24T12:32:18.311539+00:00",
+  "source_identity_sha256": "e845186a356289c6b86b8667922d5a522e9d8634a9515510a55b77b7da080f3f",
   "scope": {
     "included": [
       ".gitattributes",
@@ -946,8 +946,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/fold_evaluation.py",
-      "size_bytes": 16551,
-      "sha256": "8ac847d7786dc5f19591ec24e0d98ee59ffe9ffbb70ad3b372048c4833c5adae"
+      "size_bytes": 30177,
+      "sha256": "955d321ff35f8665edc51fc0ea87de6e7c542f16e36f464849ccba078786c9e4"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/fold_experiment.py",
@@ -961,8 +961,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/hierarchical_paths.py",
-      "size_bytes": 14749,
-      "sha256": "3b11bcb94ec206915eef0463e3a7af98401abe0e48197090972a17e7ebea8da6"
+      "size_bytes": 26151,
+      "sha256": "b1c2f63109009621b652de92654e2876e65de377e80e7ca7950e34bff9f9a6a0"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/hierarchy.py",
@@ -1006,8 +1006,8 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/jax_hierarchy_train.py",
-      "size_bytes": 18408,
-      "sha256": "f722688dd51ceb3c82ab37130152e26960be6d194e6f216b03b04b81fc9ebc01"
+      "size_bytes": 22887,
+      "sha256": "72305c1bb26eaf67d51fbffb52121baced6203c22bc3f954b5b39173861b8aa1"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/jax_model.py",
@@ -1190,9 +1190,19 @@
       "sha256": "81305eb145517513298de18c772c40ac35570b6759ae8407852a25b580d492b8"
     },
     {
+      "path": "qa/world_model/routeb_b3_cpu_profile.py",
+      "size_bytes": 5893,
+      "sha256": "284caa6d04d8108488627b0321724f9ffb645772b829742c0d99426f9cad6f52"
+    },
+    {
       "path": "qa/world_model/routeb_b3_cpu_smoke.py",
-      "size_bytes": 18238,
-      "sha256": "ff0117b78b8d984325cd87641c56fb5cb097f07f3afaf0857a3664c51da09e54"
+      "size_bytes": 19761,
+      "sha256": "282a23d0abbdc8d70e39105ab5bae6b6e981d589996d7a801e6587685de76e29"
+    },
+    {
+      "path": "qa/world_model/routeb_b3_default_cpu_profile.py",
+      "size_bytes": 4733,
+      "sha256": "e65db6088f3e51f553bdb9479c3daa9be590cac56e285bd64ade23abc4e594c6"
     },
     {
       "path": "qa/world_model/routeb_cli_worker_smoke.py",
@@ -1570,6 +1580,11 @@
       "sha256": "d538f37da74e5c72bbceab77c5d8ef17b013c4d88a90338947a77cbcf5f7ce2e"
     },
     {
+      "path": "tests/test_canonical_workspace_guard.py",
+      "size_bytes": 1069,
+      "sha256": "3ed3c419696859d11c1e1dc2eb4865a328aaf27ee7c9cae56514f2fa043d18b4"
+    },
+    {
       "path": "tests/test_compute_device.py",
       "size_bytes": 6395,
       "sha256": "5811a4ad2076c4c7602ebb02423b4b39b6cb621a8f26aab400bca6b5c98f3eb0"
@@ -1881,13 +1896,13 @@
     },
     {
       "path": "tests/world_model/test_routeb_fold_evaluation.py",
-      "size_bytes": 16909,
-      "sha256": "1efa4f6fa01a81c2f69456e5ac2dee4f1462b6cc09b109c046175394658a81b4"
+      "size_bytes": 24821,
+      "sha256": "eceff1dfc3cd166bc34e6fa5d876816b4324c2e7f001b580599ab7917483b6e4"
     },
     {
       "path": "tests/world_model/test_routeb_hierarchical_paths.py",
-      "size_bytes": 5327,
-      "sha256": "641f3608a4d42be7e21269fb96411427321f65464ce524d0c7fdb42b0b7308e9"
+      "size_bytes": 11734,
+      "sha256": "928967a5ea9eb6f1f1194383e6fbc35f94407bbfb65af364c461120779eb69f9"
     },
     {
       "path": "tests/world_model/test_routeb_hierarchy_artifacts.py",

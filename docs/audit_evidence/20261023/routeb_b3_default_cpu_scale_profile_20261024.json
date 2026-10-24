@@ -1,0 +1,72 @@
+{
+  "schema": "routeb.audit.b3-default-cpu-scale-profile.v1",
+  "status": "PASS_SYNTHETIC_RESOURCE_PROBE",
+  "created_at": "2026-10-24",
+  "environment": {
+    "os": "WSL2 Ubuntu 24.04",
+    "python": "3.12.10",
+    "jax": "0.11.2",
+    "jaxlib": "0.11.2",
+    "device": "cpu:0",
+    "dreamerv3_upstream_sha": "e01491fad6434b2245a3b8ca201dd7faedcc458c",
+    "python_snapshot_sha256": "80194a587444bf4a11f06f6e273723e5754f2483"
+  },
+  "profile_script": "qa/world_model/routeb_b3_default_cpu_profile.py",
+  "profile_script_sha256": "e65db6088f3e51f553bdb9479c3daa9be590cac56e285bd64ade23abc4e594c6",
+  "raw_result_artifacts": [
+    "docs/audit_evidence/20261023/b3_default_cpu_profile_30d_20261024.json",
+    "docs/audit_evidence/20261023/b3_default_cpu_profile_90d_20261024.json",
+    "docs/audit_evidence/20261023/b3_default_cpu_profile_360d_20261024.json"
+  ],
+  "method": {
+    "data": "deterministic synthetic OHLCV; no real market data",
+    "model_dimensions_per_scale": {
+      "deter": 256,
+      "hidden": 128,
+      "stoch": 16,
+      "classes": 16,
+      "blocks": 8
+    },
+    "model_parameter_count": 1283732,
+    "updates_per_duration": 1,
+    "batch_size": 1,
+    "window_length_minutes": 16,
+    "durations_run_in_separate_fresh_processes": true,
+    "peak_rss_unit": "MiB (Linux ru_maxrss KiB converted by /1024)",
+    "validation_test_holdout_accessed": false,
+    "economic_certification": false
+  },
+  "results": [
+    {
+      "days": 30,
+      "minute_rows": 43199,
+      "hour_rows": 720,
+      "day_rows": 30,
+      "train_call_seconds_including_first_update_jit": 17.302,
+      "training_seconds_reported": 5.162,
+      "peak_rss_mib": 1037.5,
+      "raw_result_sha256": "f5c98c5fad7d3e06e39df3b7637784968f615eca92c80ecc592c895130c4b5ec"
+    },
+    {
+      "days": 90,
+      "minute_rows": 129599,
+      "hour_rows": 2160,
+      "day_rows": 90,
+      "train_call_seconds_including_first_update_jit": 17.334,
+      "training_seconds_reported": 5.615,
+      "peak_rss_mib": 1158.2,
+      "raw_result_sha256": "f9e7e0418b80966ca40aa7024d4beffc919a9775ecc98e6c0cda42c3e8286ed7"
+    },
+    {
+      "days": 360,
+      "minute_rows": 518399,
+      "hour_rows": 8640,
+      "day_rows": 360,
+      "train_call_seconds_including_first_update_jit": 20.063,
+      "training_seconds_reported": 6.786,
+      "peak_rss_mib": 1672.5,
+      "raw_result_sha256": "db17790ef2c425825f8a427c6651f20caed7f1479f60d8d98ef87740f58c7622"
+    }
+  ],
+  "interpretation": "The repository-default B3 model completed one optimizer update at all three synthetic durations on CPU, with peak RSS increasing from about 1.01 GiB to 1.63 GiB and train-call time from 17.3 to 20.1 seconds. This is useful resource evidence but not a multi-step sustained-throughput profile, convergence study, GPU validation, or real-market forecast test. RB-09 remains open."
+}

@@ -1,4 +1,4 @@
-"""Fold-bound E0/E1/E2 validation scoring helpers.
+"""Fold-bound E0/E1/E2 and E0/E3/E4 validation scoring helpers.
 
 This module consumes only the already-authorized Train/Validation replay. It
 does not open market files or grant research access. Call it after candidate
@@ -22,6 +22,10 @@ from .evaluation import _numeric_sha256
 from .fold_protocol import validation_anchor_timestamps, validate_fold_experiment_protocol
 from .jax_model import PINNED_UPSTREAM
 from .market import Candle
+
+
+_E1_E2 = ("E1", "E2")
+_E3_E4 = ("E3", "E4")
 
 
 def _close_returns(closes: np.ndarray) -> np.ndarray:
@@ -57,10 +61,11 @@ def build_fold_predictive_report(
     seed: int = 0,
     candidate_next_distributions: Mapping[str, tuple[np.ndarray, np.ndarray]] | None = None,
     frozen_scaler: TrainOnlyStandardizer | None = None,
+    candidate_pair: tuple[str, str] = _E1_E2,
 ) -> dict[str, object]:
-    """Build a common-anchor, Train-fitted E0/E1/E2 comparison report.
+    """Build a common-anchor, Train-fitted baseline/candidate report.
 
-    ``candidate_ohlcv_paths`` must contain frozen E1 and E2 outputs with shape
+    ``candidate_ohlcv_paths`` must contain the selected matched pair with shape
     ``[anchors, paths, max_horizon, 5]``. Their CLI training run reports must
     bind both candidates to the same Train NPZ, Fold, budget and device, and
     their ordered anchor timestamps must equal the generated Validation
@@ -81,10 +86,13 @@ def build_fold_predictive_report(
                    or frame.available_at_ns > fold.validation.score_end_ns
                    for frame in replay.frames)):
         raise ValueError("evaluation replay must end at Validation score end and exclude Test")
-    if (set(candidate_ohlcv_paths) != {"E1", "E2"}
-            or set(candidate_training_runs) != {"E1", "E2"}
-            or set(candidate_anchor_timestamps_ns) != {"E1", "E2"}):
-        raise ValueError("the registered comparison requires exactly frozen E1 and E2 candidates")
+    if candidate_pair not in (_E1_E2, _E3_E4):
+        raise ValueError("registered comparison supports only the matched E1/E2 or E3/E4 pair")
+    candidate_names = set(candidate_pair)
+    if (set(candidate_ohlcv_paths) != candidate_names
+            or set(candidate_training_runs) != candidate_names
+            or set(candidate_anchor_timestamps_ns) != candidate_names):
+        raise ValueError(f"the registered comparison requires exactly frozen {candidate_pair} candidates")
     validate_fold_experiment_protocol(
         horizons=horizons, anchor_interval_minutes=anchor_interval_minutes,
         context_lookback=context_lookback, volatility_window=volatility_window,
@@ -125,12 +133,14 @@ def build_fold_predictive_report(
         "training_seconds", "device", "configuration_sha256",
         "checkpoint_sha256", "snapshot_sha256", "upstream_sha256", "resume",
     }
-    normalized_runs = {name: dict(candidate_training_runs[name]) for name in ("E1", "E2")}
+    normalized_runs = {name: dict(candidate_training_runs[name]) for name in candidate_pair}
     if any(not required_run_fields.issubset(run) for run in normalized_runs.values()):
-        raise ValueError("E1/E2 run reports are missing frozen training provenance")
+        raise ValueError(f"{candidate_pair} run reports are missing frozen training provenance")
+    expected_run_schema = ("routeb.train-run.v1" if candidate_pair == _E1_E2
+                           else "routeb.b3-rollout-run.v1")
     for name, run in normalized_runs.items():
         for key, expected in (
-            ("schema", "routeb.train-run.v1"), ("status", "COMPLETED"),
+            ("schema", expected_run_schema), ("status", "COMPLETED"),
             ("dataset_hash", fold.dataset_hash),
             ("fold_hash", fold.hash), ("train_scope_id", train_scope_id),
             ("snapshot_sha256", snapshot_sha256), ("upstream_sha256", PINNED_UPSTREAM),
@@ -156,12 +166,13 @@ def build_fold_predictive_report(
                 or not np.isfinite(run["training_seconds"])
                 or run["training_seconds"] < 0):
             raise ValueError(f"{name} training report has invalid run measurements")
-    if (normalized_runs["E1"]["train_npz_sha256"] != normalized_runs["E2"]["train_npz_sha256"]
-            or normalized_runs["E1"]["training_config"] != normalized_runs["E2"]["training_config"]
-            or normalized_runs["E1"]["optimizer_updates"] != normalized_runs["E2"]["optimizer_updates"]
-            or normalized_runs["E1"]["train_examples"] != normalized_runs["E2"]["train_examples"]
-            or normalized_runs["E1"]["device"] != normalized_runs["E2"]["device"]):
-        raise ValueError("E1 and E2 must share one Train artifact, training budget, examples and device")
+    if (normalized_runs[candidate_pair[0]]["train_npz_sha256"]
+            != normalized_runs[candidate_pair[1]]["train_npz_sha256"]
+            or normalized_runs[candidate_pair[0]]["training_config"] != normalized_runs[candidate_pair[1]]["training_config"]
+            or normalized_runs[candidate_pair[0]]["optimizer_updates"] != normalized_runs[candidate_pair[1]]["optimizer_updates"]
+            or normalized_runs[candidate_pair[0]]["train_examples"] != normalized_runs[candidate_pair[1]]["train_examples"]
+            or normalized_runs[candidate_pair[0]]["device"] != normalized_runs[candidate_pair[1]]["device"]):
+        raise ValueError(f"{candidate_pair} must share one Train artifact, training budget, examples and device")
     expected_anchor_shape = (len(anchors), None, max_horizon, 5)
     n_paths: int | None = None
     for name, values in candidate_ohlcv_paths.items():
@@ -177,7 +188,7 @@ def build_fold_predictive_report(
         if n_paths is None:
             n_paths = paths.shape[1]
         elif paths.shape[1] != n_paths:
-            raise ValueError("E1 and E2 must use the same path ensemble size")
+            raise ValueError(f"{candidate_pair} must use the same path ensemble size")
     if n_paths is None:
         raise ValueError("candidate forecast ensembles are empty")
 
@@ -219,8 +230,8 @@ def build_fold_predictive_report(
     if (candidate_next_distributions is None) != (frozen_scaler is None):
         raise ValueError("native next-step distributions require the frozen Train scaler")
     if candidate_next_distributions is not None:
-        if set(candidate_next_distributions) != {"E1", "E2"}:
-            raise ValueError("native next-step distributions must cover exactly E1 and E2")
+        if set(candidate_next_distributions) != candidate_names:
+            raise ValueError(f"native next-step distributions must cover exactly {candidate_pair}")
         assert frozen_scaler is not None
         standardized_target = np.empty((len(anchors), 5), dtype=np.float32)
         for row, anchor in enumerate(anchors):
@@ -292,7 +303,7 @@ def build_fold_predictive_report(
         nll_by_model=nll_by_model,
         generated_ohlcv_by_model={
             name: np.asarray(candidate_ohlcv_paths[name], dtype=np.float64)
-            for name in ("E1", "E2")
+            for name in candidate_pair
         },
         realized_ohlcv=realized_ohlcv,
         previous_close=anchor_closes,
@@ -311,6 +322,242 @@ def build_fold_predictive_report(
         "test_payload_decoded": False,
         "anchor_interval_minutes": anchor_interval_minutes,
         "context_lookback_minutes": context_lookback,
+    }
+    report.pop("report_sha256", None)
+    canonical = json.dumps(report, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    report["report_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return report
+
+
+def build_fold_b3_predictive_report(
+    replay: MarketReplay,
+    fold: FoldManifest,
+    candidate_ohlcv_paths: Mapping[str, np.ndarray],
+    b3_training_report: Mapping[str, object],
+    candidate_rollout_runs: Mapping[str, Mapping[str, object]],
+    candidate_anchor_timestamps_ns: Mapping[str, np.ndarray],
+    *,
+    train_scope_id: str,
+    snapshot_sha256: str,
+    forecast_seed: int,
+    inference_context_sha256: str,
+    horizons: tuple[int, ...] = (1, 5, 15),
+    anchor_interval_minutes: int = 15,
+    context_lookback: int = 128,
+    volatility_window: int = 15,
+    block_length: int = 8,
+    bootstrap_replicates: int = 2000,
+    seed: int = 0,
+) -> dict[str, object]:
+    """Score matched B3 E3/E4 paths on common registered Validation anchors.
+
+    This is a scorer, not a data reader or worker launcher. ``replay`` must be
+    the already-authorized Train + Validation replay; the caller supplies the
+    frozen Train-only B3 report and completed E3/E4 path artifacts. Both arms
+    must share one trained checkpoint, Train artifact, seed, anchor list,
+    inference context, path count, horizon, device and training budget. E3 and
+    E4 differ only in the frozen-vs-advanced slow-prior rollout mode.
+    """
+    if not isinstance(b3_training_report, Mapping):
+        raise ValueError("a provenance-bound B3 Train report is required")
+    train_report = dict(b3_training_report)
+    supplied_digest = train_report.get("report_sha256")
+    unsigned_train_report = {
+        key: value for key, value in train_report.items() if key != "report_sha256"
+    }
+    try:
+        canonical_train_report = json.dumps(
+            unsigned_train_report, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("B3 Train report is not canonical finite JSON") from exc
+    expected_digest = hashlib.sha256(canonical_train_report.encode("utf-8")).hexdigest()
+    if supplied_digest != expected_digest:
+        raise ValueError("B3 Train report digest is invalid")
+
+    def valid_sha(value: object, length: int = 64) -> bool:
+        return (isinstance(value, str) and len(value) == length
+                and all(char in "0123456789abcdef" for char in value))
+
+    required_train_fields = {
+        "schema", "status", "candidate", "dataset_hash", "fold_hash",
+        "train_scope_id", "reservation_label", "repository_commit",
+        "source_code_sha256", "train_artifact_sha256", "scaler_sha256",
+        "training_config", "optimizer_updates", "parameter_count", "train_windows",
+        "training_seconds", "device", "configuration_sha256", "checkpoint_sha256",
+        "snapshot_sha256", "upstream_sha256", "validation_scored", "test_scored",
+        "economic_certification", "report_sha256",
+    }
+    if not required_train_fields.issubset(train_report):
+        raise ValueError("B3 Train report is missing required provenance fields")
+    for key, expected in (
+        ("schema", "routeb.b3-train-run.v1"), ("status", "COMPLETED"),
+        ("candidate", "B3"), ("dataset_hash", fold.dataset_hash),
+        ("fold_hash", fold.hash), ("train_scope_id", train_scope_id),
+        ("snapshot_sha256", snapshot_sha256), ("upstream_sha256", PINNED_UPSTREAM),
+        ("validation_scored", False), ("test_scored", False),
+        ("economic_certification", False),
+    ):
+        if train_report.get(key) != expected:
+            raise ValueError(f"B3 Train report has mismatched {key}")
+    if (not isinstance(train_report["reservation_label"], str)
+            or not train_report["reservation_label"].startswith("routeb-fold-")
+            or not valid_sha(train_report["repository_commit"], 40)
+            or not valid_sha(train_report["source_code_sha256"])
+            or not isinstance(train_report["training_config"], dict)
+            or type(train_report["optimizer_updates"]) is not int
+            or train_report["optimizer_updates"] < 1
+            or train_report["optimizer_updates"] != train_report["training_config"].get("steps")
+            or type(train_report["parameter_count"]) is not int
+            or train_report["parameter_count"] < 1
+            or type(train_report["train_windows"]) is not int
+            or train_report["train_windows"] < 1
+            or not isinstance(train_report["training_seconds"], (int, float))
+            or isinstance(train_report["training_seconds"], bool)
+            or not np.isfinite(train_report["training_seconds"])
+            or train_report["training_seconds"] < 0
+            or not isinstance(train_report["device"], str)
+            or not train_report["device"].strip()):
+        raise ValueError("B3 Train report has invalid source, budget or measurements")
+    for key in ("train_artifact_sha256", "scaler_sha256", "configuration_sha256",
+                "checkpoint_sha256", "snapshot_sha256", "upstream_sha256"):
+        if not valid_sha(train_report[key],
+                         40 if key in ("snapshot_sha256", "upstream_sha256") else 64):
+            raise ValueError(f"B3 Train report has invalid {key}")
+    if (not isinstance(candidate_rollout_runs, Mapping)
+            or set(candidate_rollout_runs) != set(_E3_E4)
+            or not isinstance(candidate_ohlcv_paths, Mapping)
+            or set(candidate_ohlcv_paths) != set(_E3_E4)
+            or not isinstance(candidate_anchor_timestamps_ns, Mapping)
+            or set(candidate_anchor_timestamps_ns) != set(_E3_E4)):
+        raise ValueError("registered B3 scoring requires exactly the matched E3/E4 pair")
+    if (not valid_sha(inference_context_sha256)
+            or type(forecast_seed) is not int or forecast_seed < 0
+            or not horizons or any(type(horizon) is not int or horizon < 1
+                                   for horizon in horizons)):
+        raise ValueError("B3 rollout context, seed or horizon identity is invalid")
+
+    anchors = np.asarray(candidate_anchor_timestamps_ns["E3"])
+    if (anchors.ndim != 1 or not np.issubdtype(anchors.dtype, np.integer)
+            or len(anchors) < 1):
+        raise ValueError("E3/E4 rollout anchors must be a nonempty integer vector")
+    anchor_sha256 = _numeric_sha256(anchors, dtype="<i8")
+    max_horizon = horizons[-1]
+    path_count: int | None = None
+    normalized_runs: dict[str, dict[str, object]] = {}
+    path_sampling: dict[str, dict[str, int | float]] = {}
+    for name in _E3_E4:
+        run = candidate_rollout_runs[name]
+        paths = np.asarray(candidate_ohlcv_paths[name], dtype=np.float64)
+        if (not isinstance(run, Mapping)
+                or paths.ndim != 4 or paths.shape[0] != len(anchors)
+                or paths.shape[2:] != (max_horizon, 5)):
+            raise ValueError(f"{name} path artifact does not match registered anchors/horizon")
+        if path_count is None:
+            path_count = int(paths.shape[1])
+        elif paths.shape[1] != path_count:
+            raise ValueError("E3 and E4 must use the same path count")
+        expected_bars = len(anchors) * int(paths.shape[1]) * max_horizon
+        attempted = run.get("attempted_bar_samples")
+        rejected = run.get("rejected_bar_samples")
+        max_attempts = run.get("max_attempts_per_bar")
+        rejection_rate = run.get("rejection_rate")
+        if (type(attempted) is not int or type(rejected) is not int
+                or type(max_attempts) is not int or not 1 <= max_attempts <= 100
+                or attempted < expected_bars or rejected < 0
+                or attempted - rejected != expected_bars
+                or attempted > expected_bars * max_attempts
+                or not isinstance(rejection_rate, (int, float))
+                or isinstance(rejection_rate, bool)
+                or not np.isfinite(rejection_rate)
+                or not np.isclose(rejection_rate, rejected / attempted,
+                                  rtol=0.0, atol=1e-12)):
+            raise ValueError(f"{name} rollout has invalid path-sampling rejection accounting")
+        path_sampling[name] = {
+            "attempted_bar_samples": attempted,
+            "rejected_bar_samples": rejected,
+            "accepted_bar_samples": expected_bars,
+            "max_attempts_per_bar": max_attempts,
+            "rejection_rate": float(rejection_rate),
+        }
+        expected_mode = "FROZEN_OBSERVED_SLOW_POSTERIOR" if name == "E3" else "ADVANCE_PATH_CONDITIONED_SLOW_POSTERIOR"
+        for key, expected in (
+            ("schema", "routeb.b3-rollout-run.v1"), ("status", "COMPLETED"),
+            ("candidate", name), ("rollout_mode", expected_mode),
+            ("b3_train_report_sha256", supplied_digest),
+            ("dataset_hash", fold.dataset_hash), ("fold_hash", fold.hash),
+            ("train_scope_id", train_scope_id),
+            ("train_artifact_sha256", train_report["train_artifact_sha256"]),
+            ("checkpoint_sha256", train_report["checkpoint_sha256"]),
+            ("configuration_sha256", train_report["configuration_sha256"]),
+            ("training_config", train_report["training_config"]),
+            ("optimizer_updates", train_report["optimizer_updates"]),
+            ("train_windows", train_report["train_windows"]),
+            ("parameter_count", train_report["parameter_count"]),
+            ("device", train_report["device"]),
+            ("snapshot_sha256", train_report["snapshot_sha256"]),
+            ("upstream_sha256", train_report["upstream_sha256"]),
+            ("forecast_seed", forecast_seed), ("anchors", len(anchors)),
+            ("paths", path_count), ("horizon", max_horizon),
+            ("inference_context_sha256", inference_context_sha256),
+            ("anchor_timestamps_sha256", anchor_sha256),
+            ("forecast_ohlcv_sha256", _numeric_sha256(paths, dtype="<f8")),
+        ):
+            if run.get(key) != expected:
+                raise ValueError(f"{name} rollout report has mismatched {key}")
+        # Adapt only after the B3-specific shared-checkpoint contract is proven;
+        # the generic scorer then checks OHLCV validity and common Fold targets.
+        normalized_runs[name] = {
+            "schema": "routeb.b3-rollout-run.v1", "status": "COMPLETED",
+            "candidate": name, "dataset_hash": fold.dataset_hash,
+            "fold_hash": fold.hash, "train_scope_id": train_scope_id,
+            "train_npz_sha256": train_report["train_artifact_sha256"],
+            "training_config": train_report["training_config"],
+            "optimizer_updates": train_report["optimizer_updates"],
+            "train_examples": train_report["train_windows"],
+            "parameter_count": train_report["parameter_count"],
+            "training_seconds": train_report["training_seconds"],
+            "device": train_report["device"],
+            "configuration_sha256": train_report["configuration_sha256"],
+            "checkpoint_sha256": train_report["checkpoint_sha256"],
+            "snapshot_sha256": train_report["snapshot_sha256"],
+            "upstream_sha256": train_report["upstream_sha256"],
+            "resume": False,
+        }
+    if path_count is None or path_count < 2:
+        raise ValueError("E3/E4 forecast ensembles require at least two paths")
+    if (path_sampling["E3"]["max_attempts_per_bar"]
+            != path_sampling["E4"]["max_attempts_per_bar"]):
+        raise ValueError("E3 and E4 must use the same per-bar rejection budget")
+
+    report = build_fold_predictive_report(
+        replay, fold, candidate_ohlcv_paths, normalized_runs,
+        candidate_anchor_timestamps_ns, train_scope_id=train_scope_id,
+        snapshot_sha256=snapshot_sha256, forecast_seed=forecast_seed,
+        horizons=horizons, anchor_interval_minutes=anchor_interval_minutes,
+        context_lookback=context_lookback, volatility_window=volatility_window,
+        block_length=block_length, bootstrap_replicates=bootstrap_replicates,
+        seed=seed, candidate_pair=_E3_E4,
+    )
+    report["hierarchical_rollout"] = {
+        "schema": "routeb.b3-e3-e4-validation.v1",
+        "b3_train_report_sha256": supplied_digest,
+        "train_artifact_sha256": train_report["train_artifact_sha256"],
+        "scaler_sha256": train_report["scaler_sha256"],
+        "checkpoint_sha256": train_report["checkpoint_sha256"],
+        "inference_context_sha256": inference_context_sha256,
+        "anchor_timestamps_sha256": anchor_sha256,
+        "forecast_seed": forecast_seed,
+        "paths_per_anchor": path_count,
+        "max_horizon": max_horizon,
+        "matched_checkpoint": True,
+        "rollout_modes": {
+            "E3": "FROZEN_OBSERVED_SLOW_POSTERIOR",
+            "E4": "ADVANCE_PATH_CONDITIONED_SLOW_POSTERIOR",
+        },
+        "path_sampling": path_sampling,
+        "validation_only": True,
+        "test_payload_decoded": False,
+        "economic_certification": False,
     }
     report.pop("report_sha256", None)
     canonical = json.dumps(report, sort_keys=True, separators=(",", ":"), allow_nan=False)

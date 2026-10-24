@@ -8,6 +8,7 @@ RSSM update; they must not substitute the latent decoder diagnostics.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -83,6 +84,30 @@ class HierarchicalOHLCVPaths:
     @property
     def rejection_rate(self) -> float:
         return self.rejected_paths / self.attempted_paths
+
+
+@dataclass(frozen=True, slots=True)
+class RecursiveHierarchicalOHLCVPaths:
+    """Recursively generated OHLCV paths and per-bar rejection accounting."""
+
+    ensemble: HierarchicalOHLCVPaths
+    attempted_bar_samples: int
+    rejected_bar_samples: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.ensemble, HierarchicalOHLCVPaths):
+            raise ValueError("recursive path result requires a validated OHLCV ensemble")
+        accepted = self.ensemble.minute.shape[0] * self.ensemble.minute.shape[1]
+        if (type(self.attempted_bar_samples) is not int
+                or type(self.rejected_bar_samples) is not int
+                or self.attempted_bar_samples < accepted
+                or self.rejected_bar_samples < 0
+                or self.attempted_bar_samples - self.rejected_bar_samples != accepted):
+            raise ValueError("recursive per-bar sampling accounting is inconsistent")
+
+    @property
+    def rejection_rate(self) -> float:
+        return self.rejected_bar_samples / self.attempted_bar_samples
 
 
 def _ohlcv(bucket: ClosedBucket) -> tuple[float, float, float, float, float]:
@@ -269,3 +294,182 @@ def align_bucket_feedback(*, close_ns: np.ndarray, feedback: np.ndarray,
     if not np.array_equal(assigned, events):
         raise ValueError("future slow event plan has no matching path-derived aggregate")
     return aligned
+
+
+def generate_recursive_hierarchical_ohlcv_paths(*, predictor: Callable[
+        [np.ndarray, np.ndarray, np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]],
+        future_minute_decisions_ns: np.ndarray,
+        future_hour_events: tuple[bool, ...], future_day_events: tuple[bool, ...],
+        hour_availability_delay_ns: int, day_availability_delay_ns: int,
+        minute_scaler: TrainOnlyStandardizer, hour_scaler: TrainOnlyStandardizer,
+        day_scaler: TrainOnlyStandardizer, observed_prefix: tuple[Candle, ...],
+        paths: int, seed: int, max_attempts_per_bar: int = 20
+        ) -> RecursiveHierarchicalOHLCVPaths:
+    """Generate one legal minute bar at a time and feed it into the next forecast.
+
+    ``predictor`` receives the decision prefix and path-aligned minute/hour/day
+    feature feedback, then returns the conditional distribution for the final
+    decision as ``[paths,5]`` mean and scale arrays. Feedback at the current
+    decision is zero until that decision's minute candle has been sampled; its
+    features can therefore affect only subsequent forecasts. Slow feedback is
+    rebuilt from completed UTC candles on each path and aligned to its actual
+    availability event. This is a correctness-first reference orchestration;
+    callers with long horizons should provide a stateful predictor to avoid
+    replaying the observed history for every decision.
+    """
+    decisions = np.asarray(future_minute_decisions_ns)
+    if (not callable(predictor) or decisions.ndim != 1
+            or decisions.dtype.kind not in "iu" or len(decisions) < 1
+            or np.any(decisions <= 0) or np.any(np.diff(decisions) != MINUTE_NS)
+            or not isinstance(observed_prefix, tuple) or not observed_prefix
+            or any(not isinstance(bar, Candle) for bar in observed_prefix)
+            or type(hour_availability_delay_ns) is not int
+            or hour_availability_delay_ns < 0
+            or type(day_availability_delay_ns) is not int
+            or day_availability_delay_ns < 0
+            or type(paths) is not int or paths < 1
+            or type(seed) is not int or seed < 0
+            or type(max_attempts_per_bar) is not int or max_attempts_per_bar < 1):
+        raise ValueError("invalid recursive OHLCV generation inputs")
+    anchor = observed_prefix[-1].ts_close_ns
+    if observed_prefix[-1].available_at_ns >= decisions[0]:
+        raise ValueError("recursive decisions must follow the observed availability barrier")
+    if anchor > np.iinfo(np.int64).max - len(decisions) * MINUTE_NS:
+        raise ValueError("recursive decision horizon overflows int64 timestamps")
+    expected_decisions = anchor + np.arange(1, len(decisions) + 1, dtype=np.int64) * MINUTE_NS
+    if not np.array_equal(decisions, expected_decisions):
+        raise ValueError("recursive decisions must match the contiguous generated minute closes")
+    if (len(future_hour_events) != len(decisions)
+            or len(future_day_events) != len(decisions)
+            or any(type(event) is not bool
+                   for event in (*future_hour_events, *future_day_events))):
+        raise ValueError("recursive slow event plans must align with every minute decision")
+    scalers = (minute_scaler, hour_scaler, day_scaler)
+    if (any(not isinstance(scaler, TrainOnlyStandardizer) for scaler in scalers)
+            or any(scaler.train_scope != "train" for scaler in scalers)
+            or len({scaler.dataset_id for scaler in scalers}) != 1):
+        raise ValueError("recursive generation requires frozen same-dataset Train scalers")
+    MultiScaleClock(observed_prefix)
+
+    minute_bars: list[list[np.ndarray]] = [[] for _ in range(paths)]
+    minute_features: list[list[np.ndarray]] = [[] for _ in range(paths)]
+    path_sources: list[list[Candle]] = [list(observed_prefix) for _ in range(paths)]
+    hour_bars: list[list[np.ndarray]] = [[] for _ in range(paths)]
+    day_bars: list[list[np.ndarray]] = [[] for _ in range(paths)]
+    hour_features: list[list[np.ndarray]] = [[] for _ in range(paths)]
+    day_features: list[list[np.ndarray]] = [[] for _ in range(paths)]
+    hour_closes: list[int] = []
+    day_closes: list[int] = []
+    attempted_samples = rejected_samples = 0
+
+    for step in range(len(decisions)):
+        decision_prefix = decisions[:step + 1]
+        minute_feedback = np.zeros((paths, step + 1, 5), dtype=np.float32)
+        hour_feedback = np.zeros_like(minute_feedback)
+        day_feedback = np.zeros_like(minute_feedback)
+        if step:
+            for path_index in range(paths):
+                minute_feedback[path_index, :step] = np.stack(
+                    minute_features[path_index])
+                if hour_closes:
+                    hour_feedback[path_index, :step] = align_bucket_feedback(
+                        close_ns=np.asarray(hour_closes, dtype=np.int64),
+                        feedback=np.asarray(hour_features[path_index], dtype=np.float32)[None],
+                        minute_decisions_ns=decisions[:step],
+                        availability_delay_ns=hour_availability_delay_ns,
+                        expected_events=future_hour_events[:step])[0]
+                elif any(future_hour_events[:step]):
+                    raise ValueError("a prior hour event has no generated path aggregate")
+                if day_closes:
+                    day_feedback[path_index, :step] = align_bucket_feedback(
+                        close_ns=np.asarray(day_closes, dtype=np.int64),
+                        feedback=np.asarray(day_features[path_index], dtype=np.float32)[None],
+                        minute_decisions_ns=decisions[:step],
+                        availability_delay_ns=day_availability_delay_ns,
+                        expected_events=future_day_events[:step])[0]
+                elif any(future_day_events[:step]):
+                    raise ValueError("a prior day event has no generated path aggregate")
+
+        mean, scale = predictor(decision_prefix, minute_feedback,
+                                hour_feedback, day_feedback)
+        mean = np.asarray(mean, dtype=np.float64)
+        scale = np.asarray(scale, dtype=np.float64)
+        if (mean.shape != (paths, 5) or scale.shape != mean.shape
+                or not np.isfinite(mean).all() or not np.isfinite(scale).all()
+                or np.any(scale <= 0)):
+            raise ValueError("recursive predictor must return finite positive [paths,5] heads")
+
+        sampled_at_step = []
+        for path_index in range(paths):
+            step_seed = int(np.random.SeedSequence(
+                [seed, path_index, step]).generate_state(1, dtype=np.uint64)[0])
+            sampled = sample_hierarchical_ohlcv_paths(
+                minute_mean=mean[path_index][None],
+                minute_scale=scale[path_index][None],
+                minute_scaler=minute_scaler, hour_scaler=hour_scaler,
+                day_scaler=day_scaler,
+                observed_prefix=tuple(path_sources[path_index]), paths=1,
+                seed=step_seed, max_attempts_per_path=max_attempts_per_bar)
+            attempted_samples += sampled.attempted_paths
+            rejected_samples += sampled.rejected_paths
+            minute = sampled.minute[0, 0]
+            features = sampled.minute_features[0, 0]
+            close_ns = int(decisions[step])
+            bar = Candle(close_ns, close_ns, path_sources[path_index][-1].instrument,
+                         *map(float, minute))
+            path_sources[path_index].append(bar)
+            minute_bars[path_index].append(minute)
+            minute_features[path_index].append(features)
+            hour_bars[path_index].extend(sampled.hour[0])
+            day_bars[path_index].extend(sampled.day[0])
+            hour_features[path_index].extend(sampled.hour_feedback[0])
+            day_features[path_index].extend(sampled.day_feedback[0])
+            sampled_at_step.append(sampled)
+
+        reference = sampled_at_step[0]
+        for sampled in sampled_at_step[1:]:
+            if (not np.array_equal(sampled.hour_close_ns, reference.hour_close_ns)
+                    or not np.array_equal(sampled.day_close_ns, reference.day_close_ns)):
+                raise RuntimeError("recursive paths produced different UTC bucket boundaries")
+        for close in reference.hour_close_ns:
+            if int(close) not in hour_closes:
+                hour_closes.append(int(close))
+        for close in reference.day_close_ns:
+            if int(close) not in day_closes:
+                day_closes.append(int(close))
+
+    for path_index in range(paths):
+        align_bucket_feedback(
+            close_ns=np.asarray(hour_closes, dtype=np.int64),
+            feedback=np.asarray(hour_features[path_index], dtype=np.float32).reshape(
+                (1, len(hour_closes), 5)),
+            minute_decisions_ns=decisions,
+            availability_delay_ns=hour_availability_delay_ns,
+            expected_events=future_hour_events)
+        align_bucket_feedback(
+            close_ns=np.asarray(day_closes, dtype=np.int64),
+            feedback=np.asarray(day_features[path_index], dtype=np.float32).reshape(
+                (1, len(day_closes), 5)),
+            minute_decisions_ns=decisions,
+            availability_delay_ns=day_availability_delay_ns,
+            expected_events=future_day_events)
+
+    def stack_path_rows(rows: list[list[np.ndarray]]) -> np.ndarray:
+        if not rows or not rows[0]:
+            return np.empty((paths, 0, 5), dtype=np.float64)
+        return np.stack([np.stack(path_rows) for path_rows in rows])
+
+    ensemble = HierarchicalOHLCVPaths(
+        stack_path_rows(minute_bars),
+        np.asarray([[row for row in path_rows] for path_rows in minute_features],
+                   dtype=np.float32),
+        stack_path_rows(hour_bars), stack_path_rows(day_bars),
+        np.asarray([[row for row in path_rows] for path_rows in hour_features],
+                   dtype=np.float32).reshape((paths, len(hour_closes), 5)),
+        np.asarray([[row for row in path_rows] for path_rows in day_features],
+                   dtype=np.float32).reshape((paths, len(day_closes), 5)),
+        np.asarray(hour_closes, dtype=np.int64), np.asarray(day_closes, dtype=np.int64),
+        paths, 0,
+    )
+    return RecursiveHierarchicalOHLCVPaths(
+        ensemble, attempted_samples, rejected_samples)

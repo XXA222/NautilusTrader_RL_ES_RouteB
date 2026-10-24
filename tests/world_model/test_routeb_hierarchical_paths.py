@@ -4,12 +4,20 @@ import numpy as np
 import pytest
 
 from rles_world_model.routeb.codec import TrainOnlyStandardizer
+from rles_world_model.routeb.hierarchy_dataset import build_train_hierarchy
 from rles_world_model.routeb.hierarchical_paths import (
     PathSamplingError,
     align_bucket_feedback,
+    generate_recursive_hierarchical_ohlcv_paths,
     sample_hierarchical_ohlcv_paths,
 )
-from rles_world_model.routeb.market import Candle, MINUTE_NS
+from rles_world_model.routeb.jax_hierarchy_train import (
+    HierarchicalModelConfig,
+    HierarchicalTrainingConfig,
+    generate_recursive_hierarchical_f2_paths,
+)
+from rles_world_model.routeb.jax_model import RSSMConfig
+from rles_world_model.routeb.market import Candle, MarketSequence, MINUTE_NS
 
 
 def _bars(count: int) -> tuple[Candle, ...]:
@@ -128,3 +136,131 @@ def test_path_feedback_rejects_event_plan_without_matching_generated_bucket():
             availability_delay_ns=MINUTE_NS,
             expected_events=(True, False),
         )
+
+
+def test_recursive_path_generation_conditions_each_step_on_its_sampled_past():
+    observed = _bars(30)
+    decisions = np.arange(31, 35, dtype=np.int64) * MINUTE_NS
+    seen_feedback = []
+    predicted_means = []
+
+    def predictor(prefix, minute_feedback, hour_feedback, day_feedback):
+        seen_feedback.append((minute_feedback.copy(), hour_feedback.copy(),
+                              day_feedback.copy()))
+        mean = np.zeros((minute_feedback.shape[0], 5), dtype=np.float64)
+        if len(prefix) > 1:
+            mean = minute_feedback[:, -2].astype(np.float64)
+        predicted_means.append(mean.copy())
+        return mean, np.full_like(mean, 0.001)
+
+    result = generate_recursive_hierarchical_ohlcv_paths(
+        predictor=predictor, future_minute_decisions_ns=decisions,
+        future_hour_events=(False,) * len(decisions),
+        future_day_events=(False,) * len(decisions),
+        hour_availability_delay_ns=0, day_availability_delay_ns=0,
+        minute_scaler=_scaler(), hour_scaler=_scaler(), day_scaler=_scaler(),
+        observed_prefix=observed, paths=2, seed=39)
+
+    assert len(seen_feedback) == len(decisions)
+    assert result.ensemble.minute.shape == (2, 4, 5)
+    assert result.ensemble.hour.shape == (2, 0, 5)
+    assert result.ensemble.day.shape == (2, 0, 5)
+    assert result.attempted_bar_samples == 8
+    assert result.rejected_bar_samples == 0
+    for step in range(1, len(decisions)):
+        np.testing.assert_array_equal(
+            seen_feedback[step][0][:, step - 1],
+            result.ensemble.minute_features[:, step - 1],
+        )
+        np.testing.assert_array_equal(
+            predicted_means[step], result.ensemble.minute_features[:, step - 1])
+    assert not np.any(seen_feedback[0][0])
+
+
+def test_recursive_path_generation_delivers_hour_aggregate_after_its_event():
+    observed = _bars(59)
+    decisions = np.arange(60, 63, dtype=np.int64) * MINUTE_NS
+    seen_hour_feedback = []
+
+    def predictor(prefix, minute_feedback, hour_feedback, day_feedback):
+        seen_hour_feedback.append(hour_feedback.copy())
+        mean = np.zeros((hour_feedback.shape[0], 5), dtype=np.float64)
+        return mean, np.full_like(mean, 0.001)
+
+    result = generate_recursive_hierarchical_ohlcv_paths(
+        predictor=predictor, future_minute_decisions_ns=decisions,
+        future_hour_events=(True, False, False),
+        future_day_events=(False, False, False),
+        hour_availability_delay_ns=0, day_availability_delay_ns=0,
+        minute_scaler=_scaler(), hour_scaler=_scaler(), day_scaler=_scaler(),
+        observed_prefix=observed, paths=2, seed=53)
+
+    assert result.ensemble.hour_close_ns.tolist() == [60 * MINUTE_NS]
+    np.testing.assert_array_equal(seen_hour_feedback[0], 0)
+    np.testing.assert_array_equal(
+        seen_hour_feedback[1][:, 0], result.ensemble.hour_feedback[:, 0])
+    assert np.any(seen_hour_feedback[1][:, 0] != 0)
+
+
+def test_recursive_path_generation_rejects_slow_event_without_closed_bucket():
+    def predictor(prefix, minute_feedback, hour_feedback, day_feedback):
+        mean = np.zeros((hour_feedback.shape[0], 5), dtype=np.float64)
+        return mean, np.full_like(mean, 0.001)
+
+    with pytest.raises(ValueError, match="no matching path-derived aggregate"):
+        generate_recursive_hierarchical_ohlcv_paths(
+            predictor=predictor,
+            future_minute_decisions_ns=np.asarray([31 * MINUTE_NS], dtype=np.int64),
+            future_hour_events=(True,), future_day_events=(False,),
+            hour_availability_delay_ns=0, day_availability_delay_ns=0,
+            minute_scaler=_scaler(), hour_scaler=_scaler(), day_scaler=_scaler(),
+            observed_prefix=_bars(30), paths=1, seed=17)
+
+
+def test_recursive_f2_wrapper_replays_each_generated_prefix(monkeypatch):
+    replay = MarketSequence(_bars(4_320), "synthetic-recursive-f2", "train")
+    tensors, scalers = build_train_hierarchy(
+        replay, burn_in=2, score_start_ns=replay.candles[1].ts_close_ns,
+        score_end_ns=replay.candles[-1].ts_close_ns + MINUTE_NS)
+    model = RSSMConfig(deter=8, hidden=8, stoch=1, classes=2, blocks=1)
+    model_config = HierarchicalModelConfig(model, model, model)
+    training_config = HierarchicalTrainingConfig(
+        seed=47, steps=1, batch_size=1, window_length=4,
+        burn_in=1, stride=1, report_interval=1)
+    calls = []
+
+    def fake_forecast(**kwargs):
+        calls.append(kwargs)
+        feedback = kwargs["minute_feedback_features"]
+        batch, horizon, _ = feedback.shape
+        mean = np.zeros((batch, horizon, 5), dtype=np.float64)
+        if horizon > 1:
+            mean[:, -1] = feedback[:, -2]
+        return {"minute_mean": mean,
+                "minute_scale": np.full_like(mean, 0.001)}
+
+    monkeypatch.setattr(
+        "rles_world_model.routeb.jax_hierarchy_train.forecast_hierarchical_f2",
+        fake_forecast)
+    decisions = np.arange(4_321, 4_324, dtype=np.int64) * MINUTE_NS
+    result = generate_recursive_hierarchical_f2_paths(
+        tensors=tensors, train_scope_id="synthetic-train-only",
+        dataset_id=replay.dataset_id, scaler_sha256="a" * 64,
+        checkout="unused-test-checkout", checkpoint="unused-test-checkpoint",
+        model_config=model_config, training_config=training_config,
+        training_tensor_sha256="b" * 64, inference_context_sha256="c" * 64,
+        future_minute_decisions_ns=decisions,
+        hour_availability_delay_ns=0, day_availability_delay_ns=0,
+        minute_scaler=scalers.minute, hour_scaler=scalers.hour,
+        day_scaler=scalers.day, observed_prefix=replay.candles,
+        paths=2, forecast_seed=73)
+
+    assert len(calls) == len(decisions)
+    assert result.ensemble.minute.shape == (2, len(decisions), 5)
+    assert result.ensemble.hour.shape == (2, 0, 5)
+    np.testing.assert_array_equal(
+        calls[1]["minute_feedback_features"][:, 0],
+        result.ensemble.minute_features[:, 0])
+    np.testing.assert_array_equal(
+        calls[2]["minute_feedback_features"][:, 1],
+        result.ensemble.minute_features[:, 1])

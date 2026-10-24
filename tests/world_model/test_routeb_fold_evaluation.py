@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import numpy as np
 import pytest
 
 from rles_data.core import FoldManifest, MINUTE_NS, Window
 from rles_world_model.contracts import MarketFrame, MarketReplay
-from rles_world_model.routeb.evaluation import verify_predictive_report_digest
-from rles_world_model.routeb.fold_evaluation import build_fold_predictive_report
+from rles_world_model.routeb.evaluation import (
+    _numeric_sha256, verify_predictive_report_digest,
+)
+from rles_world_model.routeb.fold_evaluation import (
+    build_fold_b3_predictive_report, build_fold_predictive_report,
+)
 from rles_world_model.routeb.codec import OHLCVCodec, TrainOnlyStandardizer
 from rles_world_model.routeb.integration import prepare_fold_forecast_batch
 from rles_world_model.routeb.market import Candle
@@ -15,6 +20,7 @@ from rles_world_model.routeb.fold_experiment import (
     run_fold_experiment, verify_fold_experiment_report_digest,
 )
 from rles_world_model.routeb.fold_protocol import validation_anchor_timestamps
+from rles_world_model.routeb.jax_model import PINNED_UPSTREAM
 
 
 def make_fold_replay():
@@ -91,6 +97,67 @@ def training_runs(fold, scope="routeb-fold-fresh", snapshot="9" * 40):
     }
 
 
+def b3_training_report(fold, scope="routeb-fold-fresh", snapshot="9" * 40):
+    report = {
+        "schema": "routeb.b3-train-run.v1", "status": "COMPLETED",
+        "candidate": "B3", "dataset_hash": fold.dataset_hash,
+        "fold_hash": fold.hash, "train_scope_id": scope,
+        "reservation_label": "routeb-fold-fresh-b3",
+        "repository_commit": "a" * 40, "source_code_sha256": "b" * 64,
+        "train_artifact_sha256": "1" * 64,
+        "hierarchy_tensor_sha256": "2" * 64, "scaler_sha256": "3" * 64,
+        "training_config": {"seed": 31, "steps": 100, "batch_size": 4,
+                            "lr": 0.0003, "grad_clip": 100.0},
+        "optimizer_updates": 100, "parameter_count": 3_200,
+        "train_windows": 24, "training_seconds": 4.5, "device": "cpu:0",
+        "configuration_sha256": "4" * 64, "checkpoint_sha256": "5" * 64,
+        "snapshot_sha256": snapshot, "upstream_sha256": PINNED_UPSTREAM,
+        "validation_scored": False, "test_scored": False,
+        "economic_certification": False,
+    }
+    canonical = json.dumps(report, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    report["report_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return report
+
+
+def b3_rollout_runs(fold, train_report, anchors, forecasts, context_sha="c" * 64,
+                    forecast_seed=31):
+    digest = train_report["report_sha256"]
+    anchor_sha = _numeric_sha256(anchors, dtype="<i8")
+    return {
+        name: {
+            "schema": "routeb.b3-rollout-run.v1", "status": "COMPLETED",
+            "candidate": name,
+            "rollout_mode": ("FROZEN_OBSERVED_SLOW_POSTERIOR" if name == "E3"
+                             else "ADVANCE_PATH_CONDITIONED_SLOW_POSTERIOR"),
+            "b3_train_report_sha256": digest,
+            "dataset_hash": fold.dataset_hash, "fold_hash": fold.hash,
+            "train_scope_id": train_report["train_scope_id"],
+            "train_artifact_sha256": train_report["train_artifact_sha256"],
+            "checkpoint_sha256": train_report["checkpoint_sha256"],
+            "configuration_sha256": train_report["configuration_sha256"],
+            "training_config": train_report["training_config"],
+            "optimizer_updates": train_report["optimizer_updates"],
+            "train_windows": train_report["train_windows"],
+            "parameter_count": train_report["parameter_count"],
+            "training_seconds": train_report["training_seconds"],
+            "device": train_report["device"],
+            "snapshot_sha256": train_report["snapshot_sha256"],
+            "upstream_sha256": train_report["upstream_sha256"],
+            "forecast_seed": forecast_seed, "anchors": len(anchors),
+            "paths": forecasts[name].shape[1], "horizon": forecasts[name].shape[2],
+            "inference_context_sha256": context_sha,
+            "anchor_timestamps_sha256": anchor_sha,
+            "forecast_ohlcv_sha256": _numeric_sha256(forecasts[name], dtype="<f8"),
+            "attempted_bar_samples": int(np.prod(forecasts[name].shape[:3])),
+            "rejected_bar_samples": 0,
+            "max_attempts_per_bar": 20,
+            "rejection_rate": 0.0,
+        }
+        for name in ("E3", "E4")
+    }
+
+
 def test_fold_report_generates_e0_and_scores_e1_e2_on_same_future_labels():
     fold, replay = make_fold_replay()
     first_anchor = fold.validation.score_start_ns - MINUTE_NS
@@ -121,6 +188,97 @@ def test_fold_report_generates_e0_and_scores_e1_e2_on_same_future_labels():
     assert report["overall"]["E2"][-1]["horizon"] == 15
     assert report["overall"]["E2"][-1]["samples"] == len(anchors)
     assert verify_predictive_report_digest(report)
+
+
+def test_fold_b3_report_scores_matched_e3_e4_on_same_validation_anchors():
+    fold, replay = make_fold_replay()
+    anchors = validation_anchor_timestamps(
+        fold=fold, max_horizon=15, anchor_interval_minutes=15)
+    forecasts = {
+        "E3": candidate_paths(replay, anchors, bias=0.0),
+        "E4": candidate_paths(replay, anchors, bias=0.00002),
+    }
+    train_report = b3_training_report(fold)
+    report = build_fold_b3_predictive_report(
+        replay, fold, forecasts, train_report,
+        b3_rollout_runs(fold, train_report, anchors, forecasts),
+        {"E3": anchors, "E4": anchors},
+        train_scope_id="routeb-fold-fresh", snapshot_sha256="9" * 40,
+        forecast_seed=31, inference_context_sha256="c" * 64,
+        horizons=(1, 5, 15), anchor_interval_minutes=15,
+        context_lookback=32, volatility_window=5, block_length=2,
+        bootstrap_replicates=100, seed=7,
+    )
+    assert set(report["overall"]) == {
+        "E0_S0_ZERO_DRIFT_FIXED_VOL", "E0_S1_EWMA_VOL_TRAIN_INNOVATIONS",
+        "E0_S2_STATIONARY_BLOCK_BOOTSTRAP", "E3", "E4",
+    }
+    assert report["authorization_verified"] is False
+    assert report["fold_protocol"]["test_payload_decoded"] is False
+    assert report["hierarchical_rollout"]["matched_checkpoint"] is True
+    assert report["hierarchical_rollout"]["economic_certification"] is False
+    assert report["hierarchical_rollout"]["path_sampling"]["E3"][
+        "accepted_bar_samples"] == len(anchors) * 8 * 15
+    assert report["overall"]["E4"][-1]["samples"] == len(anchors)
+    assert verify_predictive_report_digest(report)
+
+
+def test_fold_b3_report_rejects_inconsistent_path_sampling_rejections():
+    fold, replay = make_fold_replay()
+    anchors = validation_anchor_timestamps(
+        fold=fold, max_horizon=15, anchor_interval_minutes=15)
+    forecasts = {name: candidate_paths(replay, anchors) for name in ("E3", "E4")}
+    train_report = b3_training_report(fold)
+    runs = b3_rollout_runs(fold, train_report, anchors, forecasts)
+    runs["E4"]["rejected_bar_samples"] = 1
+    with pytest.raises(ValueError, match="invalid path-sampling rejection accounting"):
+        build_fold_b3_predictive_report(
+            replay, fold, forecasts, train_report, runs,
+            {"E3": anchors, "E4": anchors},
+            train_scope_id="routeb-fold-fresh", snapshot_sha256="9" * 40,
+            forecast_seed=31, inference_context_sha256="c" * 64,
+            horizons=(1, 5, 15), anchor_interval_minutes=15,
+            context_lookback=32, volatility_window=5, block_length=2,
+            bootstrap_replicates=100, seed=7,
+        )
+
+    runs = b3_rollout_runs(fold, train_report, anchors, forecasts)
+    runs["E4"]["max_attempts_per_bar"] = 10
+    with pytest.raises(ValueError, match="same per-bar rejection budget"):
+        build_fold_b3_predictive_report(
+            replay, fold, forecasts, train_report, runs,
+            {"E3": anchors, "E4": anchors},
+            train_scope_id="routeb-fold-fresh", snapshot_sha256="9" * 40,
+            forecast_seed=31, inference_context_sha256="c" * 64,
+            horizons=(1, 5, 15), anchor_interval_minutes=15,
+            context_lookback=32, volatility_window=5, block_length=2,
+            bootstrap_replicates=100, seed=7,
+        )
+
+
+def test_fold_b3_report_rejects_unmatched_checkpoint_and_tampered_train_digest():
+    fold, replay = make_fold_replay()
+    anchors = validation_anchor_timestamps(
+        fold=fold, max_horizon=15, anchor_interval_minutes=15)
+    forecasts = {name: candidate_paths(replay, anchors) for name in ("E3", "E4")}
+    train_report = b3_training_report(fold)
+    runs = b3_rollout_runs(fold, train_report, anchors, forecasts)
+    runs["E4"]["checkpoint_sha256"] = "f" * 64
+    common = dict(
+        replay=replay, fold=fold, candidate_ohlcv_paths=forecasts,
+        b3_training_report=train_report, candidate_rollout_runs=runs,
+        candidate_anchor_timestamps_ns={"E3": anchors, "E4": anchors},
+        train_scope_id="routeb-fold-fresh", snapshot_sha256="9" * 40,
+        forecast_seed=31, inference_context_sha256="c" * 64,
+        horizons=(1, 5, 15), anchor_interval_minutes=15,
+        context_lookback=32, volatility_window=5, block_length=2,
+        bootstrap_replicates=100, seed=7,
+    )
+    with pytest.raises(ValueError, match="mismatched checkpoint_sha256"):
+        build_fold_b3_predictive_report(**common)
+    train_report["test_scored"] = True
+    with pytest.raises(ValueError, match="B3 Train report digest is invalid"):
+        build_fold_b3_predictive_report(**common)
 
 
 def test_prepare_fold_forecast_batch_exports_only_causal_common_anchor_contexts(tmp_path):

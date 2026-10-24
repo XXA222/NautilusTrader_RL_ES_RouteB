@@ -19,7 +19,8 @@ from rles_world_model.routeb.hierarchical_paths import (
 )
 from rles_world_model.routeb.jax_hierarchy_train import (
     HierarchicalModelConfig, HierarchicalTrainingConfig,
-    forecast_hierarchical_f2, hierarchy_tensor_sha256, train_hierarchical,
+    forecast_hierarchical_f2, generate_recursive_hierarchical_f2_paths,
+    hierarchy_tensor_sha256, train_hierarchical,
 )
 from rles_world_model.routeb.jax_model import PINNED_UPSTREAM, RSSMConfig
 from rles_world_model.routeb.jax_train import SNAPSHOT_SHA
@@ -225,8 +226,26 @@ def main() -> int:
         minute_feedback_features=e4_paths.minute_features,
         hour_feedback_features=aligned_hour_feedback,
         day_feedback_features=aligned_day_feedback)
+    recursive_e4_paths = generate_recursive_hierarchical_f2_paths(
+        tensors=tensors, train_scope_id="synthetic-train-only",
+        dataset_id=replay.dataset_id, scaler_sha256=scaler_hash,
+        checkout=args.checkout, checkpoint=resumed,
+        model_config=model_cfg, training_config=two,
+        training_tensor_sha256=tensor_hash,
+        inference_context_sha256=tensor_hash,
+        future_minute_decisions_ns=decisions,
+        hour_availability_delay_ns=0, day_availability_delay_ns=0,
+        minute_scaler=scalers.minute, hour_scaler=scalers.hour,
+        day_scaler=scalers.day, observed_prefix=replay.candles,
+        paths=2, forecast_seed=811, advance_slow_priors=True)
     if (e3_feedback_replay["minute_mean"].shape != (4, 5, 5)
             or e4_feedback_replay["minute_mean"].shape != (4, 5, 5)
+            or recursive_e4_paths.ensemble.minute.shape != (2, 5, 5)
+            or recursive_e4_paths.ensemble.minute_features.shape != (2, 5, 5)
+            or recursive_e4_paths.ensemble.hour_close_ns.tolist() != [60 * 96 * MINUTE_NS]
+            or recursive_e4_paths.ensemble.day_close_ns.tolist() != [60 * 96 * MINUTE_NS]
+            or not np.any(recursive_e4_paths.ensemble.hour_feedback != 0)
+            or not np.any(recursive_e4_paths.ensemble.day_feedback != 0)
             or not np.array_equal(e3_feedback_replay["minute_mean"][:, 0],
                                   e4_feedback_replay["minute_mean"][:, 0])
             or np.array_equal(e3_feedback_replay["minute_mean"][:, 3],
@@ -272,6 +291,10 @@ def main() -> int:
         "feedback_replay_conditions_on_sampled_minute_features": True,
         "feedback_replay_slow_features_aligned_to_availability": True,
         "feedback_replay_e3_e4_diverge_after_slow_feedback": True,
+        "recursive_e4_ohlcv_paths": list(recursive_e4_paths.ensemble.minute.shape),
+        "recursive_e4_hour_day_feedback_reconciled": True,
+        "recursive_e4_bar_attempts": recursive_e4_paths.attempted_bar_samples,
+        "recursive_e4_rejected_bar_samples": recursive_e4_paths.rejected_bar_samples,
         "f2_event_schedule_from_multiscale_clock": True,
         "future_decision_ns": decisions.tolist(),
         "future_hour_available_at_ns": list(expected_hour_events),

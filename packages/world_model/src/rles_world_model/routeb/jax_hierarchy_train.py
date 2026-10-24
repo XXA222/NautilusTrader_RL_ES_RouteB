@@ -16,6 +16,12 @@ from .jax_train import SNAPSHOT_SHA
 from .jax_hierarchy import make_hierarchical_model
 from .hierarchy import derive_future_scale_events
 from .clock import MultiScaleClock
+from .codec import TrainOnlyStandardizer
+from .hierarchical_paths import (
+    RecursiveHierarchicalOHLCVPaths,
+    generate_recursive_hierarchical_ohlcv_paths,
+)
+from .market import Candle
 
 
 @dataclass(frozen=True, slots=True)
@@ -339,3 +345,76 @@ def forecast_hierarchical_f2(*, tensors: HierarchyTensors, train_scope_id: str,
                                   outputs["anchor_minute_scale"])):
         raise RuntimeError("F2 produced malformed or nonfinite cross-scale outputs")
     return outputs
+
+
+def generate_recursive_hierarchical_f2_paths(*, tensors: HierarchyTensors,
+        train_scope_id: str, dataset_id: str, scaler_sha256: str,
+        checkout: str | Path, checkpoint: str | Path,
+        model_config: HierarchicalModelConfig,
+        training_config: HierarchicalTrainingConfig,
+        training_tensor_sha256: str, inference_context_sha256: str,
+        future_minute_decisions_ns: np.ndarray,
+        hour_availability_delay_ns: int, day_availability_delay_ns: int,
+        minute_scaler: TrainOnlyStandardizer,
+        hour_scaler: TrainOnlyStandardizer,
+        day_scaler: TrainOnlyStandardizer,
+        observed_prefix: tuple[Candle, ...], paths: int, forecast_seed: int = 811,
+        advance_slow_priors: bool = True,
+        max_attempts_per_bar: int = 20) -> RecursiveHierarchicalOHLCVPaths:
+    """Generate legal F2 OHLCV paths autoregressively with path-derived feedback.
+
+    Each minute is forecast, sampled and decoded before the next conditional
+    forecast. Completed UTC hour/day candles from each path are encoded with
+    the frozen Train scalers and become visible only at their scheduled event.
+    This wrapper deliberately favors causal correctness over throughput: the
+    reference predictor reloads/replays the history for each minute. A later
+    stateful predictor can use the same path-generation contract without
+    changing path or availability semantics.
+    """
+    decisions = np.asarray(future_minute_decisions_ns)
+    if (type(forecast_seed) is not int or forecast_seed < 0
+            or type(advance_slow_priors) is not bool):
+        raise ValueError("invalid recursive F2 seed or E3/E4 mode")
+    if (type(hour_availability_delay_ns) is not int or hour_availability_delay_ns < 0
+            or type(day_availability_delay_ns) is not int or day_availability_delay_ns < 0):
+        raise ValueError("recursive F2 availability delays must be nonnegative integers")
+    hour_times = np.asarray(MultiScaleClock.future_availability_schedule(
+        minute_decisions_ns=decisions, timeframe_minutes=60,
+        availability_delay_ns=hour_availability_delay_ns,
+        observed_close_through_ns=int(tensors.hour_close_at[-1])), dtype=np.int64)
+    day_times = np.asarray(MultiScaleClock.future_availability_schedule(
+        minute_decisions_ns=decisions, timeframe_minutes=1440,
+        availability_delay_ns=day_availability_delay_ns,
+        observed_close_through_ns=int(tensors.day_close_at[-1])), dtype=np.int64)
+    hour_events, day_events = derive_future_scale_events(
+        minute_decisions_ns=decisions,
+        hour_available_at_ns=hour_times,
+        day_available_at_ns=day_times)
+
+    def predict_prefix(prefix: np.ndarray, minute_feedback: np.ndarray,
+                       hour_feedback: np.ndarray,
+                       day_feedback: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        output = forecast_hierarchical_f2(
+            tensors=tensors, train_scope_id=train_scope_id, dataset_id=dataset_id,
+            scaler_sha256=scaler_sha256, checkout=checkout, checkpoint=checkpoint,
+            model_config=model_config, training_config=training_config,
+            training_tensor_sha256=training_tensor_sha256,
+            inference_context_sha256=inference_context_sha256,
+            future_minute_decisions_ns=prefix,
+            hour_availability_delay_ns=hour_availability_delay_ns,
+            day_availability_delay_ns=day_availability_delay_ns,
+            forecast_seed=forecast_seed, advance_slow_priors=advance_slow_priors,
+            minute_feedback_features=minute_feedback,
+            hour_feedback_features=hour_feedback,
+            day_feedback_features=day_feedback)
+        return output["minute_mean"][:, -1], output["minute_scale"][:, -1]
+
+    return generate_recursive_hierarchical_ohlcv_paths(
+        predictor=predict_prefix, future_minute_decisions_ns=decisions,
+        future_hour_events=hour_events, future_day_events=day_events,
+        hour_availability_delay_ns=hour_availability_delay_ns,
+        day_availability_delay_ns=day_availability_delay_ns,
+        minute_scaler=minute_scaler, hour_scaler=hour_scaler,
+        day_scaler=day_scaler, observed_prefix=observed_prefix,
+        paths=paths, seed=forecast_seed,
+        max_attempts_per_bar=max_attempts_per_bar)
