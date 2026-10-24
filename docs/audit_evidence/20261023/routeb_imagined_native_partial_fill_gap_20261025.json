@@ -29,6 +29,18 @@
     "junit_sha256": "a72aebdb96e0bb1d5cb6258f90186460aa349d457f589536dde3f3ebfbb10e8e",
     "selector_result": "53 passed"
   },
+  "hosted_ci": {
+    "workflow": "Nautilus-RLES CI",
+    "run_id": 40128843489,
+    "url": "https://github.com/XXA222/NautilusTrader_RL_ES_RouteB/actions/runs/40128843489",
+    "head_sha": "8020dded0eeab5bc0ed2e52493f40dc073a74050",
+    "conclusion": "success",
+    "ubuntu_cpu": "success",
+    "world_model_jax_cpu": "success",
+    "gpu": "skipped",
+    "release": "skipped",
+    "windows_job": "not configured"
+  },
   "interpretation": "The native engine emitted two partial execution events for one 10 ETH limit order; ImaginedAccount represented the same bar touch as one full fill and produced a different fee. This is a deterministic synthetic counterexample to using the all-or-none prototype for maker economics. It does not establish realistic queue priority, market liquidity, exchange ordering, or economic parity. No real market, account, Validation, Test, or Holdout payload was read.",
   "open_gates": [
     "realistic maker queue and available-liquidity modeling",
