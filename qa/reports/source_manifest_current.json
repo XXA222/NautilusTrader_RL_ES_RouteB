@@ -1,7 +1,7 @@
 {
   "schema": "rles.source-manifest.v3",
-  "generated_at_utc": "2026-10-24T00:29:06.731019+00:00",
-  "source_identity_sha256": "bab426e94731525635b2ae96f4e77767d72f3c648fc19e5da12cfee2451edc36",
+  "generated_at_utc": "2026-10-24T01:06:23.924179+00:00",
+  "source_identity_sha256": "223f5be6c9a95b410ee2b2a0024cedd772bfba2b080d529178b75018f3710de6",
   "scope": {
     "included": [
       ".gitattributes",
@@ -960,6 +960,11 @@
       "sha256": "ca5941fba29b6db202d2a7789509a15ba4ceb95a0584232fa1e320844ba64eeb"
     },
     {
+      "path": "packages/world_model/src/rles_world_model/routeb/hierarchical_paths.py",
+      "size_bytes": 14749,
+      "sha256": "3b11bcb94ec206915eef0463e3a7af98401abe0e48197090972a17e7ebea8da6"
+    },
+    {
       "path": "packages/world_model/src/rles_world_model/routeb/hierarchy.py",
       "size_bytes": 4527,
       "sha256": "92545f8016c01ac03b6f69a02da4201ad7cdec7027ebb9dd4846e07b58c595d4"
@@ -991,13 +996,13 @@
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/jax_hierarchy.py",
-      "size_bytes": 14000,
-      "sha256": "9b09307be0c9262645351830416c223b8bdbea10a05b2ed9900f93888f4c2ae0"
+      "size_bytes": 18036,
+      "sha256": "34b1d7ace6907c7818e2b274e458317f74deab4eb51a5f81cce348dc578c764d"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/jax_hierarchy_train.py",
-      "size_bytes": 14998,
-      "sha256": "3080a7c525d5a44d1eeb51a66bd732f05e03fe8804c50dc7b1b647795cd59887"
+      "size_bytes": 18408,
+      "sha256": "f722688dd51ceb3c82ab37130152e26960be6d194e6f216b03b04b81fc9ebc01"
     },
     {
       "path": "packages/world_model/src/rles_world_model/routeb/jax_model.py",
@@ -1181,8 +1186,8 @@
     },
     {
       "path": "qa/world_model/routeb_b3_cpu_smoke.py",
-      "size_bytes": 13489,
-      "sha256": "27442c84edb6e4ff8b6aee21a8a41a6c4a550bf5e3c19f27d5a1a6d0da0f24da"
+      "size_bytes": 18238,
+      "sha256": "ff0117b78b8d984325cd87641c56fb5cb097f07f3afaf0857a3664c51da09e54"
     },
     {
       "path": "qa/world_model/routeb_cli_worker_smoke.py",
@@ -1873,6 +1878,11 @@
       "path": "tests/world_model/test_routeb_fold_evaluation.py",
       "size_bytes": 16909,
       "sha256": "1efa4f6fa01a81c2f69456e5ac2dee4f1462b6cc09b109c046175394658a81b4"
+    },
+    {
+      "path": "tests/world_model/test_routeb_hierarchical_paths.py",
+      "size_bytes": 5327,
+      "sha256": "641f3608a4d42be7e21269fb96411427321f65464ce524d0c7fdb42b0b7308e9"
     },
     {
       "path": "tests/world_model/test_routeb_hierarchy_clock.py",

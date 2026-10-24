@@ -1,0 +1,39 @@
+{
+  "schema": "routeb.b3-feedback-replay.synthetic-smoke.v1",
+  "date": "2026-10-24",
+  "scope": "synthetic_mechanism_only",
+  "runtime": {
+    "python": "3.12.10",
+    "jax": "0.11.2",
+    "platform": "CPU",
+    "upstream_sha": "e01491fad6434b2245a3b8ca201dd7faedcc458c"
+  },
+  "result": {
+    "status": "PASS",
+    "optimizer_updates": 2,
+    "parameter_count": 3208,
+    "train_windows": 718,
+    "resume_parity": true,
+    "finite_metrics": true,
+    "all_scale_gradients_nonzero": true,
+    "scale_gradient_norms": {
+      "minute": 252.40042114257812,
+      "hour": 332.8233947753906,
+      "day": 27.624528884887695
+    },
+    "minute_path_shape": [4, 5, 5],
+    "hour_path_shape": [4, 1, 5],
+    "day_path_shape": [4, 1, 5],
+    "rejected_paths": 0,
+    "completed_slow_ohlcv_conserved": true,
+    "feedback_features_aligned_to_availability": true,
+    "feedback_replay_shape": [4, 5, 5],
+    "e3_e4_diverge_after_slow_feedback": true
+  },
+  "limitations": {
+    "real_market_validation": false,
+    "registered_fold_scoring": false,
+    "economic_claim": false,
+    "single_pass_recursive_path_generator": false
+  }
+}

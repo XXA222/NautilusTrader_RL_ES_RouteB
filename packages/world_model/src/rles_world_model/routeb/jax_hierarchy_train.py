@@ -184,6 +184,9 @@ def forecast_hierarchical_f2(*, tensors: HierarchyTensors, train_scope_id: str,
         day_availability_delay_ns: int,
         forecast_seed: int = 811,
         advance_slow_priors: bool = True,
+        minute_feedback_features: np.ndarray | None = None,
+        hour_feedback_features: np.ndarray | None = None,
+        day_feedback_features: np.ndarray | None = None,
         ) -> dict[str, np.ndarray]:
     """Load a provenance-bound B3 checkpoint for a matched E3/E4 rollout.
 
@@ -195,6 +198,10 @@ def forecast_hierarchical_f2(*, tensors: HierarchyTensors, train_scope_id: str,
     ``False`` selects E3 (same three-scale checkpoint and minute-prior rollout,
     with slow latent carries frozen at their observed posterior states).
     Both modes return latent-space features, not independently valid OHLCV.
+    When all three feedback tensors are supplied, the forecast is a causal
+    replay conditioned on already sampled path features and path-derived slow
+    aggregates. The first forecast must be sampled separately; this API does
+    not claim to be a single-pass market-path generator.
     """
     import jax
     import jax.numpy as jnp
@@ -231,15 +238,62 @@ def forecast_hierarchical_f2(*, tensors: HierarchyTensors, train_scope_id: str,
         day_available_at_ns=day_times)
     if not future_hour_events:
         raise ValueError("F2 needs at least one future minute decision")
+    supplied_feedback = (minute_feedback_features is not None,
+                         hour_feedback_features is not None,
+                         day_feedback_features is not None)
+    if any(supplied_feedback) and not all(supplied_feedback):
+        raise ValueError("minute, hour and day feedback features must be supplied together")
+    feedback: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
+    if all(supplied_feedback):
+        minute_feedback = np.asarray(minute_feedback_features, dtype=np.float32)
+        hour_feedback = np.asarray(hour_feedback_features, dtype=np.float32)
+        day_feedback = np.asarray(day_feedback_features, dtype=np.float32)
+        if (minute_feedback.ndim != 3 or minute_feedback.shape[0] < 1
+                or minute_feedback.shape[1:] != (len(future_hour_events), 5)):
+            raise ValueError("minute feedback must be [paths,horizon,5]")
+        batch_size = minute_feedback.shape[0]
+        expected_feedback_shape = (batch_size, len(future_hour_events), 5)
+        if (hour_feedback.shape != expected_feedback_shape
+                or day_feedback.shape != expected_feedback_shape
+                or any(not np.isfinite(value).all() for value in
+                       (minute_feedback, hour_feedback, day_feedback))):
+            raise ValueError("all feedback features must be finite and path/horizon aligned")
+        hour_event_mask = np.asarray(future_hour_events, dtype=np.bool_)
+        day_event_mask = np.asarray(future_day_events, dtype=np.bool_)
+        if (np.any(hour_feedback[:, ~hour_event_mask] != 0)
+                or np.any(day_feedback[:, ~day_event_mask] != 0)):
+            raise ValueError("slow feedback features must be zero before their availability event")
+        feedback = minute_feedback, hour_feedback, day_feedback
+    else:
+        batch_size = tensors.minute_x.shape[0]
+    history_batch_size = tensors.minute_x.shape[0]
+    if history_batch_size not in (1, batch_size):
+        raise ValueError("observed history batch cannot align with feedback paths")
+
+    def batch_history(value: np.ndarray) -> np.ndarray:
+        array = np.asarray(value)
+        if array.shape[0] == batch_size:
+            return array
+        if array.shape[0] == 1:
+            return np.broadcast_to(array, (batch_size, *array.shape[1:]))
+        raise ValueError("observed history batch cannot align with forecast batch")
+
+    minute_x = batch_history(tensors.minute_x)
+    hour_x = batch_history(tensors.hour_x)
+    day_x = batch_history(tensors.day_x)
+    hour_index = batch_history(tensors.hour_index)
+    day_index = batch_history(tensors.day_index)
+    minute_mask = batch_history(tensors.minute_mask)
+    hour_mask = batch_history(tensors.hour_mask)
+    day_mask = batch_history(tensors.day_mask)
     model = make_hierarchical_model(checkout, minute=model_config.minute,
                                     hour=model_config.hour, day=model_config.day)
-    batch_size = tensors.minute_x.shape[0]
-    minute_reset = np.zeros(tensors.minute_x.shape[:2], dtype=np.bool_)
+    minute_reset = np.zeros(minute_x.shape[:2], dtype=np.bool_)
     minute_reset[:, 0] = True
-    template_args = (jnp.asarray(tensors.minute_x), jnp.asarray(tensors.hour_x),
-        jnp.asarray(tensors.day_x), jnp.asarray(tensors.hour_index),
-        jnp.asarray(tensors.day_index), jnp.asarray(tensors.minute_mask),
-        jnp.asarray(tensors.hour_mask), jnp.asarray(tensors.day_mask),
+    template_args = (jnp.asarray(minute_x), jnp.asarray(hour_x),
+        jnp.asarray(day_x), jnp.asarray(hour_index),
+        jnp.asarray(day_index), jnp.asarray(minute_mask),
+        jnp.asarray(hour_mask), jnp.asarray(day_mask),
         jnp.asarray(minute_reset))
     params = nj.init(model)({}, *template_args, seed=training_config.seed)
     optimizer = optax.chain(optax.clip_by_global_norm(training_config.grad_clip),
@@ -254,11 +308,17 @@ def forecast_hierarchical_f2(*, tensors: HierarchyTensors, train_scope_id: str,
         expected_config=optimizer_recipe(model_config, training_config))
     if checkpoint_seed != training_config.seed:
         raise ValueError("F2 checkpoint seed differs from training configuration")
+    rollout_kwargs: dict[str, object] = {
+        "advance_slow_priors": advance_slow_priors, "seed": forecast_seed,
+    }
+    if feedback is not None:
+        rollout_kwargs.update({"minute_feedback": jnp.asarray(feedback[0]),
+                               "hour_feedback": jnp.asarray(feedback[1]),
+                               "day_feedback": jnp.asarray(feedback[2])})
     _, result = nj.pure(model.rollout_f2)(params,
-        jnp.asarray(tensors.minute_x), jnp.asarray(tensors.hour_x),
-        jnp.asarray(tensors.day_x), jnp.asarray(tensors.hour_index),
-        jnp.asarray(tensors.day_index), future_hour_events, future_day_events,
-        advance_slow_priors=advance_slow_priors, seed=forecast_seed)
+        jnp.asarray(minute_x), jnp.asarray(hour_x), jnp.asarray(day_x),
+        jnp.asarray(hour_index), jnp.asarray(day_index),
+        future_hour_events, future_day_events, **rollout_kwargs)
     outputs = {key: np.asarray(jax.device_get(value)) for key, value in result.items()}
     horizon = len(future_hour_events)
     if (outputs["minute_mean"].shape != (batch_size, horizon, 5)
