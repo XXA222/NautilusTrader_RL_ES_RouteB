@@ -4,8 +4,8 @@
   "workspace": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB",
   "base_commit": "c057bfb2ec6351a974d19149cabe91c8ea69211f",
   "source_sha256": {
-    "worker_client.py": "abd6a2a94732f72e58ec1d5ae33a02d9e817b3fe3c3a75ac2f3c07749c21b801",
-    "test_routeb_quality_v2.py": "ff6bd55d856768bc0cd7b295e75caad5029aaead2270251416a8dfacd6e72800"
+    "worker_client.py": "ca0c75f216890d9aa2694df44496c5fa910c9bc40223744af5e314978ca6fe53",
+    "test_routeb_quality_v2.py": "8a6cc1db39ec562fcab7e23bbbe61eed80b4f72548e3504e2654e4916ad7aeee"
   },
   "environment": {
     "os": "Ubuntu 24.04 on WSL2",
