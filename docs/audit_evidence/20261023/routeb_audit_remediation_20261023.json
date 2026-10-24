@@ -27,5 +27,5 @@
     "RB-11": "economic certification remains false; native account parity remains open"
   },
   "open": ["RB-04", "RB-05", "RB-09", "RB-12"],
-  "hosted_ci": "The prior feedback-replay commit passed run 40045345260. Current Train-worker additions are not yet committed/backed up or Hosted-verified; rerun required after backup"
+  "hosted_ci": "The prior feedback-replay commit passed run 40045345260. Train-worker additions are committed locally as 2dafd89ab4a2ef571b64776d0621418aa7c59671 but not yet backed up or Hosted-verified. GitHub identified the target RouteB repository as public and blocked publishing the source pending explicit user approval; no branch ref update was issued."
 }
