@@ -121,6 +121,142 @@ def make_hierarchical_model(checkout,*,minute:RSSMConfig,hour:RSSMConfig,day:RSS
             return {'loss':minute.prediction_scale*nll + minute.dynamics_scale*mkl + aux,
                     'minute_nll':nll, 'slow_aux':aux}
 
+        def initialize_rollout_f2(self,minute_x,hour_x,day_x,hour_index,day_index):
+            """Encode an observed context once and return reusable causal carries."""
+            import jax
+            import jax.numpy as jnp
+            minute_x=jnp.asarray(minute_x,dtype=jnp.float32)
+            hour_x=jnp.asarray(hour_x,dtype=jnp.float32)
+            day_x=jnp.asarray(day_x,dtype=jnp.float32)
+            hour_index=jnp.asarray(hour_index,dtype=jnp.int32)
+            day_index=jnp.asarray(day_index,dtype=jnp.int32)
+            B,T,_=minute_x.shape
+            if (T<2 or hour_x.ndim!=3 or day_x.ndim!=3
+                    or hour_x.shape[0]!=B or day_x.shape[0]!=B
+                    or hour_x.shape[1]<2 or day_x.shape[1]<2
+                    or hour_index.shape!=(B,T) or day_index.shape!=(B,T)):
+                raise ValueError("stateful F2 requires aligned nonempty observed histories")
+            h_dyn=self._dyn('hour_dyn',hour)
+            d_dyn=self._dyn('day_dyn',day)
+            zero_h={"market_dummy":jnp.zeros((*hour_x.shape[:2],1),jnp.float32)}
+            zero_d={"market_dummy":jnp.zeros((*day_x.shape[:2],1),jnp.float32)}
+            hr=jnp.zeros(hour_x.shape[:2],bool).at[:,0].set(True)
+            dr=jnp.zeros(day_x.shape[:2],bool).at[:,0].set(True)
+            hcarry,_,hfeat=h_dyn.observe(h_dyn.initial(B),hour_x,zero_h,hr,False)
+            dcarry,_,dfeat=d_dyn.observe(d_dyn.initial(B),day_x,zero_d,dr,False)
+            hhistory=jnp.concatenate([hfeat['deter'],
+                hfeat['stoch'].reshape((B,hour_x.shape[1],-1))],-1)
+            dhistory=jnp.concatenate([dfeat['deter'],
+                dfeat['stoch'].reshape((B,day_x.shape[1],-1))],-1)
+            hvisible=self._causal_gather(hhistory,hour_index)
+            dvisible=self._causal_gather(dhistory,day_index)
+            joined=jnp.concatenate([minute_x,hvisible,dvisible,
+                (hour_index>=0)[:,:,None].astype(jnp.float32),
+                (day_index>=0)[:,:,None].astype(jnp.float32)],-1)
+            tokens=self.sub('minute_conditioned',nn.Linear,minute.hidden)(
+                joined.astype(nn.COMPUTE_DTYPE))
+            slow_context=jnp.concatenate([hvisible,dvisible],-1)
+            m_dyn=self._dyn('minute_dyn',minute,slow_context.shape[-1])
+            mr=jnp.zeros((B,T),bool).at[:,0].set(True)
+            actions={"market_dummy":jnp.zeros((B,T,1),jnp.float32),
+                     "slow_context":slow_context}
+            mcarry,_,mfeat=m_dyn.observe(m_dyn.initial(B),tokens,actions,mr,False)
+            mstate=jax.tree.map(lambda value:value[:,-1],mfeat)
+            hstate=jnp.concatenate([hcarry['deter'],
+                hcarry['stoch'].reshape((B,-1))],-1)
+            dstate=jnp.concatenate([dcarry['deter'],
+                dcarry['stoch'].reshape((B,-1))],-1)
+            return {"minute_carry":mcarry,"minute_state":mstate,
+                    "hour_carry":hcarry,"hour_state":hstate,
+                    "day_carry":dcarry,"day_state":dstate,
+                    "hour_visible":hour_index[:,-1]>=0,
+                    "day_visible":day_index[:,-1]>=0}
+
+        def rollout_f2_step(self,state,minute_feedback,hour_feedback,day_feedback,
+                            *,has_feedback,hour_event,day_event,
+                            advance_slow_priors=True):
+            """Advance one cached path state and emit its next-minute head.
+
+            Feedback describes the previously generated minute and any slow
+            aggregate that has become available by this decision. This makes
+            the public step boundary match ``rollout_f2``'s emit-then-observe
+            ordering while avoiding history replay between steps.
+            """
+            import jax
+            import jax.numpy as jnp
+            if type(has_feedback) is not bool or type(hour_event) is not bool or type(day_event) is not bool:
+                raise ValueError("stateful F2 event controls must be booleans")
+            mcarry=state['minute_carry']
+            mstate=state['minute_state']
+            hcarry=state['hour_carry']
+            dcarry=state['day_carry']
+            hvisible=state['hour_visible']
+            dvisible=state['day_visible']
+            B=mstate['deter'].shape[0]
+            if has_feedback:
+                minute_feedback=jnp.asarray(minute_feedback,dtype=jnp.float32)
+                hour_feedback=jnp.asarray(hour_feedback,dtype=jnp.float32)
+                day_feedback=jnp.asarray(day_feedback,dtype=jnp.float32)
+                if (minute_feedback.shape!=(B,5) or hour_feedback.shape!=(B,5)
+                        or day_feedback.shape!=(B,5)):
+                    raise ValueError("stateful F2 feedback must have shape [paths,5]")
+                h_dyn=self._dyn('hour_dyn',hour)
+                d_dyn=self._dyn('day_dyn',day)
+                m_dyn=self._dyn('minute_dyn',minute,
+                    state['hour_state'].shape[-1]+state['day_state'].shape[-1])
+                if advance_slow_priors and day_event:
+                    dcarry,_,dfeat=d_dyn.observe(dcarry,day_feedback,
+                        {"market_dummy":jnp.zeros((B,1),jnp.float32)},
+                        jnp.zeros((B,),dtype=jnp.bool_),False,single=True)
+                    dstate=jnp.concatenate([dfeat['deter'],
+                        dfeat['stoch'].reshape((B,-1))],-1)
+                    dvisible=jnp.ones((B,),dtype=jnp.bool_)
+                else:
+                    dstate=state['day_state']
+                if advance_slow_priors and hour_event:
+                    hcarry,_,hfeat=h_dyn.observe(hcarry,hour_feedback,
+                        {"market_dummy":jnp.zeros((B,1),jnp.float32)},
+                        jnp.zeros((B,),dtype=jnp.bool_),False,single=True)
+                    hstate=jnp.concatenate([hfeat['deter'],
+                        hfeat['stoch'].reshape((B,-1))],-1)
+                    hvisible=jnp.ones((B,),dtype=jnp.bool_)
+                else:
+                    hstate=state['hour_state']
+                context=jnp.concatenate([hstate,dstate],-1)
+                joined=jnp.concatenate([minute_feedback,hstate,dstate,
+                    hvisible[:,None].astype(jnp.float32),
+                    dvisible[:,None].astype(jnp.float32)],axis=-1)
+                token=self.sub('minute_conditioned',nn.Linear,minute.hidden)(
+                    joined.astype(nn.COMPUTE_DTYPE))
+                actions={"market_dummy":jnp.zeros((B,1),jnp.float32),
+                         "slow_context":context}
+                mcarry,(mprior,_)=m_dyn.imagine(mcarry,
+                    {"market_dummy":jnp.zeros((B,1),jnp.float32),
+                     "slow_context":context},1,False,single=True)
+                mcarry,_,mstate=m_dyn.observe(mcarry,token,actions,
+                    jnp.zeros((B,),dtype=jnp.bool_),False,single=True)
+                state={"minute_carry":mcarry,"minute_state":mstate,
+                       "hour_carry":hcarry,"hour_state":hstate,
+                       "day_carry":dcarry,"day_state":dstate,
+                       "hour_visible":hvisible,"day_visible":dvisible}
+                prior_state=mprior
+            else:
+                prior_state=mstate
+            mean_state=state['minute_state']
+            mean_z=jnp.concatenate([mean_state['deter'],
+                mean_state['stoch'].reshape((B,-1))],-1)
+            mean=self.sub('next_minute_mean',nn.Linear,5)(mean_z)
+            raw=self.sub('next_minute_scale',nn.Linear,5)(mean_z)
+            scale=jax.nn.softplus(jnp.clip(raw,-12.,8.))+minute.min_scale
+            prior_z=jnp.concatenate([prior_state['deter'],
+                prior_state['stoch'].reshape((B,-1))],-1)
+            prior_mean=self.sub('next_minute_mean',nn.Linear,5)(prior_z)
+            prior_raw=self.sub('next_minute_scale',nn.Linear,5)(prior_z)
+            prior_scale=jax.nn.softplus(jnp.clip(prior_raw,-12.,8.))+minute.min_scale
+            return state,{"minute_mean":mean,"minute_scale":scale,
+                          "first_prior_minute_mean":prior_mean,
+                          "first_prior_minute_scale":prior_scale}
+
         def rollout_f2(self,minute_x,hour_x,day_x,hour_index,day_index,
                        future_hour_events,future_day_events,
                        advance_slow_priors=True,minute_feedback=None,

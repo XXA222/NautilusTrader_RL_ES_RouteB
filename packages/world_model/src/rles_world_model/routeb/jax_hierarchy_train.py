@@ -347,6 +347,158 @@ def forecast_hierarchical_f2(*, tensors: HierarchyTensors, train_scope_id: str,
     return outputs
 
 
+class StatefulHierarchicalF2Predictor:
+    """Checkpoint-loaded, cached B3 predictor for recursive OHLCV generation.
+
+    The observed hierarchy is encoded once. Each call consumes the previously
+    sampled minute feature and any slow aggregate available at that decision,
+    then emits the next conditional head without replaying the context prefix.
+    """
+
+    def __init__(self, *, model, parameters, state, jax, nj,
+                 advance_slow_priors: bool, paths: int, forecast_seed: int) -> None:
+        self._model = model
+        self._parameters = parameters
+        self._state = state
+        self._jax = jax
+        self._nj = nj
+        self._advance_slow_priors = advance_slow_priors
+        self._paths = paths
+        self._forecast_seed = forecast_seed
+        self._next_step = 0
+        self._compiled: dict[tuple[bool, bool, bool], object] = {}
+
+    def _step_function(self, *, has_feedback: bool, hour_event: bool,
+                       day_event: bool):
+        key = has_feedback, hour_event, day_event
+        function = self._compiled.get(key)
+        if function is None:
+            def apply(parameters, state, minute_feedback, hour_feedback,
+                      day_feedback, seed):
+                return self._nj.pure(self._model.rollout_f2_step)(
+                    parameters, state, minute_feedback, hour_feedback,
+                    day_feedback, has_feedback=has_feedback,
+                    hour_event=hour_event, day_event=day_event,
+                    advance_slow_priors=self._advance_slow_priors,
+                    seed=seed)
+            function = self._jax.jit(apply)
+            self._compiled[key] = function
+        return function
+
+    def predict_step(self, *, step: int, minute_feedback: np.ndarray,
+                     hour_feedback: np.ndarray, day_feedback: np.ndarray,
+                     hour_event: bool, day_event: bool
+                     ) -> tuple[np.ndarray, np.ndarray]:
+        if (type(step) is not int or step != self._next_step
+                or type(hour_event) is not bool or type(day_event) is not bool):
+            raise ValueError("stateful B3 predictions must follow the ordered event plan")
+        minute = np.asarray(minute_feedback, dtype=np.float32)
+        hour = np.asarray(hour_feedback, dtype=np.float32)
+        day = np.asarray(day_feedback, dtype=np.float32)
+        if (minute.shape != (self._paths, 5) or hour.shape != minute.shape
+                or day.shape != minute.shape
+                or any(not np.isfinite(value).all() for value in (minute, hour, day))):
+            raise ValueError("stateful B3 feedback must be finite [paths,5]")
+        if step == 0:
+            if (hour_event or day_event or np.any(minute) or np.any(hour) or np.any(day)):
+                raise ValueError("the initial B3 forecast cannot contain generated feedback")
+        elif ((not hour_event and np.any(hour)) or (not day_event and np.any(day))):
+            raise ValueError("slow feedback appeared before its availability event")
+        function = self._step_function(
+            has_feedback=step > 0, hour_event=hour_event, day_event=day_event)
+        seed = np.random.SeedSequence(
+            [self._forecast_seed, step, 0xB3]).generate_state(
+                1, dtype=np.uint32)[0]
+        self._parameters, result = function(
+            self._parameters, self._state,
+            self._jax.numpy.asarray(minute), self._jax.numpy.asarray(hour),
+            self._jax.numpy.asarray(day), self._jax.numpy.asarray(seed))
+        self._state, output = result
+        mean = np.asarray(self._jax.device_get(output["minute_mean"]), dtype=np.float64)
+        scale = np.asarray(self._jax.device_get(output["minute_scale"]), dtype=np.float64)
+        if (mean.shape != (self._paths, 5) or scale.shape != mean.shape
+                or not np.isfinite(mean).all() or not np.isfinite(scale).all()
+                or np.any(scale <= 0)):
+            raise RuntimeError("stateful B3 worker produced an invalid one-step head")
+        self._next_step += 1
+        return mean, scale
+
+
+def create_stateful_hierarchical_f2_predictor(*, tensors: HierarchyTensors,
+        train_scope_id: str, dataset_id: str, scaler_sha256: str,
+        checkout: str | Path, checkpoint: str | Path,
+        model_config: HierarchicalModelConfig,
+        training_config: HierarchicalTrainingConfig,
+        training_tensor_sha256: str, inference_context_sha256: str,
+        paths: int, forecast_seed: int = 811, advance_slow_priors: bool = True
+        ) -> StatefulHierarchicalF2Predictor:
+    """Load a B3 checkpoint and encode one observable context a single time."""
+    import jax
+    import jax.numpy as jnp
+    import ninjax as nj
+    import optax
+
+    if (not isinstance(tensors, HierarchyTensors) or type(paths) is not int
+            or not 1 <= paths <= 1024 or type(forecast_seed) is not int
+            or forecast_seed < 0 or type(advance_slow_priors) is not bool
+            or not isinstance(train_scope_id, str) or not train_scope_id.strip()
+            or not isinstance(dataset_id, str) or not dataset_id.strip()
+            or not isinstance(scaler_sha256, str) or len(scaler_sha256) != 64
+            or not isinstance(training_config, HierarchicalTrainingConfig)
+            or not isinstance(model_config, HierarchicalModelConfig)):
+        raise ValueError("invalid stateful B3 rollout identity or configuration")
+    actual_context_sha256 = hierarchy_tensor_sha256(tensors)
+    for name, value in (("Train tensor", training_tensor_sha256),
+                        ("inference context", inference_context_sha256)):
+        if (not isinstance(value, str) or len(value) != 64
+                or any(char not in "0123456789abcdef" for char in value)):
+            raise ValueError(f"invalid B3 {name} SHA-256")
+    if inference_context_sha256 != actual_context_sha256:
+        raise ValueError("stateful B3 context does not match its declared identity")
+    if (tensors.minute_x.shape[0] != 1 or tensors.hour_x.shape[0] != 1
+            or tensors.day_x.shape[0] != 1):
+        raise ValueError("stateful B3 expects one observable anchor context")
+
+    def repeated(value: np.ndarray) -> np.ndarray:
+        return np.broadcast_to(value, (paths, *value.shape[1:]))
+
+    minute_x = repeated(tensors.minute_x)
+    hour_x = repeated(tensors.hour_x)
+    day_x = repeated(tensors.day_x)
+    hour_index = repeated(tensors.hour_index)
+    day_index = repeated(tensors.day_index)
+    minute_mask = repeated(tensors.minute_mask)
+    hour_mask = repeated(tensors.hour_mask)
+    day_mask = repeated(tensors.day_mask)
+    resets = np.zeros(minute_x.shape[:2], dtype=np.bool_)
+    resets[:, 0] = True
+    model = make_hierarchical_model(checkout, minute=model_config.minute,
+        hour=model_config.hour, day=model_config.day)
+    template_args = tuple(jnp.asarray(value) for value in (
+        minute_x, hour_x, day_x, hour_index, day_index,
+        minute_mask, hour_mask, day_mask, resets))
+    parameters = nj.init(model)({}, *template_args, seed=training_config.seed)
+    optimizer = optax.chain(optax.clip_by_global_norm(training_config.grad_clip),
+                            optax.adam(training_config.lr))
+    identity = {"train_scope_id": train_scope_id, "dataset_id": dataset_id,
+        "snapshot_sha": SNAPSHOT_SHA, "upstream_sha": PINNED_UPSTREAM,
+        "hierarchy_tensor_sha256": training_tensor_sha256,
+        "scaler_sha256": scaler_sha256}
+    parameters, _, _, checkpoint_seed = load_checkpoint(
+        checkpoint, params_template=parameters,
+        opt_template=optimizer.init(parameters), expected_identity=identity,
+        expected_config=optimizer_recipe(model_config, training_config))
+    if checkpoint_seed != training_config.seed:
+        raise ValueError("stateful B3 checkpoint seed differs from training configuration")
+    parameters, state = nj.pure(model.initialize_rollout_f2)(
+        parameters, jnp.asarray(minute_x), jnp.asarray(hour_x), jnp.asarray(day_x),
+        jnp.asarray(hour_index), jnp.asarray(day_index), seed=forecast_seed)
+    return StatefulHierarchicalF2Predictor(
+        model=model, parameters=parameters, state=state, jax=jax, nj=nj,
+        advance_slow_priors=advance_slow_priors, paths=paths,
+        forecast_seed=forecast_seed)
+
+
 def generate_recursive_hierarchical_f2_paths(*, tensors: HierarchyTensors,
         train_scope_id: str, dataset_id: str, scaler_sha256: str,
         checkout: str | Path, checkpoint: str | Path,
@@ -366,10 +518,9 @@ def generate_recursive_hierarchical_f2_paths(*, tensors: HierarchyTensors,
     Each minute is forecast, sampled and decoded before the next conditional
     forecast. Completed UTC hour/day candles from each path are encoded with
     the frozen Train scalers and become visible only at their scheduled event.
-    This wrapper deliberately favors causal correctness over throughput: the
-    reference predictor reloads/replays the history for each minute. A later
-    stateful predictor can use the same path-generation contract without
-    changing path or availability semantics.
+    The checkpoint and observable context are loaded once. The context is
+    encoded into reusable RSSM carries, then each sampled minute and any
+    newly-available aggregate advances those carries exactly once.
     """
     decisions = np.asarray(future_minute_decisions_ns)
     if (type(forecast_seed) is not int or forecast_seed < 0
@@ -391,26 +542,17 @@ def generate_recursive_hierarchical_f2_paths(*, tensors: HierarchyTensors,
         hour_available_at_ns=hour_times,
         day_available_at_ns=day_times)
 
-    def predict_prefix(prefix: np.ndarray, minute_feedback: np.ndarray,
-                       hour_feedback: np.ndarray,
-                       day_feedback: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        output = forecast_hierarchical_f2(
-            tensors=tensors, train_scope_id=train_scope_id, dataset_id=dataset_id,
-            scaler_sha256=scaler_sha256, checkout=checkout, checkpoint=checkpoint,
-            model_config=model_config, training_config=training_config,
-            training_tensor_sha256=training_tensor_sha256,
-            inference_context_sha256=inference_context_sha256,
-            future_minute_decisions_ns=prefix,
-            hour_availability_delay_ns=hour_availability_delay_ns,
-            day_availability_delay_ns=day_availability_delay_ns,
-            forecast_seed=forecast_seed, advance_slow_priors=advance_slow_priors,
-            minute_feedback_features=minute_feedback,
-            hour_feedback_features=hour_feedback,
-            day_feedback_features=day_feedback)
-        return output["minute_mean"][:, -1], output["minute_scale"][:, -1]
+    predictor = create_stateful_hierarchical_f2_predictor(
+        tensors=tensors, train_scope_id=train_scope_id, dataset_id=dataset_id,
+        scaler_sha256=scaler_sha256, checkout=checkout, checkpoint=checkpoint,
+        model_config=model_config, training_config=training_config,
+        training_tensor_sha256=training_tensor_sha256,
+        inference_context_sha256=inference_context_sha256, paths=paths,
+        forecast_seed=forecast_seed,
+        advance_slow_priors=advance_slow_priors)
 
     return generate_recursive_hierarchical_ohlcv_paths(
-        predictor=predict_prefix, future_minute_decisions_ns=decisions,
+        predictor=predictor, future_minute_decisions_ns=decisions,
         future_hour_events=hour_events, future_day_events=day_events,
         hour_availability_delay_ns=hour_availability_delay_ns,
         day_availability_delay_ns=day_availability_delay_ns,

@@ -217,7 +217,7 @@ def test_recursive_path_generation_rejects_slow_event_without_closed_bucket():
             observed_prefix=_bars(30), paths=1, seed=17)
 
 
-def test_recursive_f2_wrapper_replays_each_generated_prefix(monkeypatch):
+def test_recursive_f2_wrapper_initializes_stateful_predictor_once(monkeypatch):
     replay = MarketSequence(_bars(4_320), "synthetic-recursive-f2", "train")
     tensors, scalers = build_train_hierarchy(
         replay, burn_in=2, score_start_ns=replay.candles[1].ts_close_ns,
@@ -227,21 +227,24 @@ def test_recursive_f2_wrapper_replays_each_generated_prefix(monkeypatch):
     training_config = HierarchicalTrainingConfig(
         seed=47, steps=1, batch_size=1, window_length=4,
         burn_in=1, stride=1, report_interval=1)
+    initializations = []
     calls = []
 
-    def fake_forecast(**kwargs):
-        calls.append(kwargs)
-        feedback = kwargs["minute_feedback_features"]
-        batch, horizon, _ = feedback.shape
-        mean = np.zeros((batch, horizon, 5), dtype=np.float64)
-        if horizon > 1:
-            mean[:, -1] = feedback[:, -2]
-        return {"minute_mean": mean,
-                "minute_scale": np.full_like(mean, 0.001)}
+    class FakeStatefulPredictor:
+        def predict_step(self, *, step, minute_feedback, hour_feedback,
+                         day_feedback, hour_event, day_event):
+            calls.append((step, minute_feedback.copy(), hour_feedback.copy(),
+                          day_feedback.copy(), hour_event, day_event))
+            return minute_feedback.astype(np.float64), np.full(
+                minute_feedback.shape, 0.001)
+
+    def fake_factory(**kwargs):
+        initializations.append(kwargs)
+        return FakeStatefulPredictor()
 
     monkeypatch.setattr(
-        "rles_world_model.routeb.jax_hierarchy_train.forecast_hierarchical_f2",
-        fake_forecast)
+        "rles_world_model.routeb.jax_hierarchy_train.create_stateful_hierarchical_f2_predictor",
+        fake_factory)
     decisions = np.arange(4_321, 4_324, dtype=np.int64) * MINUTE_NS
     result = generate_recursive_hierarchical_f2_paths(
         tensors=tensors, train_scope_id="synthetic-train-only",
@@ -255,12 +258,15 @@ def test_recursive_f2_wrapper_replays_each_generated_prefix(monkeypatch):
         day_scaler=scalers.day, observed_prefix=replay.candles,
         paths=2, forecast_seed=73)
 
+    assert len(initializations) == 1
+    assert initializations[0]["paths"] == 2
     assert len(calls) == len(decisions)
     assert result.ensemble.minute.shape == (2, len(decisions), 5)
     assert result.ensemble.hour.shape == (2, 0, 5)
-    np.testing.assert_array_equal(
-        calls[1]["minute_feedback_features"][:, 0],
-        result.ensemble.minute_features[:, 0])
-    np.testing.assert_array_equal(
-        calls[2]["minute_feedback_features"][:, 1],
-        result.ensemble.minute_features[:, 1])
+    for step, call in enumerate(calls):
+        assert call[0] == step
+        if step:
+            np.testing.assert_array_equal(
+                call[1], result.ensemble.minute_features[:, step - 1])
+        else:
+            np.testing.assert_array_equal(call[1], 0)
