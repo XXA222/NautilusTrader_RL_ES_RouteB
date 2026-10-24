@@ -1,0 +1,61 @@
+{
+  "schema": "routeb.audit-b3-configured-cuda-repeat.v1",
+  "date": "2026-10-25",
+  "workspace": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB",
+  "environment": {
+    "os": "Ubuntu 24.04 on WSL2",
+    "python": "3.12.10",
+    "jax": "0.11.2",
+    "device": "NVIDIA GeForce RTX 5070 Laptop GPU",
+    "upstream_sha": "e01491fad6434b2245a3b8ca201dd7faedcc458c"
+  },
+  "profile": {
+    "status": "COMPLETED",
+    "synthetic_only": true,
+    "real_market_data_accessed": false,
+    "validation_test_holdout_accessed": false,
+    "economic_certification": false,
+    "days": 360,
+    "rows": {
+      "minute": 518399,
+      "hour": 8640,
+      "day": 360
+    },
+    "model_parameter_count": 1283732,
+    "training_config": {
+      "seed": 47,
+      "steps": 100,
+      "batch_size": 2,
+      "window_length": 64,
+      "burn_in": 8,
+      "stride": 16,
+      "lr": 0.0003,
+      "grad_clip": 100.0,
+      "report_interval": 25
+    },
+    "optimizer_updates": 100,
+    "observed_update_seconds_at_report_steps": [
+      1.4061669429993344,
+      1.1571166470002936,
+      1.1673670670006686,
+      1.1528416090004612
+    ],
+    "training_seconds": 173.9716979749992,
+    "process_wall_seconds": 185.30717590400127,
+    "peak_process_rss_mib": 2612.2734375,
+    "checkpoint_sha256": "7c106a17e54aca2bf5325b890b64d6c23535fda949f4420e91322432e61e4ace",
+    "raw_result_sha256": "b5e956e0bf9123c5dfba32de2ab8a59611c7c5001420b913f6f5e72e9dbdd2b0",
+    "raw_result_path": ".tmp/routeb-b3-configured-360d-cuda-repeat-20261025/result.json",
+    "python_snapshot_sha256": "80194a587444bf4a11f06f6e273723e5754f2483"
+  },
+  "comparison_to_20261024_single_run": {
+    "baseline_evidence": "docs/audit_evidence/20261023/routeb_b3_cuda_profile_parity_20261024.json",
+    "baseline_process_wall_seconds": 170.49050683799942,
+    "baseline_training_seconds": 158.7141793310002,
+    "baseline_peak_process_rss_mib": 2709.93359375,
+    "repeat_process_wall_change_percent": 8.69,
+    "repeat_training_change_percent": 9.61,
+    "repeat_peak_rss_change_percent": -3.60,
+    "interpretation": "The two full-budget synthetic CUDA runs completed with comparable resource use. This is a two-run resource repeatability observation only; it does not establish training convergence, production capacity, forecast calibration, or market quality."
+  }
+}
