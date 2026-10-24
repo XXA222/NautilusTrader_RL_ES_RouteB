@@ -1,0 +1,130 @@
+{
+  "schema": "routeb.audit-b3-gpu-determinism-diagnostic.v1",
+  "date": "2026-10-25",
+  "workspace": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB",
+  "base_commit": "c057bfb2ec6351a974d19149cabe91c8ea69211f",
+  "source_sha256": {
+    "worker_client.py": "abd6a2a94732f72e58ec1d5ae33a02d9e817b3fe3c3a75ac2f3c07749c21b801",
+    "test_routeb_quality_v2.py": "ff6bd55d856768bc0cd7b295e75caad5029aaead2270251416a8dfacd6e72800"
+  },
+  "environment": {
+    "os": "Ubuntu 24.04 on WSL2",
+    "python": "3.12.10",
+    "jax": "0.11.2",
+    "device": "NVIDIA GeForce RTX 5070 Laptop GPU",
+    "upstream_sha": "e01491fad6434b2245a3b8ca201dd7faedcc458c"
+  },
+  "experiment": {
+    "data": "deterministic synthetic Train only; 30 days; no market or Validation/Test/Holdout payload",
+    "model_parameter_count": 1283732,
+    "training_config": {
+      "seed": 47,
+      "steps": 5,
+      "batch_size": 1,
+      "window_length": 16,
+      "burn_in": 3,
+      "stride": 8
+    },
+    "checkpoint_npz_members": 247
+  },
+  "comparison": {
+    "cpu_without_gpu_flag": {
+      "different_members": 0,
+      "bitwise_identical": true,
+      "checkpoint_sha256": "ba99b2055c3e451164ffb9c53e9389f897849a122846693736733ab189ac2bcf"
+    },
+    "cuda_without_gpu_flag": {
+      "different_members": 240,
+      "bitwise_identical": false,
+      "max_absolute_delta": 0.14528530836105347,
+      "checkpoint_sha256": [
+        "84aa99f5d0856482ae82b02ac690fbe9b3189d2d735e58c8b78d71be0cdf4169",
+        "c99601c22f02ce33d32e99651bfed905f7143f7cbb6f242dd4724798a2c361e1"
+      ]
+    },
+    "cuda_with_xla_gpu_deterministic_ops_true": {
+      "different_members": 0,
+      "bitwise_identical": true,
+      "checkpoint_sha256": "2a42bff29d9a0c8cae2413170a0ff5ae3bd6ae642a244ce38de79fb162af2631"
+    },
+    "interpretation": "For this pinned environment and short synthetic profile, the XLA GPU deterministic-ops flag eliminated the observed same-seed checkpoint divergence; CPU was already bitwise reproducible. This narrows the cause to GPU kernel execution behavior, but does not identify a particular kernel. Full-budget confirmation is recorded separately below."
+  },
+  "full_budget_validation": {
+    "command_profile": "qa/world_model/routeb_b3_configured_profile.py --days 360 --device cuda",
+    "xla_flags": "--xla_gpu_deterministic_ops=true",
+    "training_config": {
+      "seed": 47,
+      "steps": 100,
+      "batch_size": 2,
+      "window_length": 64,
+      "burn_in": 8,
+      "stride": 16
+    },
+    "run_a": {
+      "training_seconds": 165.40513443999998,
+      "process_wall_seconds": 176.2312606370001,
+      "peak_process_rss_mib": 2059.44140625,
+      "result_sha256": "6994ce86e6c3d41b06e8c28424e8ecab1f1f381f9a78549b94c74a820ec63c07",
+      "checkpoint_sha256": "0f81bf22d27e8e8eb2e4eada102c5cbfc7d49ebab1877ada547a34900ecc4630",
+      "result": ".tmp/routeb-rb09-deterministic-360d-20261025-a/result.json",
+      "checkpoint": ".tmp/routeb-rb09-deterministic-360d-20261025-a/b3_configured_checkpoint.npz"
+    },
+    "run_b": {
+      "training_seconds": 166.8194723370002,
+      "process_wall_seconds": 177.72000036500003,
+      "peak_process_rss_mib": 2058.484375,
+      "result_sha256": "5d0b0178788332591d1e3408802ded3f4bbc1c135240803b89a2e42b300b5e60",
+      "checkpoint_sha256": "0f81bf22d27e8e8eb2e4eada102c5cbfc7d49ebab1877ada547a34900ecc4630",
+      "result": ".tmp/routeb-rb09-deterministic-360d-20261025-b/result.json",
+      "checkpoint": ".tmp/routeb-rb09-deterministic-360d-20261025-b/b3_configured_checkpoint.npz"
+    },
+    "checkpoint_files_byte_identical": true,
+    "boundary": "This establishes byte-identical checkpoints for two fresh full-budget synthetic runs on this pinned hardware/software. It is not convergence, forecasting quality, Validation calibration, or production capacity evidence; runs used the explicit XLA flag directly rather than the host-to-worker integration path."
+  },
+  "code_change": {
+    "file": "packages/world_model/src/rles_world_model/routeb/worker_client.py",
+    "behavior": "WorkerConfig.deterministic_gpu_ops defaults true; when JAX_PLATFORMS is unset or includes cuda/gpu, WorkerClient preserves other XLA_FLAGS and forces --xla_gpu_deterministic_ops=true in the subprocess environment before Python/JAX startup. CPU-only JAX_PLATFORMS does not receive a GPU flag. Setting deterministic_gpu_ops=false leaves caller XLA_FLAGS untouched.",
+    "test_file": "tests/world_model/test_routeb_quality_v2.py",
+    "tests": "4 focused WorkerClient tests passed; full test_routeb_quality_v2.py: 43 passed in 9.07s.",
+    "ruff": "Not run: Ruff is not installed in the dedicated WSL JAX environment and is unavailable from the offline uv cache.",
+    "diff_check": "git -c core.autocrlf=true diff --check passed.",
+    "cpu_worker_smoke": "The existing host-to-worker smoke was attempted twice and stopped before training with ModuleNotFoundError: numpy in the child. The second attempt had JAX_PLATFORMS=cpu (so no GPU flag was injected), confirming this failure is not caused by the new XLA flag; full end-to-end worker integration remains unverified."
+  },
+  "external_reference": "https://github.com/jax-ml/jax/discussions/10674",
+  "open_gates": [
+    "Verify the host-to-worker integration path runs with the deterministic setting; the available smoke currently stops before training because the spawned child cannot import NumPy.",
+    "Measure production-scale capacity and model convergence/quality; deterministic repeated checkpoints alone do not establish either."
+  ],
+  "artifacts": {
+    "ordinary_cuda_a": {
+      "profile": ".tmp/routeb-rb09-cuda-repeat-diagnostic-20261025-a/b3_default_cuda_profile_30d_5updates.json",
+      "profile_sha256": "02ccbc29bfdd57f1f9a13b5507544e85019b9383603591cb3832a823192545b7",
+      "checkpoint": ".tmp/routeb-rb09-cuda-repeat-diagnostic-20261025-a/b3_default_cuda_profile_30d_5updates_checkpoint.npz"
+    },
+    "ordinary_cuda_b": {
+      "profile": ".tmp/routeb-rb09-cuda-repeat-diagnostic-20261025-b/b3_default_cuda_profile_30d_5updates.json",
+      "profile_sha256": "f5da30be3d08531991c5a963df440374e145381f26b5059595003a23130ba70e",
+      "checkpoint": ".tmp/routeb-rb09-cuda-repeat-diagnostic-20261025-b/b3_default_cuda_profile_30d_5updates_checkpoint.npz"
+    },
+    "ordinary_cpu_a": {
+      "profile": ".tmp/routeb-rb09-cpu-repeat-diagnostic-20261025-a/b3_default_cpu_profile_30d_5updates.json",
+      "profile_sha256": "a4feba00a0884c160f8bf1f111c4e82a6a3970204d113fa6e442eedb57a638d8",
+      "checkpoint": ".tmp/routeb-rb09-cpu-repeat-diagnostic-20261025-a/b3_default_cpu_profile_30d_5updates_checkpoint.npz"
+    },
+    "ordinary_cpu_b": {
+      "profile": ".tmp/routeb-rb09-cpu-repeat-diagnostic-20261025-b/b3_default_cpu_profile_30d_5updates.json",
+      "profile_sha256": "16acbbaff8b7a008dda13918f811a8f68e5ab9e6ca7cadf9510bc4b071ca4dc5",
+      "checkpoint": ".tmp/routeb-rb09-cpu-repeat-diagnostic-20261025-b/b3_default_cpu_profile_30d_5updates_checkpoint.npz"
+    },
+    "deterministic_cuda_a": {
+      "profile": ".tmp/routeb-rb09-cuda-deterministic-20261025-a/b3_default_cuda_profile_30d_5updates.json",
+      "profile_sha256": "1c85f75c41bd3efa1c1c91ed643079614f02f5e1d131ce555b73beefdde43730",
+      "checkpoint": ".tmp/routeb-rb09-cuda-deterministic-20261025-a/b3_default_cuda_profile_30d_5updates_checkpoint.npz"
+    },
+    "deterministic_cuda_b": {
+      "profile": ".tmp/routeb-rb09-cuda-deterministic-20261025-b/b3_default_cuda_profile_30d_5updates.json",
+      "profile_sha256": "b36bd7fef55056813fd17ed4330348d1d5afff398ee69d9e95d33437f9fab9ed",
+      "checkpoint": ".tmp/routeb-rb09-cuda-deterministic-20261025-b/b3_default_cuda_profile_30d_5updates_checkpoint.npz"
+    }
+  }
+}

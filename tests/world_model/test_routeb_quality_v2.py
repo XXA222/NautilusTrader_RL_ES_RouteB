@@ -254,6 +254,91 @@ def test_worker_client_rejects_ambiguous_json_response(tmp_path, monkeypatch):
         worker._run([])
 
 
+def test_worker_client_enables_deterministic_gpu_ops_before_worker_start(
+        tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    import rles_world_model.routeb.worker_client as client
+    worker = client.WorkerClient(client.WorkerConfig(
+        python_executable=Path(sys.executable), upstream_checkout=tmp_path,
+    ))
+    monkeypatch.setenv(
+        "XLA_FLAGS",
+        "--xla_gpu_autotune_level=2 --xla_gpu_deterministic_ops=false",
+    )
+    monkeypatch.setenv("JAX_PLATFORMS", "cuda")
+    observed = {}
+
+    def fake_run(*args, **kwargs):
+        observed.update(kwargs["env"])
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"status":"COMPLETED","kind":"TRAIN_DIAGNOSTIC_ONLY"}',
+            stderr="",
+        )
+
+    monkeypatch.setattr(client.subprocess, "run", fake_run)
+    worker._run([])
+
+    flags = observed["XLA_FLAGS"].split()
+    assert "--xla_gpu_autotune_level=2" in flags
+    assert flags.count("--xla_gpu_deterministic_ops=true") == 1
+    assert not any(flag.startswith("--xla_gpu_deterministic_ops=false")
+                   for flag in flags)
+
+
+def test_worker_client_can_preserve_explicit_nondeterministic_gpu_setting(
+        tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    import rles_world_model.routeb.worker_client as client
+    worker = client.WorkerClient(client.WorkerConfig(
+        python_executable=Path(sys.executable), upstream_checkout=tmp_path,
+        deterministic_gpu_ops=False,
+    ))
+    monkeypatch.setenv("XLA_FLAGS", "--xla_gpu_deterministic_ops=false")
+    observed = {}
+
+    def fake_run(*args, **kwargs):
+        observed.update(kwargs["env"])
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"status":"COMPLETED","kind":"TRAIN_DIAGNOSTIC_ONLY"}',
+            stderr="",
+        )
+
+    monkeypatch.setattr(client.subprocess, "run", fake_run)
+    worker._run([])
+
+    assert observed["XLA_FLAGS"] == "--xla_gpu_deterministic_ops=false"
+
+
+def test_worker_client_does_not_set_gpu_flags_for_cpu_only_worker(
+        tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    import rles_world_model.routeb.worker_client as client
+    worker = client.WorkerClient(client.WorkerConfig(
+        python_executable=Path(sys.executable), upstream_checkout=tmp_path,
+    ))
+    monkeypatch.setenv("JAX_PLATFORMS", "cpu")
+    monkeypatch.setenv("XLA_FLAGS", "--xla_cpu_multi_thread_eigen=false")
+    observed = {}
+
+    def fake_run(*args, **kwargs):
+        observed.update(kwargs["env"])
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"status":"COMPLETED","kind":"TRAIN_DIAGNOSTIC_ONLY"}',
+            stderr="",
+        )
+
+    monkeypatch.setattr(client.subprocess, "run", fake_run)
+    worker._run([])
+
+    assert observed["XLA_FLAGS"] == "--xla_cpu_multi_thread_eigen=false"
+
+
 def test_total_path_returns_count_gaps_with_real_anchor():
     # Two bars: open jumps 100 -> 110, closes 121, next opens 132, closes 145.2.
     p = np.array([[[[110, 122, 109, 121, 10],

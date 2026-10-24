@@ -17,8 +17,10 @@ class WorkerConfig:
     python_executable:Path
     upstream_checkout:Path
     timeout_seconds:int=1800
+    deterministic_gpu_ops:bool=True
     def __post_init__(self):
-        if self.timeout_seconds<1 or not self.python_executable.is_file():
+        if (self.timeout_seconds<1 or not self.python_executable.is_file()
+                or type(self.deterministic_gpu_ops) is not bool):
             raise ValueError("missing JAX worker interpreter or invalid timeout")
 
 
@@ -34,6 +36,17 @@ class WorkerClient:
         env=os.environ.copy()
         # Do not allow JAX to claim the whole GPU just by starting a process.
         env.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE","false")
+        # JAX keys are deterministic, but some GPU kernels can use nondeterministic
+        # reductions. Configure XLA before the worker imports/initializes JAX.
+        platforms=env.get("JAX_PLATFORMS","").lower().split(",")
+        gpu_requested=(not any(platforms)
+                       or any(platform in {"cuda","gpu"} for platform in platforms))
+        if self.config.deterministic_gpu_ops and gpu_requested:
+            flags=env.get("XLA_FLAGS","").split()
+            flags=[flag for flag in flags
+                   if not flag.startswith("--xla_gpu_deterministic_ops")]
+            flags.append("--xla_gpu_deterministic_ops=true")
+            env["XLA_FLAGS"]=" ".join(flags)
         # Worker is Python 3.12 while the parent distribution requires 3.14.7.
         # Import this additive module via source path, NOT by installing the root wheel.
         src_dir=Path(__file__).resolve().parents[2]
