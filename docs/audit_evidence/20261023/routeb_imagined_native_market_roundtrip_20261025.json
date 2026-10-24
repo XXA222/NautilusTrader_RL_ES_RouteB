@@ -70,6 +70,39 @@
       "not_yet_available_event_rejected": true
     }
   ],
+  "funding_two_cycle_followup": {
+    "status": "PASS",
+    "source_commit": "35fb3d4c1075abe67efad0d847bca82e6bd365e5",
+    "test_source_sha256": "938aa5d98440468023971aae94f8cb804c662f25054da8abf5cad84bbc187ee5",
+    "cases": {
+      "position_sides": ["long", "short"],
+      "history_modes": ["full", "compact"],
+      "funding_cycles": [
+        {"settlement_ns": 240000000000, "mark_price_usdt": "1000.00", "rate": "0.001"},
+        {"settlement_ns": 420000000000, "mark_price_usdt": "1100.00", "rate": "0.002"}
+      ],
+      "native_and_imagined_funding_change_by_cycle_usdt": {
+        "long": ["-1.00", "-2.20"],
+        "short": ["1.00", "2.20"]
+      },
+      "native_and_imagined_final_equity_usdt": {
+        "long": "100095.80",
+        "short": "99902.20"
+      },
+      "full_history_adjustments_at_second_settlement": 2,
+      "compact_history_adjustments_at_second_settlement": 1,
+      "each_settlement_rejected_before_available": true,
+      "each_event_id_duplicate_rejected": true
+    },
+    "verification": {
+      "focused_pytest": "4 passed, 35 deselected",
+      "focused_junit_sha256": "98c904603bd677b9c199eae323b534153856eb64e9195eb4ddd5636f4b683a18",
+      "full_adapter_pytest": "39 passed",
+      "full_adapter_junit_sha256": "80d5f4931ee1a143ab47ddf64e4a0e3724db2dede5c81ebd6f746c790ee23564",
+      "ruff": "passed"
+    },
+    "boundary": "Synthetic NETTING account differential for two observed funding settlements with differing marks and rates. Does not cover venue schedule accrual, mark/index basis, margin tiers, cross/hedge mode, liquidation, or economic certification."
+  },
   "verification": {
     "focused_market_order_pytest": "2 passed, 37 deselected",
     "focused_cancel_parity_pytest": "1 passed, 38 deselected",
@@ -93,9 +126,10 @@
     "maker_limit_partial_fill_parity_proven": false,
     "cancel_race_or_in_flight_fill_parity_proven": false,
     "single_linear_funding_settlement_parity_proven": true,
-    "funding_schedule_accrual_or_repeated_settlement_parity_proven": false,
+    "two_observed_funding_cycle_parity_proven": true,
+    "funding_schedule_accrual_or_mark_index_basis_parity_proven": false,
     "funding_margin_tiers_liquidation_parity_proven": false,
     "economic_certification": false,
-    "note": "The limit comparison tolerates only 1e-8 USDT for IEEE-754 representation against the native fixed-point money amount; order side, quantity, price and bar/event barrier are exact. The cancellation case proves only an acknowledged cancel before a later touch, not cancel races or in-flight fills. The funding test checks one observed linear settlement at a fixed mark, long/short signs, availability gating, duplicate rejection, and full/compact history; it does not establish rate schedules, repeated accrual, mark/index basis, exchange-specific rounding, or financing economics. These tests close synthetic market, intrabar limit-touch, cancel-before-later-touch, and one funding-settlement subcase only. ImaginedAccount remains research-only and economics_eligible=false; RB-11 requires broader native parity before any economic use."
+    "note": "The limit comparison tolerates only 1e-8 USDT for IEEE-754 representation against the native fixed-point money amount; order side, quantity, price and bar/event barrier are exact. The cancellation case proves only an acknowledged cancel before a later touch, not cancel races or in-flight fills. The original funding test checks one observed linear settlement; its follow-up checks two distinct observed mark/rate settlements, long/short signs, per-event availability gates, duplicate rejection, and full/compact history. Neither establishes venue schedule accrual, mark/index basis, exchange-specific rounding, margin tiers, liquidation or financing economics. These tests close synthetic market, intrabar limit-touch, cancel-before-later-touch, and two observed funding-settlement subcases only. ImaginedAccount remains research-only and economics_eligible=false; RB-11 requires broader native parity before any economic use."
   }
 }
