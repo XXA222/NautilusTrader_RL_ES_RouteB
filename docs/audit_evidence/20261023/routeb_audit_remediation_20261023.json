@@ -22,5 +22,5 @@
     "RB-11": "economic certification remains false; native account parity remains open"
   },
   "open": ["RB-05", "RB-09", "RB-12"],
-  "hosted_ci": "PASS for commit 27cf4439ae5908df3dad7eace1fca4d4f0734331; pending for subsequent E3/E4 rollout-switch changes"
+  "hosted_ci": "PASS for commit 8e6207b89fad6570e0b9ec18545736f25255b39c (run 40045345260): Linux, Windows and JAX CPU; GPU/release skipped by lane selection"
 }
