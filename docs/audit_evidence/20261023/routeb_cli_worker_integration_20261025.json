@@ -1,0 +1,73 @@
+{
+  "schema": "routeb.audit.cli_worker_integration.v1",
+  "status": "PASS",
+  "date": "2026-10-25",
+  "workspace": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB",
+  "source_commit_before_change": "79a63a5a375bfad68f0b120d949bff9c961e53bd",
+  "environment": {
+    "platform": "Ubuntu 24.04 / WSL2",
+    "host_python": "3.14.7",
+    "worker_python": "3.12.10",
+    "worker_numpy": "2.3.3",
+    "worker_jax": "0.11.2",
+    "worker_device": "cpu:0",
+    "dreamerv3_commit": "e01491fad6434b2245a3b8ca201dd7faedcc458c"
+  },
+  "diagnosis": [
+    {
+      "symptom": "WorkerClient child failed importing numpy even though the dedicated .venv-wsl environment contains NumPy.",
+      "cause": "Path.resolve() followed the uv venv's python symlink to the base Python interpreter, discarding the venv site-packages.",
+      "fix": "Preserve the absolute venv entry-point path without resolving symlinks in CLI and smoke-driver worker-python handling."
+    },
+    {
+      "symptom": "Synthetic registered-fold run failed at next-distribution-batch with unexpected forecast request schema.",
+      "cause": "The Fold helper returns audit metadata in addition to the serialized worker request; the runner wrote the enriched object to the strict worker wire file.",
+      "fix": "Build the next-step distribution request from the exact persisted forecast wire payload and change only horizon to 1."
+    }
+  ],
+  "changes": {
+    "worker_interpreter_path_policy": "Path.absolute; do not Path.resolve venv interpreter symlinks",
+    "files": [
+      "packages/world_model/src/rles_world_model/cli.py",
+      "packages/world_model/src/rles_world_model/routeb/fold_experiment.py",
+      "qa/world_model/routeb_cli_worker_smoke.py",
+      "tests/world_model/test_cli.py",
+      "tests/world_model/test_routeb_fold_evaluation.py"
+    ]
+  },
+  "verification": {
+    "focused_regressions": "2 passed",
+    "ruff": "passed",
+    "git_diff_check": "passed",
+    "canonical_workspace_guard": "passed",
+    "host_to_worker_cli_smoke": "PASS",
+    "smoke_result_path": ".tmp/routeb-cli-worker-smoke-final-20261025/result.json",
+    "smoke_result_sha256": "0f45aaee4bf9bd217eaf6a2cb56ff68b6eb176638d6374a96efb18f8fab5c6ce",
+    "smoke_scope": "synthetic_mechanism_only",
+    "smoke_checks": {
+      "e1_e2_training_via_separate_worker": true,
+      "paired_batched_forecasts": true,
+      "synthetic_registered_fold_pipeline": "COMPLETED",
+      "fixed_synthetic_e2_nll_initial": 5.892900466918945,
+      "fixed_synthetic_e2_nll_final": 4.515803813934326,
+      "economic_claim": false
+    },
+    "fold_report_sha256": "3fa0124d14e0c30efe78a9b05e0caa308da92f2760ff344267cf10959d2e7752"
+  },
+  "boundary": {
+    "real_market_payload_read": false,
+    "validation_payload_read": false,
+    "test_or_holdout_read": false,
+    "fresh_fold_reserved": false,
+    "research_acceptance": false,
+    "economic_certification": false,
+    "hosted_ci_for_fixed_source": "pending"
+  },
+  "source_sha256": {
+    "packages/world_model/src/rles_world_model/cli.py": "54e05e9e39695a3dbdb8bc5ae8899b422687706c0714ed367468e5c67627df3d",
+    "packages/world_model/src/rles_world_model/routeb/fold_experiment.py": "155ceb2d790c7d043b041a425f7888464f71ca2fa7733e639b46d02b4ccd74c6",
+    "qa/world_model/routeb_cli_worker_smoke.py": "a439039d86d37a29b2b23afdd8169ffaaa9ed7e69e83e944138d921c83dc4208",
+    "tests/world_model/test_cli.py": "267bd9bbce32bdba8ff517bd16bcaf0240525d125e24dbc27272542527a1f271",
+    "tests/world_model/test_routeb_fold_evaluation.py": "b5362f4e1beb9510592ebc16fc7ea9cfa32760a37668c65784ced4413550e358"
+  }
+}

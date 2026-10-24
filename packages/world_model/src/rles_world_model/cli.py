@@ -559,7 +559,9 @@ def main(argv: list[str] | None = None) -> int:
                     or args.forecast_paths * horizons[-1] * args.max_attempts_per_bar > 1_000_000
                     or total_attempt_bound > args.max_total_bar_attempts):
                 raise DataError("B3 Validation anchors exceed the declared per-anchor or global rollout budget")
-            worker_python = Path(args.worker_python).resolve()
+            # Preserve venv entry-point symlinks: resolve() follows uv-managed
+            # Python symlinks to the base interpreter and drops venv packages.
+            worker_python = Path(args.worker_python).absolute()
             upstream_checkout = Path(args.upstream_checkout).resolve()
             if not worker_python.is_file() or not upstream_checkout.is_dir():
                 raise DataError("pinned Python 3.12 worker and upstream checkout are required")
@@ -658,7 +660,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             except ValueError as exc:
                 raise DataError(str(exc)) from exc
-            worker_python = Path(args.worker_python).resolve()
+            worker_python = Path(args.worker_python).absolute()
             upstream_checkout = Path(args.upstream_checkout).resolve()
             if not worker_python.is_file() or not upstream_checkout.is_dir():
                 raise DataError("pinned Python 3.12 worker and upstream checkout are required")
@@ -714,7 +716,7 @@ def main(argv: list[str] | None = None) -> int:
             sequences = Path(args.sequences).resolve()
             configuration = Path(args.configuration).resolve()
             checkpoint = Path(args.checkpoint).resolve()
-            worker_python = Path(args.worker_python).resolve()
+            worker_python = Path(args.worker_python).absolute()
             upstream_checkout = Path(args.upstream_checkout).resolve()
             report_path = _preflight_training_report(args.report_json)
             if (not sequences.is_file() or not sequences.with_suffix(".json").is_file()

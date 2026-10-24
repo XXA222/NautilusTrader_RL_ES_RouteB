@@ -428,6 +428,17 @@ def test_run_fold_experiment_uses_one_replay_for_train_and_validation(tmp_path):
     assert set(report["forecast_artifacts"]) == {"E1", "E2"}
     assert len(report["forecast_artifacts"]["E1"]["artifact_sha256"]) == 64
     assert report["forecast_context"]["request_sha256"]
+    forecast_request = json.loads(
+        (tmp_path / "validation_forecast_request.json").read_text())
+    distribution_request = json.loads(
+        (tmp_path / "validation_next_distribution_request.json").read_text())
+    assert set(distribution_request) == set(forecast_request)
+    assert distribution_request["horizon"] == 1
+    assert {key: value for key, value in distribution_request.items()
+            if key != "horizon"} == {
+                key: value for key, value in forecast_request.items()
+                if key != "horizon"
+            }
     assert np.isfinite(report["predictive_comparison"]["overall"]["E1"][0]["nll"])
     assert np.isfinite(report["predictive_comparison"]["overall"]["E2"][0]["nll"])
     assert verify_fold_experiment_report_digest(report)

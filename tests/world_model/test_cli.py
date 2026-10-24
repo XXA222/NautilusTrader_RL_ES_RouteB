@@ -447,8 +447,10 @@ def test_train_prepared_cli_checks_fold_and_dispatches_e1_worker(
         "model": {"hidden": 32},
         "training": {"seed": 3, "steps": 7, "batch_size": 2},
     }), encoding="utf-8")
-    worker_python = tmp_path / "python.exe"
-    worker_python.write_bytes(b"fake executable")
+    interpreter_target = tmp_path / "python-base"
+    interpreter_target.write_bytes(b"fake executable")
+    worker_python = tmp_path / "python-venv"
+    worker_python.symlink_to(interpreter_target)
     upstream = tmp_path / "dreamerv3"
     upstream.mkdir()
     checkpoint = tmp_path / "model.ckpt"
@@ -497,6 +499,8 @@ def test_train_prepared_cli_checks_fold_and_dispatches_e1_worker(
     ]
     assert calls["train"]["scope"] == "routeb-fold-123"
     assert calls["worker_config"].timeout_seconds == 1800
+    assert calls["worker_config"].python_executable == worker_python.absolute()
+    assert calls["worker_config"].python_executable.is_symlink()
 
 
 def test_train_prepared_cli_rejects_wrong_fold_before_worker(

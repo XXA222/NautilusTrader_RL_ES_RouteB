@@ -87,7 +87,7 @@ def main() -> int:
             "--fold-sha256", fold_hash,
             "--configuration", str(configuration),
             "--checkpoint", str(checkpoint),
-            "--worker-python", str(Path(args.worker_python).resolve()),
+            "--worker-python", str(Path(args.worker_python).absolute()),
             "--upstream-checkout", str(Path(args.checkout).resolve()),
             "--report-json", str(report),
         ])
@@ -133,7 +133,7 @@ def main() -> int:
     }
     batch_request_path=root/"synthetic_forecast_batch_request.json"
     batch_request_path.write_text(json.dumps(batch_request),encoding="utf-8")
-    worker=WorkerClient(WorkerConfig(Path(args.worker_python).resolve(),
+    worker=WorkerClient(WorkerConfig(Path(args.worker_python).absolute(),
         Path(args.checkout).resolve()))
     batch_shapes={}
     for name in ("e1","e2"):
@@ -198,7 +198,7 @@ def main() -> int:
         "--fold-sha256", fold_hash,
         "--configuration", str(sanity_config),
         "--checkpoint", str(sanity_checkpoint),
-        "--worker-python", str(Path(args.worker_python).resolve()),
+        "--worker-python", str(Path(args.worker_python).absolute()),
         "--upstream-checkout", str(Path(args.checkout).resolve()),
         "--report-json", str(sanity_report_path),
     ])

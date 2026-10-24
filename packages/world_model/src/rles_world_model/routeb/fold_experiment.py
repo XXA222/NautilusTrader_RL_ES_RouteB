@@ -332,7 +332,16 @@ def run_fold_experiment(*, replay: MarketReplay, fold: FoldManifest,
         anchor_interval_minutes=anchor_interval_minutes,
         context_lookback=context_lookback)
     distribution_request_path = root / "validation_next_distribution_request.json"
-    distribution_request = {**request, "horizon": 1}
+    # The helper returns audit metadata in addition to the worker wire request.
+    # Derive the next-step request from the exact serialized payload so its
+    # schema stays identical to the already-issued causal forecast context.
+    persisted_request = strict_json_loads(
+        request_path.read_bytes(), context="persisted Fold forecast request",
+    )
+    if (not isinstance(persisted_request, dict)
+            or persisted_request.get("schema") != "routeb.forecast-batch-request.v1"):
+        raise ValueError("persisted Fold forecast request has an invalid schema")
+    distribution_request = {**persisted_request, "horizon": 1}
     _write_json_fresh(distribution_request_path, distribution_request)
     anchors = np.asarray(request["anchor_timestamps_ns"], dtype=np.int64)
     candidate_paths: dict[str, np.ndarray] = {}
