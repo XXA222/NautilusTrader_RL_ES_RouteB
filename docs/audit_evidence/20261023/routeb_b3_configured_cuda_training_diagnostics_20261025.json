@@ -1,0 +1,95 @@
+{
+  "schema": "routeb.audit-b3-training-diagnostics.v1",
+  "status": "COMPLETED",
+  "date": "2026-10-25",
+  "workspace": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB",
+  "command": "XLA_FLAGS=--xla_gpu_deterministic_ops=true packages/world_model/environment/.venv-wsl/bin/python -B qa/world_model/routeb_b3_configured_profile.py --checkout .tmp/dreamerv3-route-b --output-dir .tmp/routeb-rb09-training-diagnostics-20261025-retry --days 360 --device cuda",
+  "source": {
+    "path": "qa/world_model/routeb_b3_configured_profile.py",
+    "sha256": "f5c257447e311cfac5f00382b768802d33bb82cd9ea24f8eba79803a4a86e32e"
+  },
+  "environment": {
+    "os": "Ubuntu 24.04 on WSL2",
+    "python": "3.12.10",
+    "jax": "0.11.2",
+    "device": "NVIDIA GeForce RTX 5070 Laptop GPU",
+    "xla_flags": "--xla_gpu_deterministic_ops=true",
+    "dreamerv3_upstream_sha": "e01491fad6434b2245a3b8ca201dd7faedcc458c"
+  },
+  "scope": {
+    "synthetic_only": true,
+    "real_market_data_accessed": false,
+    "validation_test_holdout_accessed": false,
+    "economic_certification": false,
+    "days": 360,
+    "rows": {"minute": 518399, "hour": 8640, "day": 360}
+  },
+  "model": {
+    "parameter_count": 1283732,
+    "training_config": {
+      "seed": 47,
+      "steps": 100,
+      "batch_size": 2,
+      "window_length": 64,
+      "burn_in": 8,
+      "stride": 16,
+      "lr": 0.0003,
+      "report_interval": 25
+    }
+  },
+  "training_metrics_at_report_steps": [
+    {
+      "step": 25,
+      "loss": 12.23923110961914,
+      "minute_nll": 7.339139938354492,
+      "slow_aux": 3.797617435455322,
+      "grad_norm": 1.6199604272842407,
+      "grad_minute_dyn_norm": 0.9855040907859802,
+      "grad_hour_dyn_norm": 0.3222390115261078,
+      "grad_day_dyn_norm": 0.22911909222602844
+    },
+    {
+      "step": 50,
+      "loss": 12.005704879760742,
+      "minute_nll": 7.121882438659668,
+      "slow_aux": 3.7766380310058594,
+      "grad_norm": 1.977044939994812,
+      "grad_minute_dyn_norm": 1.1315349340438843,
+      "grad_hour_dyn_norm": 0.5184087157249451,
+      "grad_day_dyn_norm": 0.7211232781410217
+    },
+    {
+      "step": 75,
+      "loss": 12.011917114257812,
+      "minute_nll": 7.033224105834961,
+      "slow_aux": 3.7415852546691895,
+      "grad_norm": 2.7785282135009766,
+      "grad_minute_dyn_norm": 2.1335856914520264,
+      "grad_hour_dyn_norm": 0.45850667357444763,
+      "grad_day_dyn_norm": 0.4460408389568329
+    },
+    {
+      "step": 100,
+      "loss": 12.103019714355469,
+      "minute_nll": 6.836800575256348,
+      "slow_aux": 3.790602207183838,
+      "grad_norm": 2.6738805770874023,
+      "grad_minute_dyn_norm": 2.1587114334106445,
+      "grad_hour_dyn_norm": 0.49164676666259766,
+      "grad_day_dyn_norm": 0.4644857347011566
+    }
+  ],
+  "runtime": {
+    "training_seconds": 174.26591705200008,
+    "process_wall_seconds": 185.29425055699994,
+    "peak_process_rss_mib": 2047.265625
+  },
+  "artifacts": {
+    "raw_result": ".tmp/routeb-rb09-training-diagnostics-20261025-retry/result.json",
+    "raw_result_sha256": "671019b4764dd4d67bf4ff1283ad5fc25e946354bfbbeb5f716a6534a8dd30f0",
+    "checkpoint": ".tmp/routeb-rb09-training-diagnostics-20261025-retry/b3_configured_checkpoint.npz",
+    "checkpoint_sha256": "0f81bf22d27e8e8eb2e4eada102c5cbfc7d49ebab1877ada547a34900ecc4630"
+  },
+  "interpretation": "All four sparse reports and gradients are finite. Minute NLL falls from 7.339 at step 25 to 6.837 at step 100, while total loss fluctuates slightly (12.239 to 12.103). This is a numerical training diagnostic on a deterministic synthetic sequence, not a convergence proof, independent Validation result, calibrated market forecast, or production-capacity certification.",
+  "result_sha256": "671019b4764dd4d67bf4ff1283ad5fc25e946354bfbbeb5f716a6534a8dd30f0"
+}

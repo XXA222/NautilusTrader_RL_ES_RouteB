@@ -12,6 +12,8 @@ import subprocess
 import sys
 import time
 
+import numpy as np
+
 def main() -> int:
     root = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(root))
@@ -79,9 +81,23 @@ def main() -> int:
     final = reports[-1]
     report_steps = [int(report["step"]) for report in reports]
     observed_update_seconds = [float(report["update_seconds"]) for report in reports]
+    metric_names = (
+        "loss", "minute_nll", "slow_aux", "grad_norm",
+        "grad_minute_dyn_norm", "grad_hour_dyn_norm", "grad_day_dyn_norm",
+    )
+    training_metrics = [
+        {"step": int(report["step"]), **{
+            name: float(report[name]) for name in metric_names
+        }}
+        for report in reports
+    ]
     if (final.get("optimizer_updates") != training.steps
             or not checkpoint.exists()
-            or checkpoint.stat().st_size == 0):
+            or checkpoint.stat().st_size == 0
+            or report_steps != [25, 50, 75, 100]
+            or any(not np.isfinite(value)
+                   for row in training_metrics for key, value in row.items()
+                   if key != "step")):
         raise RuntimeError("configured B3 training did not complete and checkpoint")
     payload = {
         "schema": "routeb.b3-configured-synthetic-device-profile.v1",
@@ -106,6 +122,7 @@ def main() -> int:
         },
         "optimizer_updates": int(final["optimizer_updates"]),
         "checkpoint_report_steps": report_steps,
+        "training_metrics_at_report_steps": training_metrics,
         "observed_update_seconds_at_report_steps": observed_update_seconds,
         "training_seconds_reported": float(final["training_seconds"]),
         "process_wall_seconds": wall_seconds,
@@ -121,7 +138,8 @@ def main() -> int:
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "interpretation": (
             "One deterministic synthetic run using the repository-default B3 training "
-            "budget and dimensions. This is compute evidence, not convergence or "
+            "budget and dimensions. Sparse reported optimizer diagnostics are included "
+            "to inspect numerical/training behavior, but this is not convergence or "
             "market-quality evidence."
         ),
     }
