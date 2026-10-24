@@ -52,7 +52,8 @@ class WorkerClient:
             'TRAIN_DIAGNOSTIC_ONLY', 'F1_PRIOR_PATHS', 'E2_NEXT_DISTRIBUTION',
             'E1_TRAIN_DIAGNOSTIC_ONLY', 'E1_PRIOR_PATHS', 'E1_NEXT_DISTRIBUTION',
             'F1_BATCH_PRIOR_PATHS', 'E1_BATCH_PRIOR_PATHS',
-            'E1_BATCH_NEXT_DISTRIBUTION', 'E2_BATCH_NEXT_DISTRIBUTION'
+            'E1_BATCH_NEXT_DISTRIBUTION', 'E2_BATCH_NEXT_DISTRIBUTION',
+            'B3_TRAIN_DIAGNOSTIC_ONLY',
         }:
             raise WorkerFailure('worker returned invalid output shape/kind')
         if result.get("status")!="COMPLETED":
@@ -89,6 +90,32 @@ class WorkerClient:
         if (result.get('kind')!='E1_TRAIN_DIAGNOSTIC_ONLY' or not checkpoint.is_file()
                 or not checkpoint.with_suffix('.json').is_file()):
             raise WorkerFailure('E1 worker training did not publish its checkpoint')
+        return result
+
+    def train_b3_hierarchical(self, *, sequences: Path, scope: str,
+            fold_sha256: str, checkpoint: Path, configuration: Path,
+            resume: bool = False) -> dict:
+        """Train the registered Fold's B3 hierarchy on its sealed Train artifact."""
+        if (not scope.strip() or len(fold_sha256) != 64
+                or any(char not in "0123456789abcdef" for char in fold_sha256)):
+            raise ValueError("B3 training requires a Train scope and lowercase Fold SHA-256")
+        args = ["b3-train", "--sequences", str(sequences), "--scope", scope,
+                "--fold-sha256", fold_sha256,
+                "--checkout", str(self.config.upstream_checkout),
+                "--checkpoint", str(checkpoint), "--configuration", str(configuration)]
+        if resume:
+            args.append("--resume")
+        result = self._run(args)
+        if (result.get("kind") != "B3_TRAIN_DIAGNOSTIC_ONLY"
+                or Path(result.get("checkpoint", "")).resolve() != checkpoint.resolve()
+                or not checkpoint.is_file()
+                or not checkpoint.with_suffix(".json").is_file()
+                or result.get("fold_sha256") != fold_sha256
+                or result.get("validation_scored") is not False
+                or result.get("test_scored") is not False
+                or result.get("economic_certification") is not False
+                or not isinstance(result.get("reports"), list)):
+            raise WorkerFailure("B3 worker failed to publish a Train-only diagnostic checkpoint")
         return result
 
     def forecast(self,*,request:Path,checkpoint:Path,

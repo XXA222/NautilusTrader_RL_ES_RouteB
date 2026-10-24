@@ -16,7 +16,10 @@ from ..contracts import MarketReplay
 from ..data_audit import audit_replay
 from .fold_evaluation import build_fold_predictive_report
 from .fold_protocol import validate_fold_experiment_protocol
-from .integration import prepare_fold_forecast_batch, prepare_fold_train_sequences
+from .integration import (
+    prepare_fold_forecast_batch, prepare_fold_train_hierarchy,
+    prepare_fold_train_sequences,
+)
 from .jax_model import PINNED_UPSTREAM
 from .jax_train import SNAPSHOT_SHA
 from .sequences import load_worker_batch
@@ -85,6 +88,106 @@ def _candidate_run(*, name: str, configuration: dict, configuration_path: Path,
         "snapshot_sha256": SNAPSHOT_SHA, "upstream_sha256": PINNED_UPSTREAM,
         "resume": False, "worker_result": worker_result,
     }
+
+
+def train_fold_b3_diagnostic(*, replay: MarketReplay, fold: FoldManifest,
+        train_scope_id: str, configuration: dict, worker: WorkerClient,
+        output_dir: Path, repository_commit: str, source_code_sha256: str,
+        reservation_label: str, burn_in: int = 8) -> dict[str, object]:
+    """Train one registered Fold's B3 hierarchy without Validation/Test scoring.
+
+    This is the Train-only B3 stage. It deliberately does not produce E3/E4
+    predictive scores: the current B3 path forecast still uses a separate
+    sampled-path feedback replay rather than a single-pass path generator.
+    """
+    if not isinstance(replay, MarketReplay) or not isinstance(fold, FoldManifest):
+        raise ValueError("an authorized registered Fold replay is required")
+    if (not isinstance(configuration, dict)
+            or set(configuration) != {"model", "training"}
+            or not isinstance(configuration["model"], dict)
+            or set(configuration["model"]) != {"minute", "hour", "day"}
+            or not isinstance(configuration["training"], dict)):
+        raise ValueError("B3 requires minute/hour/day models and one training configuration")
+    if (not isinstance(repository_commit, str) or len(repository_commit) != 40
+            or not isinstance(source_code_sha256, str) or len(source_code_sha256) != 64
+            or not isinstance(reservation_label, str)
+            or not reservation_label.startswith("routeb-fold-")
+            or not isinstance(train_scope_id, str) or not train_scope_id.strip()):
+        raise ValueError("invalid B3 source, reservation or Train-scope identity")
+    report_sha_inputs = (repository_commit, source_code_sha256)
+    if any(any(char not in "0123456789abcdef" for char in value)
+           for value in report_sha_inputs):
+        raise ValueError("B3 source identities must be lowercase hexadecimal digests")
+
+    root = Path(output_dir).resolve()
+    existing = {path.name for path in root.iterdir()} if root.is_dir() else set()
+    if not root.is_dir() or existing not in (set(), {"registration_receipt.json"}):
+        raise ValueError("B3 output directory must be fresh except for its registration receipt")
+    audit = audit_replay(replay)
+    if not audit.market_model_eligible:
+        raise ValueError("registered Fold failed market model eligibility audit")
+
+    artifact_path, _, preparation = prepare_fold_train_hierarchy(
+        fold_replay=replay, fold=fold, train_scope_id=train_scope_id,
+        target_npz=root / "b3_train_hierarchy.npz", burn_in=burn_in)
+    configuration_path = root / "b3_configuration.json"
+    _write_json_fresh(configuration_path, configuration)
+    checkpoint = root / "b3_checkpoint.npz"
+    worker_result = worker.train_b3_hierarchical(
+        sequences=artifact_path, scope=train_scope_id, fold_sha256=fold.hash,
+        checkpoint=checkpoint, configuration=configuration_path, resume=False)
+    diagnostics = worker_result.get("reports")
+    if not isinstance(diagnostics, list) or not diagnostics or not isinstance(diagnostics[-1], dict):
+        raise ValueError("B3 worker omitted final training diagnostics")
+    final = diagnostics[-1]
+    steps = configuration["training"].get("steps")
+    elapsed = final.get("training_seconds")
+    gradient_norms: dict[str, float] = {}
+    for scale in ("minute", "hour", "day"):
+        value = final.get(f"grad_{scale}_dyn_norm")
+        if (not isinstance(value, (int, float)) or isinstance(value, bool)
+                or not np.isfinite(value) or value <= 0):
+            raise ValueError(f"B3 {scale} scale has no finite nonzero gradient diagnostic")
+        gradient_norms[scale] = float(value)
+    if (type(steps) is not int or type(final.get("optimizer_updates")) is not int
+            or final["optimizer_updates"] != steps
+            or type(final.get("parameter_count")) is not int
+            or final["parameter_count"] < 1
+            or type(final.get("train_windows")) is not int
+            or final["train_windows"] < 1
+            or not isinstance(elapsed, (int, float)) or isinstance(elapsed, bool)
+            or not np.isfinite(elapsed) or elapsed < 0
+            or not isinstance(final.get("device"), str) or not final["device"].strip()
+            or not checkpoint.is_file() or not checkpoint.with_suffix(".json").is_file()):
+        raise ValueError("B3 worker diagnostics or checkpoint pair are incomplete")
+    report: dict[str, object] = {
+        "schema": "routeb.b3-train-run.v1", "status": "COMPLETED",
+        "candidate": "B3", "dataset_hash": fold.dataset_hash,
+        "fold_hash": fold.hash, "train_scope_id": train_scope_id,
+        "reservation_label": reservation_label,
+        "repository_commit": repository_commit,
+        "source_code_sha256": source_code_sha256,
+        "train_artifact": artifact_path.name,
+        "train_artifact_sha256": preparation["train_npz_sha256"],
+        "hierarchy_tensor_sha256": preparation["hierarchy_tensor_sha256"],
+        "scaler_sha256": preparation["scaler_sha256"],
+        "training_config": configuration["training"],
+        "optimizer_updates": final["optimizer_updates"],
+        "parameter_count": final["parameter_count"],
+        "train_windows": final["train_windows"],
+        "training_seconds": elapsed, "device": final["device"],
+        "scale_gradient_norms": gradient_norms,
+        "checkpoint_sha256": sha256(checkpoint.read_bytes()).hexdigest(),
+        "configuration_sha256": sha256(configuration_path.read_bytes()).hexdigest(),
+        "snapshot_sha256": SNAPSHOT_SHA, "upstream_sha256": PINNED_UPSTREAM,
+        "validation_scored": False, "test_scored": False,
+        "economic_certification": False,
+        "worker_result": worker_result,
+    }
+    canonical = json.dumps(report, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    report["report_sha256"] = sha256(canonical.encode("utf-8")).hexdigest()
+    _write_json_fresh(root / "b3_train_run.json", report)
+    return report
 
 
 def run_fold_experiment(*, replay: MarketReplay, fold: FoldManifest,

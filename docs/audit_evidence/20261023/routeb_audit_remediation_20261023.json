@@ -3,28 +3,29 @@
   "date": "2026-10-24",
   "workspace": "D:\\Program Files\\NautilusTrader_RL_ES_RouteB",
   "scope": "RouteB source and synthetic/local regression only; no market, account, Validation, Test, or Holdout payload was opened",
-  "source_identity_sha256": "223f5be6c9a95b410ee2b2a0024cedd772bfba2b080d529178b75018f3710de6",
-  "source_files": 374,
+  "source_identity_sha256": "9ae18aff0a0b867a9ade4f8e273a7dbc70defbbbdca151b6d0d659733daf749a",
+  "source_files": 376,
   "results": {
     "research_access": "91 passed",
-    "routeb_main_environment": "237 passed, 3 JAX-only skipped",
-    "routeb_jax_cpu": "136 passed on locked Python 3.12.10/JAX 0.11.2 CPU, 2026-10-24",
+    "routeb_main_environment": "156 world-model tests passed, 3 JAX-only skipped in the default interpreter",
+    "routeb_jax_cpu": "141 world-model tests passed in the locked CPU JAX environment with test_cli.py excluded because gymnasium is unavailable there",
     "routeb_b2_cpu_smoke": "PASS",
     "routeb_b3_cpu_smoke": "PASS locally on 2026-10-24 with pinned DreamerV3, Python 3.12.10/JAX 0.11.2 CPU; Hosted CI for this revision pending",
     "routeb_rb04_path_tests": "13 passed; exact synthetic hour/day aggregation, Train-scaled feedback features, event alignment, invalid-path rejection accounting",
-    "routeb_b3_feedback_replay_smoke": "PASS; 2 optimizer updates, 3 nonzero scale gradients, 4x5x5 path-conditioned replay, zero path rejections; synthetic mechanism only",
+    "routeb_b3_feedback_replay_smoke": "PASS on prior backed-up revision; this continuation did not rerun the pinned-upstream smoke because the local checkout is absent",
+    "routeb_b3_train_worker_integration": "Train-only hierarchy artifact, checksum/provenance loader, b3-train worker command/client and registered Fold diagnostic orchestration added; 5 synthetic tests passed. New worker training itself not yet smoke-tested against pinned upstream",
     "routeb_b3_feedback_cpu_evidence": "docs/audit_evidence/20261023/routeb_audit_remediation_b3_feedback_cpu_20261024.json",
-    "routeb_incremental_mypy": "5 changed source/test/smoke files, no issues",
-    "world_model_mypy": "38 source files, no issues",
-    "ruff": "PASS"
+    "routeb_incremental_mypy": "5 changed source files, no issues",
+    "world_model_mypy": "not run for this continuation",
+    "ruff": "PASS for changed RouteB source and test files"
   },
   "fixed": ["RB-01", "RB-02", "RB-03", "RB-06", "RB-07", "RB-08", "RB-13", "RB-14"],
   "bounded_or_partial": {
-    "RB-04": "added per-path Gaussian sampling, strict OHLCV decode/rejection counts, exact path-derived hour/day aggregation, Train-scaled feedback features, and a two-stage causal feedback replay that observes sampled minute and aggregate slow features at availability events; single-pass recursive path generation and registered worker integration remain open",
-    "RB-05": "added matched E3/E4 replay over one shared sampled path ensemble and checkpoint; registered-Fold scoring remains open",
+    "RB-04": "added per-path Gaussian sampling, strict OHLCV decode/rejection counts, exact path-derived hour/day aggregation, Train-scaled feedback features, two-stage causal replay, and registered Train-only B3 artifact/worker training; single-pass recursive path generation and registered Validation scoring remain open",
+    "RB-05": "added matched E3/E4 replay over one shared sampled path ensemble and checkpoint plus registered Train-only B3 stage; registered-Fold E3/E4 scoring remains open",
     "RB-10": "posterior/prior transition is exposed numerically; real open-loop shift comparison remains open",
     "RB-11": "economic certification remains false; native account parity remains open"
   },
   "open": ["RB-04", "RB-05", "RB-09", "RB-12"],
-  "hosted_ci": "PASS for commit 8e6207b89fad6570e0b9ec18545736f25255b39c (run 40045345260); feedback-replay tree is backed up on backup/routeb-audit-remediation-20261024 via GitHub Git Database API, but the current commit status is pending with no checks and Hosted CI has not run for this revision"
+  "hosted_ci": "The prior feedback-replay commit passed run 40045345260. Current Train-worker additions are not yet committed/backed up or Hosted-verified; rerun required after backup"
 }

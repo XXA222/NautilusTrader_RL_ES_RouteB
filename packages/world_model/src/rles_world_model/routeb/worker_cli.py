@@ -33,6 +33,14 @@ def main(argv:list[str]|None=None)->int:
     t.add_argument("--checkpoint",required=True)
     t.add_argument("--configuration",required=True)
     t.add_argument("--resume",action="store_true")
+    bt=subs.add_parser("b3-train")
+    bt.add_argument("--sequences",required=True)
+    bt.add_argument("--scope",required=True)
+    bt.add_argument("--fold-sha256",required=True)
+    bt.add_argument("--checkout",required=True)
+    bt.add_argument("--checkpoint",required=True)
+    bt.add_argument("--configuration",required=True)
+    bt.add_argument("--resume",action="store_true")
     f=subs.add_parser("forecast")
     f.add_argument("--request",required=True)
     f.add_argument("--checkout",required=True)
@@ -93,6 +101,51 @@ def main(argv:list[str]|None=None)->int:
         config=strict_json_loads(
             Path(args.configuration).read_bytes(), context='Route B worker configuration',
         )
+        if args.command == "b3-train":
+            from .hierarchy_artifacts import (
+                hierarchy_scaler_sha256, load_hierarchical_train_artifact,
+            )
+            from .jax_hierarchy_train import (
+                HierarchicalModelConfig, HierarchicalTrainingConfig,
+                train_hierarchical,
+            )
+
+            if (not isinstance(config, dict) or set(config) != {"model", "training"}
+                    or not isinstance(config["model"], dict)
+                    or set(config["model"]) != {"minute", "hour", "day"}
+                    or any(not isinstance(config["model"][scale], dict)
+                           for scale in ("minute", "hour", "day"))
+                    or not isinstance(config["training"], dict)):
+                raise ValueError("B3 config requires minute/hour/day models and training")
+            model_config = HierarchicalModelConfig(**{
+                scale: RSSMConfig(**config["model"][scale])
+                for scale in ("minute", "hour", "day")
+            })
+            training_config = HierarchicalTrainingConfig(**config["training"])
+            tensors, scalers, metadata = load_hierarchical_train_artifact(
+                args.sequences, expected_scope=args.scope,
+                expected_fold_sha256=args.fold_sha256)
+            reports = train_hierarchical(
+                tensors=tensors, train_scope_id=args.scope,
+                dataset_id=metadata["dataset_id"],
+                scaler_sha256=hierarchy_scaler_sha256(scalers),
+                checkout=args.checkout, output_checkpoint=args.checkpoint,
+                model_config=model_config, training_config=training_config,
+                resume=args.resume)
+            result = {
+                "status": "COMPLETED",
+                "kind": "B3_TRAIN_DIAGNOSTIC_ONLY",
+                "checkpoint": args.checkpoint,
+                "fold_sha256": args.fold_sha256,
+                "hierarchy_tensor_sha256": metadata["hierarchy_tensor_sha256"],
+                "scaler_sha256": metadata["scaler_sha256"],
+                "reports": reports,
+                "validation_scored": False,
+                "test_scored": False,
+                "economic_certification": False,
+            }
+            print(json.dumps(result, ensure_ascii=False, allow_nan=False))
+            return 0
         if set(config)!={"model","training"}:
             raise ValueError("unknown model/training configuration keys")
         e1=args.command.startswith('e1-')

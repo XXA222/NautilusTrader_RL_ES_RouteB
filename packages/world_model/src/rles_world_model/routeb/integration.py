@@ -84,6 +84,68 @@ def prepare_fold_train_sequences(*,fold_replay:MarketReplay,fold,
     return target_npz,scaler,summary
 
 
+def prepare_fold_train_hierarchy(*, fold_replay: MarketReplay, fold,
+        train_scope_id: str, target_npz: Path, burn_in: int = 8) -> tuple[Path, object, dict]:
+    """Prepare a B3 hierarchy artifact from the registered Fold's Train rows only.
+
+    The Fold replay may contain Validation context for later forecast setup, but
+    this function slices strictly before ``train.score_end_ns`` before fitting
+    all three scalers or materializing worker inputs.
+    """
+    from rles_data.core import FoldManifest
+    from .hierarchy_artifacts import export_hierarchical_train_artifact
+    from .hierarchy_dataset import HierarchyScalers, build_train_hierarchy
+
+    if not isinstance(fold_replay, MarketReplay) or not isinstance(fold, FoldManifest):
+        raise ValueError("an authorized Fold replay and frozen FoldManifest are required")
+    if (fold_replay.dataset_hash != fold.dataset_hash or not fold_replay.is_contiguous
+            or not train_scope_id or type(burn_in) is not int or burn_in < 1):
+        raise ValueError("B3 Fold identity, continuity, scope or burn-in is invalid")
+    frames = fold_replay.frames
+    if (frames[0].ts_close_ns != fold.train.warmup_start_ns
+            or frames[-1].ts_close_ns != fold.validation.score_end_ns - MINUTE_NS
+            or any(frame.ts_close_ns >= fold.validation.score_end_ns
+                   or frame.available_at_ns > fold.validation.score_end_ns
+                   for frame in frames)):
+        raise ValueError("registered replay must end at Validation score end and exclude Test")
+    train_frames = tuple(frame for frame in frames
+        if fold.train.warmup_start_ns <= frame.ts_close_ns < fold.train.score_end_ns)
+    if (not train_frames or train_frames[0].ts_close_ns != fold.train.warmup_start_ns
+            or train_frames[-1].ts_close_ns != fold.train.score_end_ns - MINUTE_NS
+            or any(frame.ts_close_ns >= fold.train.score_end_ns for frame in train_frames)):
+        raise ValueError("B3 Train slice does not exactly cover the frozen Train interval")
+    train = MarketSequence(tuple(Candle(
+        frame.ts_close_ns, frame.available_at_ns, frame.instrument,
+        float(frame.open), float(frame.high), float(frame.low), float(frame.close),
+        float(frame.volume),
+    ) for frame in train_frames), dataset_id=fold.dataset_hash, scope="train")
+    tensors, scalers = build_train_hierarchy(
+        train, burn_in=burn_in, score_start_ns=fold.train.score_start_ns,
+        score_end_ns=fold.train.score_end_ns)
+    if not isinstance(scalers, HierarchyScalers):
+        raise RuntimeError("B3 hierarchy preparation returned invalid scaler bundle")
+    artifact, metadata = export_hierarchical_train_artifact(
+        target_npz, tensors=tensors, scalers=scalers,
+        train_scope_id=train_scope_id, fold_sha256=fold.hash)
+    summary = {
+        "train_scope_id": train_scope_id,
+        "dataset_id": fold.dataset_hash,
+        "fold_hash": fold.hash,
+        "train_warmup_bars": sum(
+            bar.ts_close_ns < fold.train.score_start_ns for bar in train.candles),
+        "train_score_bars": int(tensors.minute_mask.sum()),
+        "minute_features": int(tensors.minute_x.shape[1]),
+        "hour_features": int(tensors.hour_x.shape[1]),
+        "day_features": int(tensors.day_x.shape[1]),
+        "train_npz_sha256": metadata["artifact_sha256"],
+        "hierarchy_tensor_sha256": metadata["hierarchy_tensor_sha256"],
+        "scaler_sha256": metadata["scaler_sha256"],
+        "validation_payload_in_worker": False,
+        "test_payload_in_worker": False,
+    }
+    return artifact, scalers, summary
+
+
 def prepare_registered_train(*,rles_config:dict,window:dict,
                              marker_sha256:str,label:str,instrument:str,
                              target_npz:Path,length:int=128,burn_in:int=32,
