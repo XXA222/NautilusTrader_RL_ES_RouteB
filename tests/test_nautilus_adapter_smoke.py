@@ -831,10 +831,10 @@ def test_native_perpetual_funding_rate_settles_once_in_account(
     imagined = ImaginedAccount(
         initial_equity=100_000, fee_maker=0.001, fee_taker=0.001)
 
-    def imagined_bar(number: int) -> Candle:
+    def imagined_bar(number: int, price: float = 1000.0) -> Candle:
         timestamp = number * MINUTE_NS
-        return Candle(timestamp, timestamp, str(instrument.id), 1000.0, 1000.0,
-                      1000.0, 1000.0, 100.0)
+        return Candle(timestamp, timestamp, str(instrument.id), price, price,
+                      price, price, 100.0)
 
     try:
         initial = session.bootstrap((_perpetual_batch(1),), decision_ts_ns=60_000_000_000)
@@ -906,6 +906,67 @@ def test_native_perpetual_funding_rate_settles_once_in_account(
             assert session.snapshot().funding == ()
         else:
             assert len(settled.funding) == 1
+
+        imagined.on_bar(imagined_bar(5))
+        second_settlement_ns = 420_000_000_000
+        second_mark = ("mark", {"instrument": str(instrument.id), "price": "1100.00"})
+        second_rate = ("funding_update", {
+            "instrument": str(instrument.id), "rate": "0.002",
+            "interval_minutes": 480, "next_funding_ns": second_settlement_ns,
+        })
+        second_observation = replace(
+            wait, decision_id="funding-observe-2", plan_id="funding-observe-2",
+            idempotency_key="funding-observe-2")
+        session.advance(
+            second_observation,
+            batches=(_perpetual_batch(6, second_mark, second_rate),),
+            next_decision_ts_ns=360_000_000_000,
+        )
+        imagined.on_bar(imagined_bar(6, price=1100.0))
+        with pytest.raises(ValueError, match="not-yet-available"):
+            imagined.apply_funding_settlement(
+                event_id="funding-420s-too-early", rate=0.002, mark_price=1100.0,
+                settlement_ns=second_settlement_ns,
+            )
+        second_event = ("funding_settlement", {
+            "instrument": str(instrument.id), "rate": "0.002",
+            "interval_minutes": 480, "settlement_ns": second_settlement_ns,
+        })
+        funding_boundary_2 = session.advance(
+            replace(wait, decision_id="funding-boundary-2", plan_id="funding-boundary-2",
+                    idempotency_key="funding-boundary-2"),
+            batches=(_perpetual_batch(7, second_event),),
+            next_decision_ts_ns=second_settlement_ns,
+        )
+        imagined.on_bar(imagined_bar(7, price=1100.0))
+        second_funding_change = imagined.apply_funding_settlement(
+            event_id="funding-420s", rate=0.002, mark_price=1100.0,
+            settlement_ns=second_settlement_ns,
+        )
+        expected_second_funding = -Decimal(quantity) * Decimal("1100.00") * Decimal("0.002")
+        assert Decimal(str(second_funding_change)) == expected_second_funding
+        with pytest.raises(ValueError, match="duplicate"):
+            imagined.apply_funding_settlement(
+                event_id="funding-420s", rate=0.002, mark_price=1100.0,
+                settlement_ns=second_settlement_ns,
+            )
+        settled_2 = session.advance(
+            replace(wait, decision_id="funding-settled-2", plan_id="funding-settled-2",
+                    idempotency_key="funding-settled-2"),
+            batches=(_perpetual_batch(8),), next_decision_ts_ns=480_000_000_000,
+        )
+        expected_equity_2 = equity + Decimal(quantity) * Decimal("100.00") + expected_second_funding
+        assert settled_2.mark == Decimal("1100.00")
+        assert len(funding_boundary_2.funding) == (1 if compact_history else 2)
+        adjustment_2 = funding_boundary_2.funding[-1]
+        assert Money.from_str(adjustment_2["pnl_change"]).as_decimal() == expected_second_funding
+        assert settled_2.equity == expected_equity_2
+        assert Decimal(str(imagined.equity)) == settled_2.equity
+        assert settled_2.margins == entered.margins
+        if compact_history:
+            assert settled_2.funding == ()
+        else:
+            assert len(settled_2.funding) >= 1
     finally:
         session.close()
 
