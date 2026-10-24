@@ -4,6 +4,7 @@
   "date": "2026-10-25",
   "workspace": "/mnt/d/Program Files/NautilusTrader_RL_ES_RouteB",
   "source_commit_before_change": "79a63a5a375bfad68f0b120d949bff9c961e53bd",
+  "source_commit_after_change": "4018ab0aebd9cd353636aa43c957d17330311581",
   "environment": {
     "platform": "Ubuntu 24.04 / WSL2",
     "host_python": "3.14.7",
@@ -42,7 +43,9 @@
     "canonical_workspace_guard": "passed",
     "host_to_worker_cli_smoke": "PASS",
     "smoke_result_path": ".tmp/routeb-cli-worker-smoke-final-20261025/result.json",
+    "archived_smoke_result_path": "docs/audit_evidence/20261023/routeb_cli_worker_integration_result_20261025.json",
     "smoke_result_sha256": "0f45aaee4bf9bd217eaf6a2cb56ff68b6eb176638d6374a96efb18f8fab5c6ce",
+    "archived_smoke_result_sha256": "da16b3efe9fa275bc594b16f4452913c98d2c27825c9a3545dbbb991018f627b",
     "smoke_scope": "synthetic_mechanism_only",
     "smoke_checks": {
       "e1_e2_training_via_separate_worker": true,
@@ -61,7 +64,17 @@
     "fresh_fold_reserved": false,
     "research_acceptance": false,
     "economic_certification": false,
-    "hosted_ci_for_fixed_source": "pending"
+    "hosted_ci": {
+      "run_id": 40125863660,
+      "url": "https://github.com/XXA222/NautilusTrader_RL_ES_RouteB/actions/runs/40125863660",
+      "head_sha": "4018ab0aebd9cd353636aa43c957d17330311581",
+      "event": "push",
+      "ubuntu_cpu": "success",
+      "world_model_jax_cpu": "success",
+      "gpu": "skipped_by_ubuntu_pr_lane",
+      "release": "skipped_by_ubuntu_pr_lane",
+      "result": "PASS"
+    }
   },
   "source_sha256": {
     "packages/world_model/src/rles_world_model/cli.py": "54e05e9e39695a3dbdb8bc5ae8899b422687706c0714ed367468e5c67627df3d",
